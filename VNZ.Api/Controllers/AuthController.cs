@@ -54,4 +54,43 @@ public class AuthController : ControllerBase
 
         return Ok(response);
     }
+
+    [Authorize(Roles = "Admin")]
+    [HttpPost("register")]
+    public async Task<IActionResult> Register([FromBody] Request.RegisterRequest request)
+    {
+        var data = await _authService.Register(request);
+        var response = ResponseBuilder.SuccessResponse(
+            data,
+            "Tạo tài khoản thành công.",
+            HttpContext.TraceIdentifier);
+
+        return Ok(response);
+    }
+
+    [AllowAnonymous]
+    [HttpPost("forgot-password")]
+    public async Task<IActionResult> ForgotPassword([FromBody] Request.ForgotPasswordRequest request)
+    {
+        var message = await _authService.ForgotPassword(request);
+        var response = ResponseBuilder.SuccessResponse(
+            data: null,
+            message: message,
+            traceId: HttpContext.TraceIdentifier);
+
+        return Ok(response);
+    }
+
+    [AllowAnonymous]
+    [HttpPost("change-password")]
+    public async Task<IActionResult> ChangePassword([FromBody] Request.ChangePasswordRequest request)
+    {
+        var message = await _authService.ChangePassword(request);
+        var response = ResponseBuilder.SuccessResponse(
+            data: null,
+            message: message,
+            traceId: HttpContext.TraceIdentifier);
+
+        return Ok(response);
+    }
 }
