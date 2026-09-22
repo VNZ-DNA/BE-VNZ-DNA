@@ -1,5 +1,6 @@
 using VNZ.Api.Extensions;
 using VNZ.Api.Middleware;
+using VNZ.Api.Data;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -10,6 +11,11 @@ builder.Services.AddBaseServices(builder.Configuration);
 // builder.Services.AddScoped<NewsService.IService, NewsService.Service>();
 
 var app = builder.Build();
+
+if (app.Environment.IsDevelopment())
+{
+    await DevelopmentDataSeeder.SeedAsync(app.Services);
+}
 
 app.UseMiddleware<GlobalExceptionHandlerMiddleware>();
 
