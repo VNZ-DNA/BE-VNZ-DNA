@@ -18,13 +18,13 @@ public class User : BaseEntity
     public string? Hometown { get; set; }
     public string? Hobbies { get; set; }
     public string? PersonalQuote { get; set; }
-    public DateTime? JoinedDate { get; set; }
+    public DateTimeOffset? JoinedDate { get; set; }
     public bool IsActive { get; set; }
     public EmploymentStatus EmploymentStatus { get; set; }
     public bool IsPublished { get; set; }
     public int? DisplayOrder { get; set; }
-    public DateTime CreateAt { get; set; }
-    public DateTime? UpdatedAt { get; set; }
+    public DateTimeOffset CreateAt { get; set; }
+    public DateTimeOffset? UpdatedAt { get; set; }
 
     public Role? Role { get; set; }
     public User? Creator { get; set; }
@@ -35,4 +35,5 @@ public class User : BaseEntity
     public ICollection<ContactInquiry> ContactInquiries { get; set; } = new List<ContactInquiry>();
     public ICollection<Partner> Partners { get; set; } = new List<Partner>();
     public ICollection<Product> Products { get; set; } = new List<Product>();
+    public ICollection<UserSession> RefreshTokens { get; set; } = new List<UserSession>();
 }

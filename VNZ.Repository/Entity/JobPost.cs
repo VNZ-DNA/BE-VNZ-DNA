@@ -8,9 +8,9 @@ public class JobPost : BaseEntity
     public Guid? DepartmentId { get; set; }
     public Guid? CreatedBy { get; set; }
     public JobPostStatus Status { get; set; }
-    public DateTime? ExpiredAt { get; set; }
-    public DateTime CreatedAt { get; set; }
-    public DateTime? UpdatedAt { get; set; }
+    public DateTimeOffset? ExpiredAt { get; set; }
+    public DateTimeOffset CreatedAt { get; set; }
+    public DateTimeOffset? UpdatedAt { get; set; }
     public string Title { get; set; } = null!;
     public EmploymentType? EmploymentType { get; set; }
     public List<string> Skills { get; set; } = new();

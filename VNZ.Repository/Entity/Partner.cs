@@ -11,8 +11,8 @@ public class Partner : BaseEntity
     public string? Description { get; set; }
     public bool IsPublished { get; set; }
     public int? DisplayOrder { get; set; }
-    public DateTime CreatedAt { get; set; }
-    public DateTime UpdateAt { get; set; }
+    public DateTimeOffset CreatedAt { get; set; }
+    public DateTimeOffset UpdateAt { get; set; }
 
     public User? Creator { get; set; }
 }
