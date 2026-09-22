@@ -1,27 +1,50 @@
 namespace VNZ.Service.Models;
 
-public class ApiResponse<T>
+public class ApiResponse
 {
-    public bool Success { get; init; }
-    public string? Message { get; init; }
-    public T? Data { get; init; }
+    public bool IsSuccess { get; init; }
+    public required string Message { get; init; }
+    public object? Data { get; init; }
     public object? Errors { get; init; }
     public string? TraceId { get; init; }
+    public DateTime TimestampUtc { get; init; }
+}
 
-    public static ApiResponse<T> Ok(T? data, string? message = null)
-        => new()
+public static class ResponseBuilder
+{
+    public static ApiResponse SuccessResponse(
+        object? data,
+        string message,
+        string? traceId = null)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(message);
+
+        return new ApiResponse
         {
-            Success = true,
+            IsSuccess = true,
             Message = message,
-            Data = data
+            Data = data,
+            Errors = null,
+            TraceId = traceId,
+            TimestampUtc = DateTime.UtcNow
         };
+    }
 
-    public static ApiResponse<T> Fail(string message, object? errors = null, string? traceId = null)
-        => new()
+    public static ApiResponse ErrorResponse(
+        object? errors,
+        string message,
+        string? traceId = null)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(message);
+
+        return new ApiResponse
         {
-            Success = false,
+            IsSuccess = false,
             Message = message,
+            Data = null,
             Errors = errors,
-            TraceId = traceId
+            TraceId = traceId,
+            TimestampUtc = DateTime.UtcNow
         };
+    }
 }
