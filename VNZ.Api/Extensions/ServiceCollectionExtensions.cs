@@ -20,6 +20,7 @@ public static class ServiceCollectionExtensions
         services.AddHttpContextAccessor();
         services.AddTransient<GlobalExceptionHandlerMiddleware>();
         services.AddScoped<VNZ.Service.AuthService.IService, VNZ.Service.AuthService.Service>();
+        services.AddScoped<VNZ.Service.DashboardService.IService, VNZ.Service.DashboardService.Service>();
 
         services.AddDatabase(configuration);
         services.AddJwtAuthentication(configuration);
