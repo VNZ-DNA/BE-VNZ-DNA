@@ -17,4 +17,22 @@ public class Request
     {
         public string? RefreshToken { get; init; }
     }
+
+    public class RegisterRequest
+    {
+        public required string FullName { get; set; } = string.Empty;
+        public required string Email { get; set; } = string.Empty;
+        public required string Password { get; set; } = string.Empty;
+    }
+    
+    public class ForgotPasswordRequest
+    {
+        public required string Email { get; set; } = string.Empty;
+    }
+
+    public class ChangePasswordRequest
+    {
+        public int Code { get; set; }
+        public required string NewPassword { get; set; } = string.Empty;
+    }
 }

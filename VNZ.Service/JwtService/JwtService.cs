@@ -14,7 +14,7 @@ public class JwtService
 
         if (string.IsNullOrWhiteSpace(options.SecretKey))
         {
-            throw new ArgumentException("JWT secret key is required.", nameof(options));
+            throw new ArgumentException("Khóa bí mật JWT là bắt buộc.", nameof(options));
         }
 
         var signingKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(options.SecretKey));
