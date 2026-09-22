@@ -1,5 +1,11 @@
+using DotNetEnv;
 using VNZ.Api.Extensions;
 using VNZ.Api.Middleware;
+
+Env.Load();
+
+var aspnetCoreEnv = Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT");
+Environment.SetEnvironmentVariable("ASPNETCORE_ENVIRONMENT", aspnetCoreEnv);
 
 var builder = WebApplication.CreateBuilder(args);
 
