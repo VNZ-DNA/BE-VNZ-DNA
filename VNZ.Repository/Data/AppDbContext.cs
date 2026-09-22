@@ -21,6 +21,7 @@ public class AppDbContext : DbContext
     public DbSet<ContactInquiry> ContactInquiries => Set<ContactInquiry>();
     public DbSet<Partner> Partners => Set<Partner>();
     public DbSet<Product> Products => Set<Product>();
+    public DbSet<UserSession> UserSessions => Set<UserSession>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -41,7 +42,8 @@ public class AppDbContext : DbContext
             entity.Property(x => x.FullName).HasMaxLength(200).IsRequired();
             entity.Property(x => x.Email).HasMaxLength(320).IsRequired();
             entity.Property(x => x.PasswordHash).HasMaxLength(500).IsRequired();
-            entity.Property(x => x.EmploymentStatus).HasConversion<int>().IsRequired();
+            entity.Property(x => x.EmploymentStatus).HasConversion<string>().IsRequired();
+            entity.Property(x => x.JobLevel).HasConversion<string>();
             entity.HasIndex(x => x.Email).IsUnique();
             entity.HasOne(x => x.Role).WithMany(x => x.Users).HasForeignKey(x => x.RoleId).OnDelete(DeleteBehavior.Restrict);
             entity.HasOne(x => x.Creator).WithMany(x => x.CreatedUsers).HasForeignKey(x => x.CreatedBy).OnDelete(DeleteBehavior.Restrict);
@@ -52,7 +54,7 @@ public class AppDbContext : DbContext
             entity.ToTable("News_Article");
             entity.HasKey(x => x.Id);
             entity.Property(x => x.Title).HasMaxLength(300).IsRequired();
-            entity.Property(x => x.Status).HasConversion<int>().IsRequired();
+            entity.Property(x => x.Status).HasConversion<string>().IsRequired();
             entity.HasIndex(x => x.Status);
             entity.HasIndex(x => x.CreatedAt);
             entity.HasOne(x => x.Creator).WithMany(x => x.NewsArticles).HasForeignKey(x => x.CreatedBy).OnDelete(DeleteBehavior.Restrict);
@@ -88,7 +90,9 @@ public class AppDbContext : DbContext
             entity.ToTable("Job_Post");
             entity.HasKey(x => x.Id);
             entity.Property(x => x.Title).HasMaxLength(300).IsRequired();
-            entity.Property(x => x.Status).HasConversion<int>().IsRequired();
+            entity.Property(x => x.Status).HasConversion<string>().IsRequired();
+            entity.Property(x => x.EmploymentType).HasConversion<string>();
+            entity.Property(x => x.JobLevel).HasConversion<string>();
             entity.Property(x => x.Skills).HasColumnType("jsonb").IsRequired();
             entity.HasIndex(x => new { x.Status, x.ExpiredAt });
             entity.HasOne(x => x.Department).WithMany(x => x.JobPosts).HasForeignKey(x => x.DepartmentId).OnDelete(DeleteBehavior.Restrict);
@@ -101,7 +105,7 @@ public class AppDbContext : DbContext
             entity.HasKey(x => x.Id);
             entity.Property(x => x.FullName).HasMaxLength(200).IsRequired();
             entity.Property(x => x.Email).HasMaxLength(320).IsRequired();
-            entity.Property(x => x.Status).HasConversion<int>().IsRequired();
+            entity.Property(x => x.Status).HasConversion<string>().IsRequired();
             entity.Property(x => x.JobPostSnapshot).HasColumnType("jsonb");
             entity.HasIndex(x => x.Status);
             entity.HasOne(x => x.JobPost).WithMany(x => x.Applications).HasForeignKey(x => x.JobPostId).OnDelete(DeleteBehavior.Cascade);
@@ -114,7 +118,7 @@ public class AppDbContext : DbContext
             entity.HasKey(x => x.Id);
             entity.Property(x => x.FullName).HasMaxLength(200).IsRequired();
             entity.Property(x => x.Email).HasMaxLength(320).IsRequired();
-            entity.Property(x => x.ContactStatus).HasConversion<int>();
+            entity.Property(x => x.ContactStatus).HasConversion<string>();
             entity.HasIndex(x => x.IsRead);
             entity.HasOne(x => x.ContactedByUser).WithMany(x => x.ContactInquiries).HasForeignKey(x => x.ContactedBy).OnDelete(DeleteBehavior.Restrict);
         });
@@ -132,9 +136,21 @@ public class AppDbContext : DbContext
             entity.ToTable("Product");
             entity.HasKey(x => x.Id);
             entity.Property(x => x.Name).HasMaxLength(200).IsRequired();
-            entity.Property(x => x.Status).HasConversion<int>().IsRequired();
+            entity.Property(x => x.Status).HasConversion<string>().IsRequired();
             entity.Property(x => x.Content).HasColumnType("jsonb");
             entity.HasOne(x => x.Creator).WithMany(x => x.Products).HasForeignKey(x => x.CreatedBy).OnDelete(DeleteBehavior.Restrict);
+        });
+
+        modelBuilder.Entity<UserSession>(entity =>
+        {
+            entity.ToTable("UserSession");
+            entity.HasKey(x => x.Id);
+            entity.Property(x => x.RefreshToken).IsRequired();
+            entity.Property(x => x.CreatedAt).IsRequired();
+            entity.Property(x => x.ExpiresAt).IsRequired();
+            entity.HasIndex(x => x.RefreshToken).IsUnique();
+            entity.HasIndex(x => new { x.UserId, x.ExpiresAt });
+            entity.HasOne(x => x.User).WithMany(x => x.RefreshTokens).HasForeignKey(x => x.UserId).OnDelete(DeleteBehavior.Cascade);
         });
     }
 }

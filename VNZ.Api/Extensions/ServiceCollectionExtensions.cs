@@ -5,6 +5,7 @@ using Microsoft.OpenApi.Models;
 using System.Text;
 using VNZ.Api.Middleware;
 using VNZ.Repository;
+using VNZ.Service.Models;
 
 namespace VNZ.Api.Extensions;
 
@@ -62,10 +63,52 @@ public static class ServiceCollectionExtensions
                     IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(key)),
                     ClockSkew = TimeSpan.Zero
                 };
+
+                options.Events = new JwtBearerEvents
+                {
+                    OnChallenge = async context =>
+                    {
+                        context.HandleResponse();
+                        await WriteAuthenticationErrorAsync(
+                            context.HttpContext,
+                            StatusCodes.Status401Unauthorized,
+                            "AUTH_UNAUTHENTICATED",
+                            "Yêu cầu đăng nhập để tiếp tục.");
+                    },
+                    OnForbidden = async context =>
+                    {
+                        await WriteAuthenticationErrorAsync(
+                            context.HttpContext,
+                            StatusCodes.Status403Forbidden,
+                            "AUTH_FORBIDDEN",
+                            "Bạn không có quyền thực hiện thao tác này.");
+                    }
+                };
             });
 
         services.AddAuthorization();
         return services;
+    }
+
+    private static async Task WriteAuthenticationErrorAsync(
+        HttpContext context,
+        int statusCode,
+        string errorCode,
+        string message)
+    {
+        context.Response.StatusCode = statusCode;
+        context.Response.ContentType = "application/json";
+
+        var response = ResponseBuilder.ErrorResponse(
+            errors: new
+            {
+                code = errorCode,
+                fields = Array.Empty<string>()
+            },
+            message: message,
+            traceId: context.TraceIdentifier);
+
+        await context.Response.WriteAsJsonAsync(response);
     }
 
     private static IServiceCollection AddSwaggerDocumentation(this IServiceCollection services)

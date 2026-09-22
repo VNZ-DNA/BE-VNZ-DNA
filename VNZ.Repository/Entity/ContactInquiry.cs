@@ -10,13 +10,13 @@ public class ContactInquiry : BaseEntity
     public string? Phone { get; set; }
     public string? CompanyName { get; set; }
     public string? BudgetRange { get; set; }
-    public DateTime? ExpectedStartDate { get; set; }
+    public DateTimeOffset? ExpectedStartDate { get; set; }
     public string? Message { get; set; }
     public string? Source { get; set; }
     public bool IsRead { get; set; }
     public ContactStatus? ContactStatus { get; set; }
     public Guid? ContactedBy { get; set; }
-    public DateTime CreatedAt { get; set; }
+    public DateTimeOffset CreatedAt { get; set; }
 
     public User? ContactedByUser { get; set; }
 }

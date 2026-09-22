@@ -16,11 +16,11 @@ public class JobApplication : BaseEntity
     public string? CoverLetter { get; set; }
     public string? JobPostSnapshot { get; set; }
     public JobApplicationStatus Status { get; set; }
-    public DateTime? ReviewAt { get; set; }
+    public DateTimeOffset? ReviewAt { get; set; }
     public Guid? ReviewedBy { get; set; }
-    public DateTime? InterViewAt { get; set; }
-    public DateTime CreatedAt { get; set; }
-    public DateTime UpdateAt { get; set; }
+    public DateTimeOffset? InterViewAt { get; set; }
+    public DateTimeOffset CreatedAt { get; set; }
+    public DateTimeOffset UpdateAt { get; set; }
 
     public JobPost JobPost { get; set; } = null!;
     public User? Reviewer { get; set; }

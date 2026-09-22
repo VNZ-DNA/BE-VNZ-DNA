@@ -7,7 +7,7 @@ public class ApiResponse
     public object? Data { get; init; }
     public object? Errors { get; init; }
     public string? TraceId { get; init; }
-    public DateTime TimestampUtc { get; init; }
+    public DateTimeOffset TimestampUtc { get; init; }
 }
 
 public static class ResponseBuilder
@@ -26,7 +26,7 @@ public static class ResponseBuilder
             Data = data,
             Errors = null,
             TraceId = traceId,
-            TimestampUtc = DateTime.UtcNow
+            TimestampUtc = DateTimeOffset.UtcNow
         };
     }
 
@@ -44,7 +44,7 @@ public static class ResponseBuilder
             Data = null,
             Errors = errors,
             TraceId = traceId,
-            TimestampUtc = DateTime.UtcNow
+            TimestampUtc = DateTimeOffset.UtcNow
         };
     }
 }
