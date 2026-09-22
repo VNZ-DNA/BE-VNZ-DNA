@@ -6,9 +6,6 @@ using VNZ.Repository;
 
 Env.Load();
 
-var aspnetCoreEnv = Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT");
-Environment.SetEnvironmentVariable("ASPNETCORE_ENVIRONMENT", aspnetCoreEnv);
-
 var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddBaseServices(builder.Configuration);
@@ -27,7 +24,12 @@ using (var scope = app.Services.CreateScope())
 
 app.UseMiddleware<GlobalExceptionHandlerMiddleware>();
 
-if (app.Environment.IsDevelopment())
+// Swagger is normally limited to Development. Enable it in a deployment by
+// setting Swagger:Enabled=true (for example, Swagger__Enabled=true in Docker).
+var swaggerEnabled = app.Environment.IsDevelopment()
+    || builder.Configuration.GetValue<bool>("Swagger:Enabled");
+
+if (swaggerEnabled)
 {
     app.UseSwagger();
     app.UseSwaggerUI();
