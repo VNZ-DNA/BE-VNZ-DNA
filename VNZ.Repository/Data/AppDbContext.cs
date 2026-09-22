@@ -1,4 +1,6 @@
 using Microsoft.EntityFrameworkCore;
+using VNZ.Repository.Entity;
+using VNZ.Repository.Entity.Enum;
 
 namespace VNZ.Repository;
 
@@ -8,14 +10,131 @@ public class AppDbContext : DbContext
     {
     }
 
-    // Chưa khai báo DbSet vì database/entity chưa được chốt.
-    // Khi ERD hoàn tất, thêm DbSet<TEntity> tại đây.
+    public DbSet<Role> Roles => Set<Role>();
+    public DbSet<User> Users => Set<User>();
+    public DbSet<NewsArticle> NewsArticles => Set<NewsArticle>();
+    public DbSet<NewsCategory> NewsCategories => Set<NewsCategory>();
+    public DbSet<NewsArticleCategory> NewsArticleCategories => Set<NewsArticleCategory>();
+    public DbSet<Department> Departments => Set<Department>();
+    public DbSet<JobPost> JobPosts => Set<JobPost>();
+    public DbSet<JobApplication> JobApplications => Set<JobApplication>();
+    public DbSet<ContactInquiry> ContactInquiries => Set<ContactInquiry>();
+    public DbSet<Partner> Partners => Set<Partner>();
+    public DbSet<Product> Products => Set<Product>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);
 
-        // Khi chốt entity, đặt Fluent API/configuration ở đây
-        // hoặc tách sang các IEntityTypeConfiguration<TEntity>.
+        modelBuilder.Entity<Role>(entity =>
+        {
+            entity.ToTable("Role");
+            entity.HasKey(x => x.Id);
+            entity.Property(x => x.Type).HasMaxLength(100).IsRequired();
+            entity.HasIndex(x => x.Type).IsUnique();
+        });
+
+        modelBuilder.Entity<User>(entity =>
+        {
+            entity.ToTable("User");
+            entity.HasKey(x => x.Id);
+            entity.Property(x => x.FullName).HasMaxLength(200).IsRequired();
+            entity.Property(x => x.Email).HasMaxLength(320).IsRequired();
+            entity.Property(x => x.PasswordHash).HasMaxLength(500).IsRequired();
+            entity.Property(x => x.EmploymentStatus).HasConversion<int>().IsRequired();
+            entity.HasIndex(x => x.Email).IsUnique();
+            entity.HasOne(x => x.Role).WithMany(x => x.Users).HasForeignKey(x => x.RoleId).OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne(x => x.Creator).WithMany(x => x.CreatedUsers).HasForeignKey(x => x.CreatedBy).OnDelete(DeleteBehavior.Restrict);
+        });
+
+        modelBuilder.Entity<NewsArticle>(entity =>
+        {
+            entity.ToTable("News_Article");
+            entity.HasKey(x => x.Id);
+            entity.Property(x => x.Title).HasMaxLength(300).IsRequired();
+            entity.Property(x => x.Status).HasConversion<int>().IsRequired();
+            entity.HasIndex(x => x.Status);
+            entity.HasIndex(x => x.CreatedAt);
+            entity.HasOne(x => x.Creator).WithMany(x => x.NewsArticles).HasForeignKey(x => x.CreatedBy).OnDelete(DeleteBehavior.Restrict);
+        });
+
+        modelBuilder.Entity<NewsCategory>(entity =>
+        {
+            entity.ToTable("News_Category");
+            entity.HasKey(x => x.Id);
+            entity.Property(x => x.Name).HasMaxLength(150).IsRequired();
+            entity.HasIndex(x => x.Name).IsUnique();
+        });
+
+        modelBuilder.Entity<NewsArticleCategory>(entity =>
+        {
+            entity.ToTable("News_Article_Category");
+            entity.HasKey(x => x.Id);
+            entity.HasIndex(x => new { x.NewsArticleId, x.NewsCategoryId }).IsUnique();
+            entity.HasOne(x => x.NewsArticle).WithMany(x => x.NewsArticleCategories).HasForeignKey(x => x.NewsArticleId).OnDelete(DeleteBehavior.Cascade);
+            entity.HasOne(x => x.NewsCategory).WithMany(x => x.NewsArticleCategories).HasForeignKey(x => x.NewsCategoryId).OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<Department>(entity =>
+        {
+            entity.ToTable("Department");
+            entity.HasKey(x => x.Id);
+            entity.Property(x => x.Name).HasMaxLength(150).IsRequired();
+            entity.HasIndex(x => x.Name).IsUnique();
+        });
+
+        modelBuilder.Entity<JobPost>(entity =>
+        {
+            entity.ToTable("Job_Post");
+            entity.HasKey(x => x.Id);
+            entity.Property(x => x.Title).HasMaxLength(300).IsRequired();
+            entity.Property(x => x.Status).HasConversion<int>().IsRequired();
+            entity.Property(x => x.Skills).HasColumnType("jsonb").IsRequired();
+            entity.HasIndex(x => new { x.Status, x.ExpiredAt });
+            entity.HasOne(x => x.Department).WithMany(x => x.JobPosts).HasForeignKey(x => x.DepartmentId).OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne(x => x.Creator).WithMany(x => x.JobPosts).HasForeignKey(x => x.CreatedBy).OnDelete(DeleteBehavior.Restrict);
+        });
+
+        modelBuilder.Entity<JobApplication>(entity =>
+        {
+            entity.ToTable("Job_Application");
+            entity.HasKey(x => x.Id);
+            entity.Property(x => x.FullName).HasMaxLength(200).IsRequired();
+            entity.Property(x => x.Email).HasMaxLength(320).IsRequired();
+            entity.Property(x => x.Status).HasConversion<int>().IsRequired();
+            entity.Property(x => x.JobPostSnapshot).HasColumnType("jsonb");
+            entity.HasIndex(x => x.Status);
+            entity.HasOne(x => x.JobPost).WithMany(x => x.Applications).HasForeignKey(x => x.JobPostId).OnDelete(DeleteBehavior.Cascade);
+            entity.HasOne(x => x.Reviewer).WithMany(x => x.ReviewedApplications).HasForeignKey(x => x.ReviewedBy).OnDelete(DeleteBehavior.Restrict);
+        });
+
+        modelBuilder.Entity<ContactInquiry>(entity =>
+        {
+            entity.ToTable("Contact_Inquiry");
+            entity.HasKey(x => x.Id);
+            entity.Property(x => x.FullName).HasMaxLength(200).IsRequired();
+            entity.Property(x => x.Email).HasMaxLength(320).IsRequired();
+            entity.Property(x => x.ContactStatus).HasConversion<int>();
+            entity.HasIndex(x => x.IsRead);
+            entity.HasOne(x => x.ContactedByUser).WithMany(x => x.ContactInquiries).HasForeignKey(x => x.ContactedBy).OnDelete(DeleteBehavior.Restrict);
+        });
+
+        modelBuilder.Entity<Partner>(entity =>
+        {
+            entity.ToTable("Partner");
+            entity.HasKey(x => x.Id);
+            entity.Property(x => x.Name).HasMaxLength(200).IsRequired();
+            entity.HasOne(x => x.Creator).WithMany(x => x.Partners).HasForeignKey(x => x.CreatedBy).OnDelete(DeleteBehavior.Restrict);
+        });
+
+        modelBuilder.Entity<Product>(entity =>
+        {
+            entity.ToTable("Product");
+            entity.HasKey(x => x.Id);
+            entity.Property(x => x.Name).HasMaxLength(200).IsRequired();
+            entity.Property(x => x.Status).HasConversion<int>().IsRequired();
+            entity.Property(x => x.Content).HasColumnType("jsonb");
+            entity.HasOne(x => x.Creator).WithMany(x => x.Products).HasForeignKey(x => x.CreatedBy).OnDelete(DeleteBehavior.Restrict);
+        });
     }
 }
