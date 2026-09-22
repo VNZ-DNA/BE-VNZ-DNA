@@ -1,5 +1,7 @@
 using DotNetEnv;
+using Microsoft.AspNetCore.DataProtection;
 using Microsoft.EntityFrameworkCore;
+using System.IO;
 using VNZ.Api.Extensions;
 using VNZ.Api.Middleware;
 using VNZ.Repository;
@@ -7,6 +9,16 @@ using VNZ.Repository;
 Env.Load();
 
 var builder = WebApplication.CreateBuilder(args);
+
+// Keep Data Protection keys in a writable directory inside the container.
+// Mount this directory as persistent storage in production to retain keys
+// across container replacements and restarts.
+var dataProtectionKeysPath = builder.Configuration["DataProtection:KeysPath"]
+    ?? Path.Combine(builder.Environment.ContentRootPath, "DataProtection-Keys");
+Directory.CreateDirectory(dataProtectionKeysPath);
+builder.Services
+    .AddDataProtection()
+    .PersistKeysToFileSystem(new DirectoryInfo(dataProtectionKeysPath));
 
 builder.Services.AddBaseServices(builder.Configuration);
 
