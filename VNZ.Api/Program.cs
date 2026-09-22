@@ -5,6 +5,7 @@ using System.IO;
 using VNZ.Api.Extensions;
 using VNZ.Api.Middleware;
 using VNZ.Repository;
+using VNZ.Api.Data;
 
 Env.Load();
 
@@ -32,6 +33,11 @@ using (var scope = app.Services.CreateScope())
 {
     var dbContext = scope.ServiceProvider.GetRequiredService<AppDbContext>();
     await dbContext.Database.MigrateAsync();
+}
+
+if (app.Environment.IsDevelopment())
+{
+    await DevelopmentDataSeeder.SeedAsync(app.Services);
 }
 
 app.UseMiddleware<GlobalExceptionHandlerMiddleware>();
