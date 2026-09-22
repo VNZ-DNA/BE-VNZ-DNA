@@ -6,9 +6,11 @@
 *.user
 *.suo
 *.db
+
 .env
 appsettings.Local.json
 **/appsettings.json
 **/appsettings.Development.json
+
 docs/
 **/Migrations/
