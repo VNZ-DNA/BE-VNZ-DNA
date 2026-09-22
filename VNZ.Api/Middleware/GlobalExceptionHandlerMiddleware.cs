@@ -30,6 +30,7 @@ public class GlobalExceptionHandlerMiddleware : IMiddleware
     {
         var statusCode = exception switch
         {
+            AuthException authStatusException => GetAuthStatusCode(authStatusException.Code),
             NotFoundException => HttpStatusCode.NotFound,
             ConflictException => HttpStatusCode.Conflict,
             UnauthorizedException => HttpStatusCode.Unauthorized,
@@ -42,6 +43,7 @@ public class GlobalExceptionHandlerMiddleware : IMiddleware
 
         var (errorCode, message) = exception switch
         {
+            AuthException authPayloadException => (authPayloadException.Code, authPayloadException.Message),
             NotFoundException =>
                 ("RESOURCE_NOT_FOUND", exception.Message),
             ConflictException =>
@@ -58,11 +60,28 @@ public class GlobalExceptionHandlerMiddleware : IMiddleware
             errors: new
             {
                 code = errorCode,
-                fields = Array.Empty<string>()
+                fields = exception is AuthException authException
+                    ? authException.Fields
+                    : Array.Empty<string>()
             },
             message: message,
             traceId: context.TraceIdentifier);
 
         await context.Response.WriteAsJsonAsync(response);
+    }
+
+    private static HttpStatusCode GetAuthStatusCode(string code)
+    {
+        return code switch
+        {
+            "AUTH_REQUIRED_FIELDS" or
+            "AUTH_REQUIRED_REFRESH_TOKEN" or
+            "AUTH_INVALID_EMAIL" or
+            "AUTH_INVALID_REQUEST" => HttpStatusCode.BadRequest,
+            "AUTH_INVALID_CREDENTIALS" or
+            "AUTH_ACCOUNT_INACTIVE" or
+            "AUTH_INVALID_REFRESH_TOKEN" => HttpStatusCode.Unauthorized,
+            _ => HttpStatusCode.InternalServerError
+        };
     }
 }
