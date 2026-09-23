@@ -19,6 +19,17 @@ public sealed class Service : IService
     {
         ArgumentNullException.ThrowIfNull(request);
 
+        if (request.Page < 1 || request.PageSize < 1 || request.PageSize > 100)
+        {
+            throw new ArgumentException("Thông tin phân trang không hợp lệ.");
+        }
+
+        var search = request.Search?.Trim();
+        if (search is { Length: > 300 })
+        {
+            throw new ArgumentException("Từ khóa tìm kiếm không được vượt quá 300 ký tự.");
+        }
+
         JobApplicationStatus? statusFilter = null;
 
         if (!string.IsNullOrWhiteSpace(request.Status))
@@ -34,35 +45,86 @@ public sealed class Service : IService
 
         var query = _dbContext.JobApplications
             .AsNoTracking()
-            .Include(application => application.JobPost)
             .AsQueryable();
+
+        if (!string.IsNullOrWhiteSpace(search))
+        {
+            var searchLower = search.ToLower();
+            query = query.Where(application =>
+                application.FullName.ToLower().Contains(searchLower) ||
+                application.Email.ToLower().Contains(searchLower) ||
+                application.JobPost.Title.ToLower().Contains(searchLower));
+        }
 
         if (statusFilter.HasValue)
         {
             query = query.Where(application => application.Status == statusFilter.Value);
         }
 
-        var applications = await query
+        var total = await query.CountAsync();
+
+        var applicationRows = await query
             .OrderByDescending(application => application.CreatedAt)
             .ThenByDescending(application => application.Id)
-            .Select(application => new Response.JobApplicationListItemResponse
+            .Skip((request.Page - 1) * request.PageSize)
+            .Take(request.PageSize)
+            .Select(application => new
             {
                 Id = application.Id,
                 FullName = application.FullName,
                 Email = application.Email,
                 JobPostId = application.JobPostId,
                 JobPostTitle = application.JobPost.Title,
-                Status = application.Status.ToString(),
+                Status = application.Status,
+                CvUrl = application.CvUrl,
                 CreatedAt = application.CreatedAt,
-                InterviewAt = application.InterViewAt
+                InterviewAt = application.InterViewAt,
+                CanSelectForInterviewEmail = application.Status == JobApplicationStatus.Accepted
             })
             .ToListAsync();
+
+        var applications = applicationRows.Select(application => new Response.JobApplicationListItemResponse
+        {
+            Id = application.Id,
+            FullName = application.FullName,
+            Email = application.Email,
+            JobPostId = application.JobPostId,
+            JobPostTitle = application.JobPostTitle,
+            Status = GetStatusLabel(application.Status),
+            CvUrl = application.CvUrl,
+            CreatedAt = application.CreatedAt,
+            InterviewAt = application.InterviewAt,
+            CanSelectForInterviewEmail = application.CanSelectForInterviewEmail
+        }).ToList();
 
         return new Response.JobApplicationListResponse
         {
             Items = applications,
-            Total = applications.Count
+            Page = request.Page,
+            PageSize = request.PageSize,
+            Total = total,
+            TotalPages = total == 0 ? 0 : (int)Math.Ceiling(total / (double)request.PageSize)
         };
+    }
+
+    private static string GetStatusLabel(JobApplicationStatus status)
+    {
+        if (status == JobApplicationStatus.Pending)
+        {
+            return "Chờ duyệt";
+        }
+
+        if (status == JobApplicationStatus.Accepted)
+        {
+            return "Đã duyệt";
+        }
+
+        if (status == JobApplicationStatus.Rejected)
+        {
+            return "Không duyệt";
+        }
+
+        return "Đã gửi email phỏng vấn";
     }
 
     public async Task<Response.JobApplicationDetailResponse> GetJobApplicationByIdAsync(Guid id)
