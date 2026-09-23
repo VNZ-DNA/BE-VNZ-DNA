@@ -1,5 +1,6 @@
 using VNZ.Api.Extensions;
 using VNZ.Api.Middleware;
+using VNZ.Api.Data;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -10,6 +11,13 @@ builder.Services.AddBaseServices(builder.Configuration);
 // builder.Services.AddScoped<NewsService.IService, NewsService.Service>();
 
 var app = builder.Build();
+
+
+using (var scope = app.Services.CreateScope())
+{
+    var dbContext = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+    await dbContext.Database.MigrateAsync();
+}
 
 app.UseMiddleware<GlobalExceptionHandlerMiddleware>();
 

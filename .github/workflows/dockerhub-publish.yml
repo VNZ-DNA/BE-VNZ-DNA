@@ -1,0 +1,60 @@
+name: Build and Push VNZ Backend Docker Image
+
+on:
+  push:
+    branches:
+      - Main
+
+env:
+  IMAGE_NAME: be-vnz-dna
+
+jobs:
+  docker:
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: read
+
+    steps:
+      # 1. Lấy source code
+      - name: Checkout source
+        uses: actions/checkout@v7
+
+      # 2. Chuẩn bị Docker Buildx
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      # 3. Đăng nhập Docker Hub
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v4
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_TOKEN }}
+
+      # 4. Tạo metadata và tag cho Docker Image
+      - name: Extract Docker metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ secrets.DOCKER_USERNAME }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=raw,value=latest
+            type=sha,format=short
+
+      # 5. Build và Push Docker Image
+      - name: Build and push image
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: ./VNZ.Api/Dockerfile
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      # 6. Báo Render kéo image mới về và deploy
+      - name: Trigger Render Deploy
+        if: github.ref == 'refs/heads/Main'
+        run: |
+          curl --fail --silent --show-error "${{ secrets.RENDER_DEPLOY_HOOK_URL }}"
