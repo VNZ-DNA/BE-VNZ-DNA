@@ -4,13 +4,10 @@ using Microsoft.EntityFrameworkCore;
 using System.IO;
 using VNZ.Api.Extensions;
 using VNZ.Api.Middleware;
-<<<<<<< HEAD
 using VNZ.Repository;
+using VNZ.Api.Data;
 
 Env.Load();
-=======
-using VNZ.Api.Data;
->>>>>>> bd613e30bd0fa0e5b36f4d4b3d94d82a5a8ea0f6
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -26,22 +23,18 @@ builder.Services
 
 builder.Services.AddBaseServices(builder.Configuration);
 
-// TODO: Khi chốt từng module, đăng ký service ở đây hoặc tách thành extension riêng.
-// Ví dụ:
-// builder.Services.AddScoped<NewsService.IService, NewsService.Service>();
-
 var app = builder.Build();
 
-<<<<<<< HEAD
+
 using (var scope = app.Services.CreateScope())
 {
     var dbContext = scope.ServiceProvider.GetRequiredService<AppDbContext>();
     await dbContext.Database.MigrateAsync();
-=======
+}
+
 if (app.Environment.IsDevelopment())
 {
     await DevelopmentDataSeeder.SeedAsync(app.Services);
->>>>>>> bd613e30bd0fa0e5b36f4d4b3d94d82a5a8ea0f6
 }
 
 app.UseMiddleware<GlobalExceptionHandlerMiddleware>();

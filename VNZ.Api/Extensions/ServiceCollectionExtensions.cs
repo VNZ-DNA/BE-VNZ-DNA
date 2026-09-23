@@ -21,6 +21,7 @@ public static class ServiceCollectionExtensions
         services.AddHttpContextAccessor();
         services.AddTransient<GlobalExceptionHandlerMiddleware>();
         services.AddScoped<VNZ.Service.AuthService.IService, VNZ.Service.AuthService.Service>();
+        services.AddScoped<VNZ.Service.JobPostService.IService, VNZ.Service.JobPostService.Service>();
         services.AddScoped<MailService.IService, MailService.Service>();
 
         services.AddDatabase(configuration);
