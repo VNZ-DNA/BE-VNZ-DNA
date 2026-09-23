@@ -7,7 +7,7 @@ using TeamMemberService = VNZ.Service.TeamMembers;
 namespace VNZ.Api.Controllers;
 
 [ApiController]
-[Route("api/v1/team-members")]
+[Route("api/v1/admin/team-members")]
 [Authorize(Roles = "Admin")]
 public sealed class TeamMembersController : ControllerBase
 {
@@ -38,7 +38,12 @@ public sealed class TeamMembersController : ControllerBase
         }
 
         var data = await _teamMemberService.CreateMemberAsync(request, createdBy);
-        return Ok(ResponseBuilder.SuccessResponse(data, "Tạo thành viên thành công.", HttpContext.TraceIdentifier));
+        var response = ResponseBuilder.SuccessResponse(
+            data,
+            "Tạo thành viên thành công.",
+            HttpContext.TraceIdentifier);
+
+        return StatusCode(StatusCodes.Status201Created, response);
     }
 
     [HttpPut("{id:guid}")]

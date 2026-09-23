@@ -34,37 +34,68 @@ public sealed class Service : IService
         var jobLevel = request.JobLevel?.Trim();
 
         if (string.IsNullOrWhiteSpace(fullName))
-            throw new ArgumentException("Vui lòng nhập họ và tên.");
+            throw new TeamMemberException(
+                "MEMBER_VALIDATION_ERROR",
+                "Vui lòng nhập họ và tên.",
+                "fullName");
 
         if (string.IsNullOrWhiteSpace(email))
-            throw new ArgumentException("Vui lòng nhập email.");
+            throw new TeamMemberException(
+                "MEMBER_VALIDATION_ERROR",
+                "Vui lòng nhập email.",
+                "email");
 
         if (string.IsNullOrWhiteSpace(position))
-            throw new ArgumentException("Vui lòng nhập vị trí.");
+            throw new TeamMemberException(
+                "MEMBER_VALIDATION_ERROR",
+                "Vui lòng nhập vị trí.",
+                "position");
 
         if (string.IsNullOrWhiteSpace(jobLevel))
-            throw new ArgumentException("Vui lòng nhập cấp bậc.");
+            throw new TeamMemberException(
+                "MEMBER_VALIDATION_ERROR",
+                "Vui lòng nhập cấp bậc.",
+                "jobLevel");
 
         if (request.JoinedDate is null)
-            throw new ArgumentException("Vui lòng nhập ngày tham gia.");
+            throw new TeamMemberException(
+                "MEMBER_VALIDATION_ERROR",
+                "Vui lòng nhập ngày tham gia.",
+                "joinedDate");
 
         if (fullName!.Length > 200)
-            throw new ArgumentException("Họ và tên không được vượt quá 200 ký tự.");
+            throw new TeamMemberException(
+                "MEMBER_VALIDATION_ERROR",
+                "Họ và tên không được vượt quá 200 ký tự.",
+                "fullName");
 
         if (position!.Length > 200)
-            throw new ArgumentException("Vị trí không được vượt quá 200 ký tự.");
+            throw new TeamMemberException(
+                "MEMBER_VALIDATION_ERROR",
+                "Vị trí không được vượt quá 200 ký tự.",
+                "position");
 
         if (email!.Length > 320 || !new EmailAddressAttribute().IsValid(email))
-            throw new ArgumentException("Email không đúng định dạng.");
+            throw new TeamMemberException(
+                "MEMBER_VALIDATION_ERROR",
+                "Email không đúng định dạng.",
+                "email");
 
-        if (!Enum.TryParse<JobLevel>(jobLevel, true, out var parsedJobLevel) ||
-            !Enum.IsDefined(typeof(JobLevel), parsedJobLevel))
+        if (!TryParseEnumValue(jobLevel, out JobLevel parsedJobLevel))
         {
-            throw new ArgumentException("Cấp bậc không hợp lệ.");
+            throw new TeamMemberException(
+                "MEMBER_VALIDATION_ERROR",
+                "Cấp bậc không hợp lệ.",
+                "jobLevel");
         }
 
         if (await _dbContext.Users.AnyAsync(x => x.Email.ToLower() == email))
-            throw new ArgumentException("Email đã tồn tại trong hệ thống.");
+        {
+            throw new TeamMemberException(
+                "MEMBER_EMAIL_EXISTS",
+                "Email đã tồn tại trong hệ thống.",
+                "email");
+        }
 
         var now = DateTimeOffset.UtcNow;
         var member = new User
@@ -103,7 +134,26 @@ public sealed class Service : IService
     {
         ArgumentNullException.ThrowIfNull(request);
 
+        await using var transaction = await _dbContext.Database.BeginTransactionAsync();
         var member = await FindMemberAsync(id);
+
+        if (member.IsPublished)
+        {
+            if (request.IsPublished != false)
+            {
+                throw new ConflictException(
+                    "Thành viên đang được đăng chỉ có thể chuyển sang trạng thái chưa đăng.");
+            }
+
+            member.IsPublished = false;
+            member.DisplayOrder = null;
+            member.UpdatedAt = DateTimeOffset.UtcNow;
+
+            await _dbContext.SaveChangesAsync();
+            await transaction.CommitAsync();
+
+            return ToResponse(member);
+        }
 
         var fullName = request.FullName?.Trim();
         var email = request.Email?.Trim().ToLowerInvariant();
@@ -138,14 +188,12 @@ public sealed class Service : IService
         if (email.Length > 320 || !new EmailAddressAttribute().IsValid(email))
             throw new ArgumentException("Email không đúng định dạng.");
 
-        if (!Enum.TryParse<JobLevel>(jobLevel, true, out var parsedJobLevel) ||
-            !Enum.IsDefined(typeof(JobLevel), parsedJobLevel))
+        if (!TryParseEnumValue(jobLevel, out JobLevel parsedJobLevel))
         {
             throw new ArgumentException("Cấp bậc không hợp lệ.");
         }
 
-        if (!Enum.TryParse<EmploymentStatus>(employmentStatus, true, out var parsedEmploymentStatus) ||
-            !Enum.IsDefined(typeof(EmploymentStatus), parsedEmploymentStatus))
+        if (!TryParseEnumValue(employmentStatus, out EmploymentStatus parsedEmploymentStatus))
         {
             throw new ArgumentException("Trạng thái làm việc không hợp lệ.");
         }
@@ -157,31 +205,21 @@ public sealed class Service : IService
         var hobbies = NormalizeOptional(request.Hobbies);
         var personalQuote = NormalizeOptional(request.PersonalQuote);
 
-        var hasInformationOrEmploymentStatusChanges =
-            member.FullName != fullName ||
-            member.Email != email ||
-            member.Position != position ||
-            member.JobLevel != parsedJobLevel ||
-            member.JoinedDate != request.JoinedDate ||
-            member.AvatarUrl != avatarUrl ||
-            member.AnimationUrl != animationUrl ||
-            member.AudioUrl != audioUrl ||
-            member.Hometown != hometown ||
-            member.Hobbies != hobbies ||
-            member.PersonalQuote != personalQuote ||
-            member.EmploymentStatus != parsedEmploymentStatus;
-
-        if (member.IsPublished && hasInformationOrEmploymentStatusChanges)
+        if (!member.IsPublished && request.IsPublished == true &&
+            parsedEmploymentStatus == EmploymentStatus.Resigned)
         {
             throw new ConflictException(
-                "Không thể chỉnh sửa thông tin hoặc trạng thái làm việc của thành viên đang được đăng. Vui lòng gỡ đăng trước.");
+                "Thành viên đã nghỉ việc không thể đăng.");
         }
 
         var emailUsedByAnotherMember = await _dbContext.Users
             .AnyAsync(x => x.Id != id && x.Email.ToLower() == email);
 
         if (emailUsedByAnotherMember)
-            throw new ArgumentException("Email đã tồn tại trong hệ thống.");
+        {
+            throw new ConflictException(
+                "Email đã tồn tại trong hệ thống.");
+        }
 
         member.FullName = fullName;
         member.Email = email;
@@ -198,10 +236,24 @@ public sealed class Service : IService
         if (request.IsPublished.HasValue)
         {
             member.IsPublished = request.IsPublished.Value;
+
+            if (request.IsPublished.Value)
+            {
+                var lastDisplayOrder = await _dbContext.Users
+                    .Where(x => x.IsPublished && x.DisplayOrder.HasValue)
+                    .MaxAsync(x => (int?)x.DisplayOrder) ?? 0;
+
+                member.DisplayOrder = lastDisplayOrder + 1;
+            }
+            else
+            {
+                member.DisplayOrder = null;
+            }
         }
         member.UpdatedAt = DateTimeOffset.UtcNow;
 
         await _dbContext.SaveChangesAsync();
+        await transaction.CommitAsync();
         return ToResponse(member);
     }
 
@@ -219,12 +271,12 @@ public sealed class Service : IService
         return new Response.TeamMemberResponse
         {
             Id = member.Id,
-            RoleId = member.RoleId,
-            CreatedBy = member.CreatedBy,
             FullName = member.FullName,
             Email = member.Email,
             Position = member.Position,
-            JobLevel = member.JobLevel,
+            JobLevel = member.JobLevel.HasValue
+                ? GetDisplayName(member.JobLevel.Value)
+                : null,
             AvatarUrl = member.AvatarUrl,
             AnimationUrl = member.AnimationUrl,
             AudioUrl = member.AudioUrl,
@@ -232,7 +284,7 @@ public sealed class Service : IService
             Hobbies = member.Hobbies,
             PersonalQuote = member.PersonalQuote,
             JoinedDate = member.JoinedDate,
-            EmploymentStatus = member.EmploymentStatus,
+            EmploymentStatus = GetDisplayName(member.EmploymentStatus),
             IsActive = member.IsActive,
             IsPublished = member.IsPublished,
             DisplayOrder = member.DisplayOrder,
@@ -245,5 +297,37 @@ public sealed class Service : IService
     {
         var normalized = value?.Trim();
         return string.IsNullOrWhiteSpace(normalized) ? null : normalized;
+    }
+
+    private static string GetDisplayName<TEnum>(TEnum value)
+        where TEnum : struct, Enum
+    {
+        var member = typeof(TEnum).GetMember(value.ToString()).Single();
+
+        return member.GetCustomAttributes(typeof(DisplayAttribute), inherit: false)
+            .OfType<DisplayAttribute>()
+            .SingleOrDefault()?
+            .GetName() ?? value.ToString();
+    }
+
+    private static bool TryParseEnumValue<TEnum>(string value, out TEnum result)
+        where TEnum : struct, Enum
+    {
+        if (Enum.TryParse(value, true, out result) && Enum.IsDefined(result))
+        {
+            return true;
+        }
+
+        foreach (var enumValue in Enum.GetValues<TEnum>())
+        {
+            if (string.Equals(GetDisplayName(enumValue), value, StringComparison.OrdinalIgnoreCase))
+            {
+                result = enumValue;
+                return true;
+            }
+        }
+
+        result = default;
+        return false;
     }
 }
