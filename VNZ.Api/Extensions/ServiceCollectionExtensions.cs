@@ -3,6 +3,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
 using System.Text;
+using Npgsql;
 using VNZ.Api.Middleware;
 using VNZ.Repository;
 using VNZ.Service.Models;
@@ -23,6 +24,7 @@ public static class ServiceCollectionExtensions
         services.AddScoped<VNZ.Service.AuthService.IService, VNZ.Service.AuthService.Service>();
         services.AddScoped<VNZ.Service.DashboardService.IService, VNZ.Service.DashboardService.Service>();
         services.AddScoped<VNZ.Service.JobPostService.IService, VNZ.Service.JobPostService.Service>();
+        services.AddScoped<VNZ.Service.JobApplicationService.IService, VNZ.Service.JobApplicationService.Service>();
         services.AddScoped<VNZ.Service.TeamMembers.IService, VNZ.Service.TeamMembers.Service>();
         services.AddScoped<MailService.IService, MailService.Service>();
 
@@ -34,18 +36,41 @@ public static class ServiceCollectionExtensions
         return services;
     }
 
+    // private static IServiceCollection AddDatabase(
+    //     this IServiceCollection services,
+    //     IConfiguration configuration)
+    // {
+    //     var connectionString = configuration.GetConnectionString("DefaultConnection");
+    //
+    //     services.AddDbContext<AppDbContext>(options =>
+    //         options.UseNpgsql(connectionString, npgsqlOptions =>
+    //         {
+    //             npgsqlOptions.ConfigureDataSource(dataSourceBuilder =>
+    //             {
+    //                 dataSourceBuilder.EnableDynamicJson();
+    //             });
+    //         }));
+    //     return services;
+    // }
+
     private static IServiceCollection AddDatabase(
         this IServiceCollection services,
         IConfiguration configuration)
     {
         var connectionString = configuration.GetConnectionString("DefaultConnection");
 
+        var dataSourceBuilder = new NpgsqlDataSourceBuilder(connectionString);
+
+        dataSourceBuilder.EnableDynamicJson();
+
+        var dataSource = dataSourceBuilder.Build();
+
         services.AddDbContext<AppDbContext>(options =>
-            options.UseNpgsql(connectionString));
+            options.UseNpgsql(dataSource));
 
         return services;
     }
-
+    
     private static IServiceCollection AddJwtAuthentication(
         this IServiceCollection services,
         IConfiguration configuration)
