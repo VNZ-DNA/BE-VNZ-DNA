@@ -2,6 +2,7 @@ namespace VNZ.Repository.Entity;
 
 using VNZ.Repository.Abstraction;
 using VNZ.Repository.Entity.Enum;
+using VNZ.Repository.Entity.Json;
 
 public class Product : BaseEntity
 {
@@ -14,7 +15,7 @@ public class Product : BaseEntity
     public Guid? CreatedBy { get; set; }
     public DateTimeOffset CreatedAt { get; set; }
     public DateTimeOffset? UpdatedAt { get; set; }
-    public string? Content { get; set; }
+    public ProductContent? Content { get; set; }
 
     public User? Creator { get; set; }
 }
