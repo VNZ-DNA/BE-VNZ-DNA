@@ -29,4 +29,17 @@ public class JobPostController : ControllerBase
 
         return Ok(response);
     }
+
+    [HttpGet("{id:guid}")]
+    public async Task<IActionResult> GetJobPostDetail(Guid id)
+    {
+        var data = await _jobPostService.GetJobPostDetailAsync(id);
+
+        var response = ResponseBuilder.SuccessResponse(
+            data,
+            "Lấy chi tiết tin tuyển dụng thành công.",
+            HttpContext.TraceIdentifier);
+
+        return Ok(response);
+    }
 }

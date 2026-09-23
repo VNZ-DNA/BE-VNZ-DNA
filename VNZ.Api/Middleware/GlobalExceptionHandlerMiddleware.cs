@@ -96,6 +96,7 @@ public class GlobalExceptionHandlerMiddleware : IMiddleware
             "JOB_POST_INVALID_PAGINATION" or
             "JOB_POST_INVALID_SEARCH" or
             "JOB_POST_INVALID_STATUS_FILTER" => HttpStatusCode.BadRequest,
+            "JOB_POST_NOT_FOUND" => HttpStatusCode.NotFound,
             _ => HttpStatusCode.InternalServerError
         };
     }
