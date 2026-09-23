@@ -70,7 +70,9 @@ public class Service : IService
             .Include(x => x.Role)
             .SingleOrDefaultAsync(x => x.Email.ToLower() == email);
 
-        if (user is null || !BCrypt.Net.BCrypt.Verify(password, user.PasswordHash))
+        if (user is null ||
+            string.IsNullOrWhiteSpace(user.PasswordHash) ||
+            !BCrypt.Net.BCrypt.Verify(password, user.PasswordHash))
         {
             throw new AuthException(
                 "AUTH_INVALID_CREDENTIALS",
