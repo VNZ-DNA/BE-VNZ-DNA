@@ -91,7 +91,6 @@ public class Service : IService
         var refreshToken = CreateRefreshToken();
         var refreshExpiresAt = issuedAt.Add(RefreshTokenLifetime);
 
-        await using var transaction = await _dbContext.Database.BeginTransactionAsync();
         _dbContext.UserSessions.Add(new UserSession
         {
             Id = Guid.NewGuid(),
@@ -103,7 +102,6 @@ public class Service : IService
         });
 
         await _dbContext.SaveChangesAsync();
-        await transaction.CommitAsync();
 
         return new Response.LoginResponse
         {

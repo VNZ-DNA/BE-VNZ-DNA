@@ -4,33 +4,35 @@ public static class Request
 {
     public class CreateTeamMemberRequest
     {
-        public string? FullName { get; init; }
-        public string? Email { get; init; }
-        public string? Position { get; init; }
-        public string? JobLevel { get; init; }
-        public DateTimeOffset? JoinedDate { get; init; }
-        public string? AvatarUrl { get; init; }
-        public string? AnimationUrl { get; init; }
-        public string? AudioUrl { get; init; }
-        public string? Hometown { get; init; }
-        public string? Hobbies { get; init; }
-        public string? PersonalQuote { get; init; }
+        public string? FullName { get; set; }
+        public string? Email { get; set; }
+        public string? Position { get; set; }
+        public string? JobLevel { get; set; }
+        public DateTimeOffset? JoinedDate { get; set; }
+        public string? AvatarUrl { get; set; }
+        public string? AnimationUrl { get; set; }
+        public string? AudioUrl { get; set; }
+        public string? Hometown { get; set; }
+        public string? Hobbies { get; set; }
+        public string? PersonalQuote { get; set; }
+
     }
 
     public class UpdateTeamMemberRequest
     {
-        public string? FullName { get; init; }
-        public string? Email { get; init; }
-        public string? Position { get; init; }
-        public string? JobLevel { get; init; }
-        public DateTimeOffset? JoinedDate { get; init; }
-        public string? AvatarUrl { get; init; }
-        public string? AnimationUrl { get; init; }
-        public string? AudioUrl { get; init; }
-        public string? Hometown { get; init; }
-        public string? Hobbies { get; init; }
-        public string? PersonalQuote { get; init; }
-        public string? EmploymentStatus { get; init; }
-        public bool? IsPublished { get; init; }
+        public string? FullName { get; set; }
+        public string? Email { get; set; }
+        public string? Position { get; set; }
+        public string? JobLevel { get; set; }
+        public DateTimeOffset? JoinedDate { get; set; }
+        public string? AvatarUrl { get; set; }
+        public string? AnimationUrl { get; set; }
+        public string? AudioUrl { get; set; }
+        public string? Hometown { get; set; }
+        public string? Hobbies { get; set; }
+        public string? PersonalQuote { get; set; }
+        public string? EmploymentStatus { get; set; }
+        public bool? IsPublished { get; set; }
+
     }
 }
