@@ -22,7 +22,10 @@ using (var scope = app.Services.CreateScope())
 
 app.UseMiddleware<GlobalExceptionHandlerMiddleware>();
 
-if (app.Environment.IsDevelopment())
+var swaggerEnabled = app.Environment.IsDevelopment()
+    || builder.Configuration.GetValue<bool>("Swagger:Enabled");
+
+if (swaggerEnabled)
 {
     app.UseSwagger();
     app.UseSwaggerUI();
