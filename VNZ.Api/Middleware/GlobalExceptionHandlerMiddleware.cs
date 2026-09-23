@@ -31,6 +31,7 @@ public class GlobalExceptionHandlerMiddleware : IMiddleware
         var statusCode = exception switch
         {
             AuthException authStatusException => GetAuthStatusCode(authStatusException.Code),
+            JobPostException jobPostStatusException => GetJobPostStatusCode(jobPostStatusException.Code),
             NotFoundException => HttpStatusCode.NotFound,
             ConflictException => HttpStatusCode.Conflict,
             UnauthorizedException => HttpStatusCode.Unauthorized,
@@ -44,6 +45,7 @@ public class GlobalExceptionHandlerMiddleware : IMiddleware
         var (errorCode, message) = exception switch
         {
             AuthException authPayloadException => (authPayloadException.Code, authPayloadException.Message),
+            JobPostException jobPostPayloadException => (jobPostPayloadException.Code, jobPostPayloadException.Message),
             NotFoundException =>
                 ("RESOURCE_NOT_FOUND", exception.Message),
             ConflictException =>
@@ -62,6 +64,8 @@ public class GlobalExceptionHandlerMiddleware : IMiddleware
                 code = errorCode,
                 fields = exception is AuthException authException
                     ? authException.Fields
+                    : exception is JobPostException jobPostException
+                        ? jobPostException.Fields
                     : Array.Empty<string>()
             },
             message: message,
@@ -81,6 +85,17 @@ public class GlobalExceptionHandlerMiddleware : IMiddleware
             "AUTH_INVALID_CREDENTIALS" or
             "AUTH_ACCOUNT_INACTIVE" or
             "AUTH_INVALID_REFRESH_TOKEN" => HttpStatusCode.Unauthorized,
+            _ => HttpStatusCode.InternalServerError
+        };
+    }
+
+    private static HttpStatusCode GetJobPostStatusCode(string code)
+    {
+        return code switch
+        {
+            "JOB_POST_INVALID_PAGINATION" or
+            "JOB_POST_INVALID_SEARCH" or
+            "JOB_POST_INVALID_STATUS_FILTER" => HttpStatusCode.BadRequest,
             _ => HttpStatusCode.InternalServerError
         };
     }

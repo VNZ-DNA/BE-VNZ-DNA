@@ -3,7 +3,6 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
 using System.Text;
-using MailKit;
 using VNZ.Api.Middleware;
 using VNZ.Repository;
 using VNZ.Service.Models;
@@ -23,6 +22,7 @@ public static class ServiceCollectionExtensions
         services.AddTransient<GlobalExceptionHandlerMiddleware>();
         services.AddScoped<VNZ.Service.AuthService.IService, VNZ.Service.AuthService.Service>();
         services.AddScoped<VNZ.Service.DashboardService.IService, VNZ.Service.DashboardService.Service>();
+        services.AddScoped<VNZ.Service.JobPostService.IService, VNZ.Service.JobPostService.Service>();
         services.AddScoped<MailService.IService, MailService.Service>();
 
         services.AddDatabase(configuration);

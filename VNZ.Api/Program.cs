@@ -23,11 +23,8 @@ builder.Services
 
 builder.Services.AddBaseServices(builder.Configuration);
 
-// TODO: Khi chốt từng module, đăng ký service ở đây hoặc tách thành extension riêng.
-// Ví dụ:
-// builder.Services.AddScoped<NewsService.IService, NewsService.Service>();
-
 var app = builder.Build();
+
 
 using (var scope = app.Services.CreateScope())
 {
