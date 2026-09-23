@@ -15,6 +15,93 @@ public sealed class Service : IService
         _dbContext = dbContext;
     }
 
+    public async Task<Response.JobApplicationListResponse> GetJobApplicationListAsync(
+        Request.GetJobApplicationListRequest request)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+
+        if (request.Page < 1 || request.PageSize < 1 || request.PageSize > 100)
+        {
+            throw new ArgumentException("Thông tin phân trang không hợp lệ.");
+        }
+
+        var search = request.Search?.Trim();
+        if (search is { Length: > 300 })
+        {
+            throw new ArgumentException("Từ khóa tìm kiếm không được vượt quá 300 ký tự.");
+        }
+
+        JobApplicationStatus? statusFilter = null;
+        if (!string.IsNullOrWhiteSpace(request.Status))
+        {
+            if (!Enum.TryParse<JobApplicationStatus>(request.Status.Trim(), false, out var parsedStatus) ||
+                !Enum.IsDefined(parsedStatus))
+            {
+                throw new ArgumentException("Trạng thái lọc không hợp lệ.");
+            }
+
+            statusFilter = parsedStatus;
+        }
+
+        var query = _dbContext.JobApplications.AsNoTracking().AsQueryable();
+        if (!string.IsNullOrWhiteSpace(search))
+        {
+            var searchLower = search.ToLower();
+            query = query.Where(application =>
+                application.FullName.ToLower().Contains(searchLower) ||
+                application.Email.ToLower().Contains(searchLower) ||
+                application.JobPost.Title.ToLower().Contains(searchLower));
+        }
+
+        if (statusFilter.HasValue)
+        {
+            query = query.Where(application => application.Status == statusFilter.Value);
+        }
+
+        var total = await query.CountAsync();
+        var rows = await query
+            .OrderByDescending(application => application.CreatedAt)
+            .ThenByDescending(application => application.Id)
+            .Skip((request.Page - 1) * request.PageSize)
+            .Take(request.PageSize)
+            .Select(application => new
+            {
+                application.Id,
+                application.FullName,
+                application.Email,
+                application.JobPostId,
+                JobPostTitle = application.JobPost.Title,
+                application.Status,
+                application.CvUrl,
+                CreatedAt = application.CreatedAt,
+                InterviewAt = application.InterViewAt
+            })
+            .ToListAsync();
+
+        var items = rows.Select(application => new Response.JobApplicationListItemResponse
+        {
+            Id = application.Id,
+            FullName = application.FullName,
+            Email = application.Email,
+            JobPostId = application.JobPostId,
+            JobPostTitle = application.JobPostTitle,
+            Status = GetStatusLabel(application.Status),
+            CvUrl = application.CvUrl,
+            CreatedAt = application.CreatedAt,
+            InterviewAt = application.InterviewAt,
+            CanSelectForInterviewEmail = application.Status == JobApplicationStatus.Accepted
+        }).ToList();
+
+        return new Response.JobApplicationListResponse
+        {
+            Items = items,
+            Page = request.Page,
+            PageSize = request.PageSize,
+            Total = total,
+            TotalPages = total == 0 ? 0 : (int)Math.Ceiling(total / (double)request.PageSize)
+        };
+    }
+
     public async Task<Response.ReviewJobApplicationResponse> ReviewAsync(
         Guid id,
         Request.ReviewJobApplicationRequest request,

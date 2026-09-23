@@ -18,6 +18,19 @@ public sealed class JobApplicationsController : ControllerBase
         _jobApplicationService = jobApplicationService;
     }
 
+    [HttpGet]
+    public async Task<IActionResult> GetJobApplicationList(
+        [FromQuery] JobApplicationService.Request.GetJobApplicationListRequest request)
+    {
+        var data = await _jobApplicationService.GetJobApplicationListAsync(request);
+        var response = ResponseBuilder.SuccessResponse(
+            data,
+            "Lấy danh sách hồ sơ ứng viên thành công.",
+            HttpContext.TraceIdentifier);
+
+        return Ok(response);
+    }
+
     [HttpPost("{id:guid}/review")]
     public async Task<IActionResult> Review(
         Guid id,
