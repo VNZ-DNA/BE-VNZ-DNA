@@ -9,7 +9,7 @@ public class User : BaseEntity
     public Guid? CreatedBy { get; set; }
     public string FullName { get; set; } = null!;
     public string Email { get; set; } = null!;
-    public string PasswordHash { get; set; } = null!;
+    public string? PasswordHash { get; set; }
     public string? Position { get; set; }
     public JobLevel? JobLevel { get; set; }
     public string? AvatarUrl { get; set; }
@@ -25,7 +25,7 @@ public class User : BaseEntity
     public int? DisplayOrder { get; set; }
     public DateTimeOffset CreateAt { get; set; }
     public DateTimeOffset? UpdatedAt { get; set; }
-
+    public int ResetPasswordCode {get; set;}
     public Role? Role { get; set; }
     public User? Creator { get; set; }
     public ICollection<User> CreatedUsers { get; set; } = new List<User>();

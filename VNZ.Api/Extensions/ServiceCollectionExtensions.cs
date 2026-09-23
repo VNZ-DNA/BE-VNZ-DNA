@@ -2,10 +2,13 @@ using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
+using Npgsql;
 using System.Text;
+using VNZ.Api.BackgroundJob;
 using VNZ.Api.Middleware;
 using VNZ.Repository;
 using VNZ.Service.Models;
+using MailService = VNZ.Service.MailService;
 
 namespace VNZ.Api.Extensions;
 
@@ -19,7 +22,12 @@ public static class ServiceCollectionExtensions
         services.AddEndpointsApiExplorer();
         services.AddHttpContextAccessor();
         services.AddTransient<GlobalExceptionHandlerMiddleware>();
+        services.AddHostedService<JobPostExpirationBackgroundService>();
         services.AddScoped<VNZ.Service.AuthService.IService, VNZ.Service.AuthService.Service>();
+        services.AddScoped<VNZ.Service.DashboardService.IService, VNZ.Service.DashboardService.Service>();
+        services.AddScoped<VNZ.Service.JobPostService.IService, VNZ.Service.JobPostService.Service>();
+        services.AddScoped<VNZ.Service.TeamMembers.IService, VNZ.Service.TeamMembers.Service>();
+        services.AddScoped<MailService.IService, MailService.Service>();
 
         services.AddDatabase(configuration);
         services.AddJwtAuthentication(configuration);
@@ -35,8 +43,12 @@ public static class ServiceCollectionExtensions
     {
         var connectionString = configuration.GetConnectionString("DefaultConnection");
 
+        var dataSourceBuilder = new NpgsqlDataSourceBuilder(connectionString);
+        dataSourceBuilder.EnableDynamicJson();
+        var dataSource = dataSourceBuilder.Build();
+
         services.AddDbContext<AppDbContext>(options =>
-            options.UseNpgsql(connectionString));
+            options.UseNpgsql(dataSource));
 
         return services;
     }

@@ -1,0 +1,26 @@
+namespace VNZ.Service.TeamMembers;
+
+public static class Response
+{
+    public class TeamMemberResponse
+    {
+        public Guid Id { get; set; }
+        public required string FullName { get; set; }
+        public required string Email { get; set; }
+        public string? Position { get; set; }
+        public string? JobLevel { get; set; }
+        public string? AvatarUrl { get; set; }
+        public string? AnimationUrl { get; set; }
+        public string? AudioUrl { get; set; }
+        public string? Hometown { get; set; }
+        public string? Hobbies { get; set; }
+        public string? PersonalQuote { get; set; }
+        public DateTimeOffset? JoinedDate { get; set; }
+        public required string EmploymentStatus { get; set; }
+        public bool IsActive { get; set; }
+        public bool IsPublished { get; set; }
+        public int? DisplayOrder { get; set; }
+        public DateTimeOffset CreatedAt { get; set; }
+        public DateTimeOffset? UpdatedAt { get; set; }
+    }
+}
