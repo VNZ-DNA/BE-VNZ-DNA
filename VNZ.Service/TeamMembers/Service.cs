@@ -18,6 +18,19 @@ public sealed class Service : IService
         _dbContext = dbContext;
     }
 
+    public async Task<List<Response.TeamMemberResponse>> GetMemberListAsync()
+    {
+        var members = await _dbContext.Users
+            .AsNoTracking()
+            .Where(member => member.RoleId == null)
+            .OrderBy(member => member.DisplayOrder == null)
+            .ThenBy(member => member.DisplayOrder)
+            .ThenByDescending(member => member.CreateAt)
+            .ToListAsync();
+
+        return members.Select(ToResponse).ToList();
+    }
+
     public async Task<Response.TeamMemberResponse> GetMemberByIdAsync(Guid id)
     {
         var member = await FindMemberAsync(id);

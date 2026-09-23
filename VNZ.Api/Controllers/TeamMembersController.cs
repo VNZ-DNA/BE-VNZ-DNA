@@ -18,14 +18,18 @@ public sealed class TeamMembersController : ControllerBase
         _teamMemberService = teamMemberService;
     }
 
+    [HttpGet]
+    public async Task<IActionResult> GetMemberList()
+    {
+        var data = await _teamMemberService.GetMemberListAsync();
+        return Ok(ResponseBuilder.SuccessResponse(data, "Lấy danh sách thành viên thành công.", HttpContext.TraceIdentifier));
+    }
+
     [HttpGet("{id:guid}")]
     public async Task<IActionResult> GetMemberById(Guid id)
     {
         var data = await _teamMemberService.GetMemberByIdAsync(id);
-        return Ok(ResponseBuilder.SuccessResponse(
-            data,
-            "Lấy thông tin thành viên thành công.",
-            HttpContext.TraceIdentifier));
+        return Ok(ResponseBuilder.SuccessResponse(data, "Lấy thông tin thành viên thành công.", HttpContext.TraceIdentifier));
     }
 
     [HttpPost]
@@ -38,10 +42,7 @@ public sealed class TeamMembersController : ControllerBase
         }
 
         var data = await _teamMemberService.CreateMemberAsync(request, createdBy);
-        var response = ResponseBuilder.SuccessResponse(
-            data,
-            "Tạo thành viên thành công.",
-            HttpContext.TraceIdentifier);
+        var response = ResponseBuilder.SuccessResponse(data, "Tạo thành viên thành công.", HttpContext.TraceIdentifier);
 
         return StatusCode(StatusCodes.Status201Created, response);
     }
