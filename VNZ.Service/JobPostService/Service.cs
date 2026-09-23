@@ -142,6 +142,54 @@ public class Service : IService
         };
     }
 
+    public async Task<Response.JobPostDetailResponse> GetJobPostDetailAsync(Guid id)
+    {
+        // 1. Đọc JobPost hiện tại cùng dữ liệu hiển thị liên quan.
+        var jobPost = await _dbContext.JobPosts
+            .AsNoTracking()
+            .Include(jobPost => jobPost.Department)
+            .Include(jobPost => jobPost.Creator)
+            .FirstOrDefaultAsync(jobPost => jobPost.Id == id);
+
+        // 2. Không tìm thấy thì không trả dữ liệu detail.
+        if (jobPost is null)
+        {
+            throw new JobPostException(
+                "JOB_POST_NOT_FOUND",
+                "Không tìm thấy tin tuyển dụng.");
+        }
+
+        // 3. Draft luôn có thể sửa. Open chỉ sửa được khi chưa đến hạn.
+        var canEdit = jobPost.Status == JobPostStatus.Draft ||
+            (jobPost.Status == JobPostStatus.Open &&
+             jobPost.ExpiredAt.HasValue &&
+             jobPost.ExpiredAt.Value > DateTimeOffset.UtcNow);
+
+        // 4. Map dữ liệu database sang response API.
+        return new Response.JobPostDetailResponse
+        {
+            Id = jobPost.Id,
+            Title = jobPost.Title,
+            CreatedByName = jobPost.Creator?.FullName,
+            UpdatedAt = jobPost.UpdatedAt,
+            Status = GetDisplayName(jobPost.Status),
+            ExpiredAt = jobPost.ExpiredAt,
+            Department = jobPost.Department?.Name,
+            EmploymentType = jobPost.EmploymentType.HasValue
+                ? GetDisplayName(jobPost.EmploymentType.Value)
+                : null,
+            JobLevel = jobPost.JobLevel.HasValue
+                ? GetDisplayName(jobPost.JobLevel.Value)
+                : null,
+            NumberOfPositions = jobPost.NumberOfPositions,
+            Skills = new List<string>(jobPost.Skills),
+            ShortDescription = jobPost.ShortDescription,
+            Description = jobPost.Description,
+            Requirements = jobPost.Requirements,
+            CanEdit = canEdit
+        };
+    }
+
     private static string GetDisplayName<TEnum>(TEnum value)
         where TEnum : struct, Enum
     {
