@@ -25,6 +25,15 @@ public static class Response
         public bool CanSelectForInterviewEmail { get; set; }
     }
 
+    public class ReviewJobApplicationResponse
+    {
+        public Guid Id { get; set; }
+        public required string Status { get; set; }
+        public string? ReviewedByName { get; set; }
+        public DateTimeOffset? ReviewAt { get; set; }
+        public string? CvUrl { get; set; }
+    }
+
     public class JobApplicationDetailResponse
     {
         public Guid Id { get; init; }

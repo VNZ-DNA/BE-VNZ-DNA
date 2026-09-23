@@ -35,4 +35,9 @@ public static class Request
         public bool? IsPublished { get; set; }
 
     }
+
+    public class ReorderTeamMembersRequest
+    {
+        public List<Guid>? OrderedMemberIds { get; set; }
+    }
 }

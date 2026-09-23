@@ -25,6 +25,13 @@ public sealed class TeamMembersController : ControllerBase
         return Ok(ResponseBuilder.SuccessResponse(data, "Lấy danh sách thành viên thành công.", HttpContext.TraceIdentifier));
     }
 
+    [HttpPut("display-order")]
+    public async Task<IActionResult> ReorderMembers([FromBody] TeamMemberService.Request.ReorderTeamMembersRequest request)
+    {
+        var data = await _teamMemberService.ReorderMembersAsync(request);
+        return Ok(ResponseBuilder.SuccessResponse(data, "Cập nhật thứ tự thành viên thành công.", HttpContext.TraceIdentifier));
+    }
+
     [HttpGet("{id:guid}")]
     public async Task<IActionResult> GetMemberById(Guid id)
     {

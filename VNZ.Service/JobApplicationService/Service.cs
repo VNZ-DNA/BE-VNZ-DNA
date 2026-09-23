@@ -15,6 +15,65 @@ public sealed class Service : IService
         _dbContext = dbContext;
     }
 
+    public async Task<Response.ReviewJobApplicationResponse> ReviewAsync(
+        Guid id,
+        Request.ReviewJobApplicationRequest request,
+        Guid adminUserId)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+
+        JobApplicationStatus nextStatus;
+        if (string.Equals(request.Decision?.Trim(), nameof(JobApplicationStatus.Accepted), StringComparison.OrdinalIgnoreCase))
+        {
+            nextStatus = JobApplicationStatus.Accepted;
+        }
+        else if (string.Equals(request.Decision?.Trim(), nameof(JobApplicationStatus.Rejected), StringComparison.OrdinalIgnoreCase))
+        {
+            nextStatus = JobApplicationStatus.Rejected;
+        }
+        else
+        {
+            throw new ArgumentException("Decision chỉ nhận Accepted hoặc Rejected.", nameof(request.Decision));
+        }
+
+        await using var transaction = await _dbContext.Database.BeginTransactionAsync(System.Data.IsolationLevel.Serializable);
+        var application = await _dbContext.JobApplications.SingleOrDefaultAsync(item => item.Id == id);
+
+        if (application is null)
+        {
+            throw new NotFoundException("Không tìm thấy hồ sơ ứng viên.");
+        }
+
+        if (application.Status != JobApplicationStatus.Pending)
+        {
+            throw new ConflictException("Hồ sơ ứng viên không còn ở trạng thái Chờ duyệt.");
+        }
+
+        var now = DateTimeOffset.UtcNow;
+        application.Status = nextStatus;
+        application.ReviewedBy = adminUserId;
+        application.ReviewAt = now;
+        application.UpdateAt = now;
+
+        await _dbContext.SaveChangesAsync();
+        await transaction.CommitAsync();
+
+        var reviewerName = await _dbContext.Users
+            .AsNoTracking()
+            .Where(user => user.Id == adminUserId)
+            .Select(user => user.FullName)
+            .SingleOrDefaultAsync();
+
+        return new Response.ReviewJobApplicationResponse
+        {
+            Id = application.Id,
+            Status = GetStatusLabel(application.Status),
+            ReviewedByName = reviewerName,
+            ReviewAt = application.ReviewAt,
+            CvUrl = application.CvUrl
+        };
+    }
+
     public async Task<Response.JobApplicationListResponse> GetJobApplicationListAsync(Request.GetJobApplicationListRequest request)
     {
         ArgumentNullException.ThrowIfNull(request);

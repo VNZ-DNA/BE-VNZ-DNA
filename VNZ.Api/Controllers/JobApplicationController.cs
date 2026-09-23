@@ -1,3 +1,4 @@
+using System.Security.Claims;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using VNZ.Service.JobApplicationService;
@@ -31,5 +32,23 @@ public sealed class JobApplicationController : ControllerBase
         var data = await _jobApplicationService.GetJobApplicationByIdAsync(id);
 
         return Ok(ResponseBuilder.SuccessResponse(data, "Lấy chi tiết hồ sơ ứng viên thành công.", HttpContext.TraceIdentifier));
+    }
+
+    [HttpPost("{id:guid}/review")]
+    public async Task<IActionResult> Review(
+        Guid id,
+        [FromBody] Request.ReviewJobApplicationRequest request)
+    {
+        var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+        if (!Guid.TryParse(userId, out var adminUserId))
+        {
+            return Unauthorized();
+        }
+
+        var data = await _jobApplicationService.ReviewAsync(id, request, adminUserId);
+        return Ok(ResponseBuilder.SuccessResponse(
+            data,
+            "Review hồ sơ ứng viên thành công.",
+            HttpContext.TraceIdentifier));
     }
 }
