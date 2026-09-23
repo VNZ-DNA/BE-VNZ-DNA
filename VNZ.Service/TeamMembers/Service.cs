@@ -1,5 +1,7 @@
 using System.ComponentModel.DataAnnotations;
+using System.Data;
 using Microsoft.EntityFrameworkCore;
+using Npgsql;
 using VNZ.Repository;
 using VNZ.Repository.Entity;
 using VNZ.Repository.Entity.Enum;
@@ -29,6 +31,77 @@ public sealed class Service : IService
             .ToListAsync();
 
         return members.Select(ToResponse).ToList();
+    }
+
+    public async Task<List<Response.TeamMemberResponse>> ReorderMembersAsync(Request.ReorderTeamMembersRequest request)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+
+        var orderedMemberIds = request.OrderedMemberIds;
+        if (orderedMemberIds is null || orderedMemberIds.Count == 0 ||
+            orderedMemberIds.Distinct().Count() != orderedMemberIds.Count)
+        {
+            throw new TeamMemberException(
+                "MEMBER_ORDER_INVALID", "Danh sách sắp xếp không hợp lệ.", "orderedMemberIds");
+        }
+
+        try
+        {
+            await using var transaction = await _dbContext.Database
+                .BeginTransactionAsync(IsolationLevel.Serializable);
+
+            var publishedMembers = await _dbContext.Users
+                .Where(member => member.RoleId == null && member.IsPublished)
+                .OrderBy(member => member.DisplayOrder)
+                .ThenBy(member => member.Id)
+                .ToListAsync();
+
+            var currentIds = publishedMembers.Select(member => member.Id).ToHashSet();
+            if (currentIds.Count != orderedMemberIds.Count ||
+                orderedMemberIds.Any(id => !currentIds.Contains(id)))
+            {
+                throw new TeamMemberException(
+                    "MEMBER_ORDER_INVALID", 
+                    "Danh sách phải chứa đúng một lần tất cả thành viên đang đăng.", "orderedMemberIds");
+            }
+
+            var membersById = publishedMembers.ToDictionary(member => member.Id);
+            var now = DateTimeOffset.UtcNow;
+            for (var index = 0; index < orderedMemberIds.Count; index++)
+            {
+                var member = membersById[orderedMemberIds[index]];
+                var newDisplayOrder = index + 1;
+                if (member.DisplayOrder == newDisplayOrder)
+                {
+                    continue;
+                }
+
+                member.DisplayOrder = newDisplayOrder;
+                member.UpdatedAt = now;
+            }
+
+            await _dbContext.SaveChangesAsync();
+            await transaction.CommitAsync();
+
+            return orderedMemberIds
+                .Select(id => ToResponse(membersById[id]))
+                .ToList();
+        }
+        catch (Exception exception) when (
+            FindPostgresException(exception)?.SqlState == PostgresErrorCodes.SerializationFailure)
+        {
+            throw new TeamMemberException(
+                "MEMBER_ORDER_CONFLICT",
+                "Danh sách thành viên đang đăng đã thay đổi. Vui lòng tải lại và thử lại.",
+                exception);
+        }
+        catch (Exception exception) when (exception is DbUpdateException or PostgresException)
+        {
+            throw new TeamMemberException(
+                "MEMBER_ORDER_UPDATE_FAILED",
+                "Không thể lưu thứ tự thành viên.",
+                exception);
+        }
     }
 
     public async Task<Response.TeamMemberResponse> GetMemberByIdAsync(Guid id)
@@ -158,9 +231,29 @@ public sealed class Service : IService
                     "Thành viên đang được đăng chỉ có thể chuyển sang trạng thái chưa đăng.");
             }
 
+            var remainingPublishedMembers = await _dbContext.Users
+                .Where(x => x.RoleId == null && x.IsPublished && x.Id != member.Id)
+                .OrderBy(x => x.DisplayOrder)
+                .ThenBy(x => x.Id)
+                .ToListAsync();
+
+            var now = DateTimeOffset.UtcNow;
+            for (var index = 0; index < remainingPublishedMembers.Count; index++)
+            {
+                var remainingMember = remainingPublishedMembers[index];
+                var newDisplayOrder = index + 1;
+                if (remainingMember.DisplayOrder == newDisplayOrder)
+                {
+                    continue;
+                }
+
+                remainingMember.DisplayOrder = newDisplayOrder;
+                remainingMember.UpdatedAt = now;
+            }
+
             member.IsPublished = false;
             member.DisplayOrder = null;
-            member.UpdatedAt = DateTimeOffset.UtcNow;
+            member.UpdatedAt = now;
 
             await _dbContext.SaveChangesAsync();
             await transaction.CommitAsync();
@@ -252,11 +345,27 @@ public sealed class Service : IService
 
             if (request.IsPublished.Value)
             {
-                var lastDisplayOrder = await _dbContext.Users
-                    .Where(x => x.IsPublished && x.DisplayOrder.HasValue)
-                    .MaxAsync(x => (int?)x.DisplayOrder) ?? 0;
+                var publishedMembers = await _dbContext.Users
+                    .Where(x => x.RoleId == null && x.IsPublished && x.Id != member.Id)
+                    .OrderBy(x => x.DisplayOrder)
+                    .ThenBy(x => x.Id)
+                    .ToListAsync();
 
-                member.DisplayOrder = lastDisplayOrder + 1;
+                var now = DateTimeOffset.UtcNow;
+                for (var index = 0; index < publishedMembers.Count; index++)
+                {
+                    var publishedMember = publishedMembers[index];
+                    var normalizedDisplayOrder = index + 1;
+                    if (publishedMember.DisplayOrder == normalizedDisplayOrder)
+                    {
+                        continue;
+                    }
+
+                    publishedMember.DisplayOrder = normalizedDisplayOrder;
+                    publishedMember.UpdatedAt = now;
+                }
+
+                member.DisplayOrder = publishedMembers.Count + 1;
             }
             else
             {
@@ -310,6 +419,21 @@ public sealed class Service : IService
     {
         var normalized = value?.Trim();
         return string.IsNullOrWhiteSpace(normalized) ? null : normalized;
+    }
+
+    private static PostgresException? FindPostgresException(Exception exception)
+    {
+        while (exception is not null)
+        {
+            if (exception is PostgresException postgresException)
+            {
+                return postgresException;
+            }
+
+            exception = exception.InnerException!;
+        }
+
+        return null;
     }
 
     private static string GetDisplayName<TEnum>(TEnum value)
