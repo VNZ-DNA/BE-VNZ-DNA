@@ -1,4 +1,5 @@
 using System.Net;
+using Microsoft.EntityFrameworkCore;
 using VNZ.Service.Exceptions;
 using VNZ.Service.Models;
 
@@ -32,6 +33,8 @@ public class GlobalExceptionHandlerMiddleware : IMiddleware
         {
             AuthException authStatusException => GetAuthStatusCode(authStatusException.Code),
             JobPostException jobPostStatusException => GetJobPostStatusCode(jobPostStatusException.Code),
+            TeamMemberException teamMemberStatusException => GetTeamMemberStatusCode(teamMemberStatusException.Code),
+            DbUpdateException when IsCreateMemberRequest(context) => HttpStatusCode.InternalServerError,
             NotFoundException => HttpStatusCode.NotFound,
             ConflictException => HttpStatusCode.Conflict,
             UnauthorizedException => HttpStatusCode.Unauthorized,
@@ -46,6 +49,9 @@ public class GlobalExceptionHandlerMiddleware : IMiddleware
         {
             AuthException authPayloadException => (authPayloadException.Code, authPayloadException.Message),
             JobPostException jobPostPayloadException => (jobPostPayloadException.Code, jobPostPayloadException.Message),
+            TeamMemberException teamMemberPayloadException => (teamMemberPayloadException.Code, teamMemberPayloadException.Message),
+            DbUpdateException when IsCreateMemberRequest(context) =>
+                ("MEMBER_CREATE_FAILED", "Không thể tạo thành viên."),
             NotFoundException =>
                 ("RESOURCE_NOT_FOUND", exception.Message),
             ConflictException =>
@@ -61,11 +67,13 @@ public class GlobalExceptionHandlerMiddleware : IMiddleware
         var response = ResponseBuilder.ErrorResponse(
             errors: new
             {
-                code = errorCode,
-                fields = exception is AuthException authException
-                    ? authException.Fields
-                    : exception is JobPostException jobPostException
-                        ? jobPostException.Fields
+                    code = errorCode,
+                    fields = exception is AuthException authException
+                        ? authException.Fields
+                        : exception is JobPostException jobPostException
+                            ? jobPostException.Fields
+                            : exception is TeamMemberException teamMemberException
+                                ? teamMemberException.Fields
                     : Array.Empty<string>()
             },
             message: message,
@@ -96,7 +104,25 @@ public class GlobalExceptionHandlerMiddleware : IMiddleware
             "JOB_POST_INVALID_PAGINATION" or
             "JOB_POST_INVALID_SEARCH" or
             "JOB_POST_INVALID_STATUS_FILTER" => HttpStatusCode.BadRequest,
+            "JOB_POST_NOT_FOUND" => HttpStatusCode.NotFound,
             _ => HttpStatusCode.InternalServerError
         };
+    }
+
+    private static HttpStatusCode GetTeamMemberStatusCode(string code)
+    {
+        return code switch
+        {
+            "MEMBER_VALIDATION_ERROR" => HttpStatusCode.BadRequest,
+            "MEMBER_EMAIL_EXISTS" => HttpStatusCode.Conflict,
+            "MEMBER_CREATE_FAILED" => HttpStatusCode.InternalServerError,
+            _ => HttpStatusCode.InternalServerError
+        };
+    }
+
+    private static bool IsCreateMemberRequest(HttpContext context)
+    {
+        return HttpMethods.IsPost(context.Request.Method) &&
+            context.Request.Path.Equals("/api/v1/admin/team-members", StringComparison.OrdinalIgnoreCase);
     }
 }
