@@ -6,7 +6,7 @@ using VNZ.Service.Models;
 namespace VNZ.Api.Controllers;
 
 [ApiController]
-[Route("api/v1/job-applications")]
+[Route("api/v1/admin/job-applications")]
 [Authorize(Roles = "Admin")]
 public sealed class JobApplicationController : ControllerBase
 {
