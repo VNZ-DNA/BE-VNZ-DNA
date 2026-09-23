@@ -31,5 +31,6 @@ public static class Request
         public string? Hobbies { get; init; }
         public string? PersonalQuote { get; init; }
         public string? EmploymentStatus { get; init; }
+        public bool? IsPublished { get; init; }
     }
 }

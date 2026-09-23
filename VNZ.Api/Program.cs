@@ -1,6 +1,7 @@
+using Microsoft.EntityFrameworkCore;
 using VNZ.Api.Extensions;
 using VNZ.Api.Middleware;
-using VNZ.Api.Data;
+using VNZ.Repository;
 
 var builder = WebApplication.CreateBuilder(args);
 

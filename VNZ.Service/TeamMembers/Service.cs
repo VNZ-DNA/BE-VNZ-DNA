@@ -105,12 +105,6 @@ public sealed class Service : IService
 
         var member = await FindMemberAsync(id);
 
-        if (member.IsPublished)
-        {
-            throw new ConflictException(
-                "Không thể chỉnh sửa thành viên đang được đăng. Vui lòng gỡ đăng trước.");
-        }
-
         var fullName = request.FullName?.Trim();
         var email = request.Email?.Trim().ToLowerInvariant();
         var position = request.Position?.Trim();
@@ -156,6 +150,33 @@ public sealed class Service : IService
             throw new ArgumentException("Trạng thái làm việc không hợp lệ.");
         }
 
+        var avatarUrl = NormalizeOptional(request.AvatarUrl);
+        var animationUrl = NormalizeOptional(request.AnimationUrl);
+        var audioUrl = NormalizeOptional(request.AudioUrl);
+        var hometown = NormalizeOptional(request.Hometown);
+        var hobbies = NormalizeOptional(request.Hobbies);
+        var personalQuote = NormalizeOptional(request.PersonalQuote);
+
+        var hasInformationOrEmploymentStatusChanges =
+            member.FullName != fullName ||
+            member.Email != email ||
+            member.Position != position ||
+            member.JobLevel != parsedJobLevel ||
+            member.JoinedDate != request.JoinedDate ||
+            member.AvatarUrl != avatarUrl ||
+            member.AnimationUrl != animationUrl ||
+            member.AudioUrl != audioUrl ||
+            member.Hometown != hometown ||
+            member.Hobbies != hobbies ||
+            member.PersonalQuote != personalQuote ||
+            member.EmploymentStatus != parsedEmploymentStatus;
+
+        if (member.IsPublished && hasInformationOrEmploymentStatusChanges)
+        {
+            throw new ConflictException(
+                "Không thể chỉnh sửa thông tin hoặc trạng thái làm việc của thành viên đang được đăng. Vui lòng gỡ đăng trước.");
+        }
+
         var emailUsedByAnotherMember = await _dbContext.Users
             .AnyAsync(x => x.Id != id && x.Email.ToLower() == email);
 
@@ -167,13 +188,17 @@ public sealed class Service : IService
         member.Position = position;
         member.JobLevel = parsedJobLevel;
         member.JoinedDate = request.JoinedDate;
-        member.AvatarUrl = NormalizeOptional(request.AvatarUrl);
-        member.AnimationUrl = NormalizeOptional(request.AnimationUrl);
-        member.AudioUrl = NormalizeOptional(request.AudioUrl);
-        member.Hometown = NormalizeOptional(request.Hometown);
-        member.Hobbies = NormalizeOptional(request.Hobbies);
-        member.PersonalQuote = NormalizeOptional(request.PersonalQuote);
+        member.AvatarUrl = avatarUrl;
+        member.AnimationUrl = animationUrl;
+        member.AudioUrl = audioUrl;
+        member.Hometown = hometown;
+        member.Hobbies = hobbies;
+        member.PersonalQuote = personalQuote;
         member.EmploymentStatus = parsedEmploymentStatus;
+        if (request.IsPublished.HasValue)
+        {
+            member.IsPublished = request.IsPublished.Value;
+        }
         member.UpdatedAt = DateTimeOffset.UtcNow;
 
         await _dbContext.SaveChangesAsync();
