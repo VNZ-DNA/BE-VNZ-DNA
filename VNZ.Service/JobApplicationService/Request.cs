@@ -1,6 +1,6 @@
 namespace VNZ.Service.JobApplicationService;
 
-public class Request
+public static class Request
 {
     public class GetJobApplicationListRequest
     {

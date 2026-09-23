@@ -4,7 +4,9 @@ using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
 using Npgsql;
 using System.Text;
+
 using VNZ.Api.BackgroundJob;
+
 using VNZ.Api.Middleware;
 using VNZ.Repository;
 using VNZ.Service.Models;
@@ -38,6 +40,23 @@ public static class ServiceCollectionExtensions
         return services;
     }
 
+    // private static IServiceCollection AddDatabase(
+    //     this IServiceCollection services,
+    //     IConfiguration configuration)
+    // {
+    //     var connectionString = configuration.GetConnectionString("DefaultConnection");
+    //
+    //     services.AddDbContext<AppDbContext>(options =>
+    //         options.UseNpgsql(connectionString, npgsqlOptions =>
+    //         {
+    //             npgsqlOptions.ConfigureDataSource(dataSourceBuilder =>
+    //             {
+    //                 dataSourceBuilder.EnableDynamicJson();
+    //             });
+    //         }));
+    //     return services;
+    // }
+
     private static IServiceCollection AddDatabase(
         this IServiceCollection services,
         IConfiguration configuration)
@@ -53,7 +72,7 @@ public static class ServiceCollectionExtensions
 
         return services;
     }
-
+    
     private static IServiceCollection AddJwtAuthentication(
         this IServiceCollection services,
         IConfiguration configuration)

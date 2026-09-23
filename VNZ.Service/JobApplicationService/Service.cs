@@ -1,6 +1,6 @@
-using System.Data;
 using Microsoft.EntityFrameworkCore;
 using VNZ.Repository;
+using VNZ.Repository.Entity;
 using VNZ.Repository.Entity.Enum;
 using VNZ.Service.Exceptions;
 
@@ -15,8 +15,66 @@ public sealed class Service : IService
         _dbContext = dbContext;
     }
 
-    public async Task<Response.JobApplicationListResponse> GetJobApplicationListAsync(
-        Request.GetJobApplicationListRequest request)
+    public async Task<Response.ReviewJobApplicationResponse> ReviewAsync(
+        Guid id,
+        Request.ReviewJobApplicationRequest request,
+        Guid adminUserId)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+
+        JobApplicationStatus nextStatus;
+        if (string.Equals(request.Decision?.Trim(), nameof(JobApplicationStatus.Accepted), StringComparison.OrdinalIgnoreCase))
+        {
+            nextStatus = JobApplicationStatus.Accepted;
+        }
+        else if (string.Equals(request.Decision?.Trim(), nameof(JobApplicationStatus.Rejected), StringComparison.OrdinalIgnoreCase))
+        {
+            nextStatus = JobApplicationStatus.Rejected;
+        }
+        else
+        {
+            throw new ArgumentException("Decision chỉ nhận Accepted hoặc Rejected.", nameof(request.Decision));
+        }
+
+        await using var transaction = await _dbContext.Database.BeginTransactionAsync(System.Data.IsolationLevel.Serializable);
+        var application = await _dbContext.JobApplications.SingleOrDefaultAsync(item => item.Id == id);
+
+        if (application is null)
+        {
+            throw new NotFoundException("Không tìm thấy hồ sơ ứng viên.");
+        }
+
+        if (application.Status != JobApplicationStatus.Pending)
+        {
+            throw new ConflictException("Hồ sơ ứng viên không còn ở trạng thái Chờ duyệt.");
+        }
+
+        var now = DateTimeOffset.UtcNow;
+        application.Status = nextStatus;
+        application.ReviewedBy = adminUserId;
+        application.ReviewAt = now;
+        application.UpdateAt = now;
+
+        await _dbContext.SaveChangesAsync();
+        await transaction.CommitAsync();
+
+        var reviewerName = await _dbContext.Users
+            .AsNoTracking()
+            .Where(user => user.Id == adminUserId)
+            .Select(user => user.FullName)
+            .SingleOrDefaultAsync();
+
+        return new Response.ReviewJobApplicationResponse
+        {
+            Id = application.Id,
+            Status = GetStatusLabel(application.Status),
+            ReviewedByName = reviewerName,
+            ReviewAt = application.ReviewAt,
+            CvUrl = application.CvUrl
+        };
+    }
+
+    public async Task<Response.JobApplicationListResponse> GetJobApplicationListAsync(Request.GetJobApplicationListRequest request)
     {
         ArgumentNullException.ThrowIfNull(request);
 
@@ -32,9 +90,10 @@ public sealed class Service : IService
         }
 
         JobApplicationStatus? statusFilter = null;
+
         if (!string.IsNullOrWhiteSpace(request.Status))
         {
-            if (!Enum.TryParse<JobApplicationStatus>(request.Status.Trim(), false, out var parsedStatus) ||
+            if (!Enum.TryParse<JobApplicationStatus>(request.Status.Trim(), ignoreCase: false, out var parsedStatus) ||
                 !Enum.IsDefined(parsedStatus))
             {
                 throw new ArgumentException("Trạng thái lọc không hợp lệ.");
@@ -43,7 +102,10 @@ public sealed class Service : IService
             statusFilter = parsedStatus;
         }
 
-        var query = _dbContext.JobApplications.AsNoTracking().AsQueryable();
+        var query = _dbContext.JobApplications
+            .AsNoTracking()
+            .AsQueryable();
+
         if (!string.IsNullOrWhiteSpace(search))
         {
             var searchLower = search.ToLower();
@@ -59,26 +121,28 @@ public sealed class Service : IService
         }
 
         var total = await query.CountAsync();
-        var rows = await query
+
+        var applicationRows = await query
             .OrderByDescending(application => application.CreatedAt)
             .ThenByDescending(application => application.Id)
             .Skip((request.Page - 1) * request.PageSize)
             .Take(request.PageSize)
             .Select(application => new
             {
-                application.Id,
-                application.FullName,
-                application.Email,
-                application.JobPostId,
+                Id = application.Id,
+                FullName = application.FullName,
+                Email = application.Email,
+                JobPostId = application.JobPostId,
                 JobPostTitle = application.JobPost.Title,
-                application.Status,
-                application.CvUrl,
+                Status = application.Status,
+                CvUrl = application.CvUrl,
                 CreatedAt = application.CreatedAt,
-                InterviewAt = application.InterViewAt
+                InterviewAt = application.InterViewAt,
+                CanSelectForInterviewEmail = application.Status == JobApplicationStatus.Accepted
             })
             .ToListAsync();
 
-        var items = rows.Select(application => new Response.JobApplicationListItemResponse
+        var applications = applicationRows.Select(application => new Response.JobApplicationListItemResponse
         {
             Id = application.Id,
             FullName = application.FullName,
@@ -89,84 +153,16 @@ public sealed class Service : IService
             CvUrl = application.CvUrl,
             CreatedAt = application.CreatedAt,
             InterviewAt = application.InterviewAt,
-            CanSelectForInterviewEmail = application.Status == JobApplicationStatus.Accepted
+            CanSelectForInterviewEmail = application.CanSelectForInterviewEmail
         }).ToList();
 
         return new Response.JobApplicationListResponse
         {
-            Items = items,
+            Items = applications,
             Page = request.Page,
             PageSize = request.PageSize,
             Total = total,
             TotalPages = total == 0 ? 0 : (int)Math.Ceiling(total / (double)request.PageSize)
-        };
-    }
-
-    public async Task<Response.ReviewJobApplicationResponse> ReviewAsync(
-        Guid id,
-        Request.ReviewJobApplicationRequest request,
-        Guid adminUserId)
-    {
-        ArgumentNullException.ThrowIfNull(request);
-
-        var decision = request.Decision?.Trim();
-        JobApplicationStatus nextStatus;
-
-        if (string.Equals(decision, nameof(JobApplicationStatus.Accepted), StringComparison.OrdinalIgnoreCase))
-        {
-            nextStatus = JobApplicationStatus.Accepted;
-        }
-        else if (string.Equals(decision, nameof(JobApplicationStatus.Rejected), StringComparison.OrdinalIgnoreCase))
-        {
-            nextStatus = JobApplicationStatus.Rejected;
-        }
-        else
-        {
-            throw new ArgumentException(
-                "Decision chỉ nhận Accepted hoặc Rejected.",
-                nameof(request.Decision));
-        }
-
-        await using var transaction = await _dbContext.Database
-            .BeginTransactionAsync(IsolationLevel.Serializable);
-
-        var application = await _dbContext.JobApplications
-            .Include(item => item.Reviewer)
-            .SingleOrDefaultAsync(item => item.Id == id);
-
-        if (application is null)
-        {
-            throw new NotFoundException("Không tìm thấy hồ sơ ứng tuyển.");
-        }
-
-        if (application.Status != JobApplicationStatus.Pending)
-        {
-            throw new ConflictException(
-                "Hồ sơ ứng tuyển không còn ở trạng thái Chờ duyệt.");
-        }
-
-        var now = DateTimeOffset.UtcNow;
-        application.Status = nextStatus;
-        application.ReviewedBy = adminUserId;
-        application.ReviewAt = now;
-        application.UpdateAt = now;
-
-        await _dbContext.SaveChangesAsync();
-        await transaction.CommitAsync();
-
-        var reviewer = await _dbContext.Users
-            .AsNoTracking()
-            .Where(user => user.Id == adminUserId)
-            .Select(user => user.FullName)
-            .SingleOrDefaultAsync();
-
-        return new Response.ReviewJobApplicationResponse
-        {
-            Id = application.Id,
-            Status = GetStatusLabel(application.Status),
-            ReviewedByName = reviewer,
-            ReviewAt = application.ReviewAt,
-            CvUrl = application.CvUrl
         };
     }
 
@@ -188,5 +184,40 @@ public sealed class Service : IService
         }
 
         return "Đã gửi email phỏng vấn";
+    }
+
+    public async Task<Response.JobApplicationDetailResponse> GetJobApplicationByIdAsync(Guid id)
+    {
+        var application = await _dbContext.JobApplications
+            .AsNoTracking()
+            .Include(item => item.JobPost)
+            .SingleOrDefaultAsync(item => item.Id == id);
+
+        if (application is null)
+        {
+            throw new NotFoundException("Không tìm thấy hồ sơ ứng viên.");
+        }
+
+        return new Response.JobApplicationDetailResponse
+        {
+            Id = application.Id,
+            JobPostId = application.JobPostId,
+            JobPostTitle = application.JobPost.Title,
+            FullName = application.FullName,
+            Email = application.Email,
+            Phone = application.Phone,
+            University = application.University,
+            Major = application.Major,
+            CvUrl = application.CvUrl,
+            PortfolioUrl = application.PortfolioUrl,
+            CoverLetter = application.CoverLetter,
+            JobPostSnapshot = application.JobPostSnapshot,
+            Status = application.Status.ToString(),
+            ReviewAt = application.ReviewAt,
+            ReviewedBy = application.ReviewedBy,
+            InterviewAt = application.InterViewAt,
+            CreatedAt = application.CreatedAt,
+            UpdatedAt = application.UpdateAt
+        };
     }
 }
