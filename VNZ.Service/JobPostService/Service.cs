@@ -1,3 +1,4 @@
+using System.ComponentModel.DataAnnotations;
 using Microsoft.EntityFrameworkCore;
 using VNZ.Repository;
 using VNZ.Repository.Entity.Enum;
@@ -72,29 +73,7 @@ public class Service : IService
             statusFilter = parsedStatus;
         }
 
-        await using var transaction = await _dbContext.Database.BeginTransactionAsync();
-
-        // 4. Đổi tất cả JobPost Open đã quá hạn thành Expired.
-        var nowUtc = DateTimeOffset.UtcNow;
-        var expiredJobPosts = await _dbContext.JobPosts
-            .Where(jobPost =>
-                jobPost.Status == JobPostStatus.Open &&
-                jobPost.ExpiredAt.HasValue &&
-                jobPost.ExpiredAt.Value <= nowUtc)
-            .ToListAsync();
-
-        foreach (var jobPost in expiredJobPosts)
-        {
-            jobPost.Status = JobPostStatus.Expired;
-            jobPost.UpdatedAt = nowUtc;
-        }
-
-        if (expiredJobPosts.Count > 0)
-        {
-            await _dbContext.SaveChangesAsync();
-        }
-
-        // 5. Bắt đầu query danh sách JobPost.
+        // 4. Bắt đầu query danh sách JobPost.
         var jobPostsQuery = _dbContext.JobPosts.AsNoTracking();
 
         if (!string.IsNullOrEmpty(search))
@@ -111,7 +90,7 @@ public class Service : IService
                 jobPost.Status == statusFilter.Value);
         }
 
-        // 6. Đếm tổng sau filter, sau đó lấy đúng trang cần xem.
+        // 5. Đếm tổng sau filter, sau đó lấy đúng trang cần xem.
         var total = await jobPostsQuery.CountAsync();
 
         var jobPosts = await jobPostsQuery
@@ -132,34 +111,11 @@ public class Service : IService
             })
             .ToListAsync();
 
-        // 7. Map dữ liệu database sang response API.
+        // 6. Map dữ liệu database sang response API.
         var items = new List<Response.JobPostListItemResponse>();
 
         foreach (var jobPost in jobPosts)
         {
-            string statusLabel;
-
-            if (jobPost.Status == JobPostStatus.Draft)
-            {
-                statusLabel = "Bản nháp";
-            }
-            else if (jobPost.Status == JobPostStatus.Open)
-            {
-                statusLabel = "Đang tuyển";
-            }
-            else if (jobPost.Status == JobPostStatus.Closed)
-            {
-                statusLabel = "Đã đóng";
-            }
-            else if (jobPost.Status == JobPostStatus.Expired)
-            {
-                statusLabel = "Đã hết hạn";
-            }
-            else
-            {
-                throw new ArgumentOutOfRangeException();
-            }
-
             items.Add(new Response.JobPostListItemResponse
             {
                 Id = jobPost.Id,
@@ -167,12 +123,10 @@ public class Service : IService
                 ShortDescription = jobPost.ShortDescription,
                 ExpiredAt = jobPost.ExpiredAt,
                 NumberOfPositions = jobPost.NumberOfPositions,
-                Status = statusLabel,
+                Status = GetDisplayName(jobPost.Status),
                 PendingApplicationCount = jobPost.PendingApplicationCount
             });
         }
-
-        await transaction.CommitAsync();
 
         var totalPages = total == 0
             ? 0
@@ -186,5 +140,16 @@ public class Service : IService
             Total = total,
             TotalPages = totalPages
         };
+    }
+
+    private static string GetDisplayName<TEnum>(TEnum value)
+        where TEnum : struct, Enum
+    {
+        var member = typeof(TEnum).GetMember(value.ToString()).Single();
+
+        return member.GetCustomAttributes(typeof(DisplayAttribute), inherit: false)
+            .OfType<DisplayAttribute>()
+            .SingleOrDefault()?
+            .GetName() ?? value.ToString();
     }
 }
