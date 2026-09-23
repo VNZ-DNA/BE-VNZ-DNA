@@ -4,7 +4,7 @@ namespace VNZ.Repository.Entity.Enum;
 
 public enum JobLevel
 {
-    [Display(Name = "Thực tập sinh")]
+    [Display(Name = "Intern")]
     Intern = 1,
     [Display(Name = "Fresher")]
     Fresher = 2,

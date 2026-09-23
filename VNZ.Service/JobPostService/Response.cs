@@ -2,6 +2,15 @@ namespace VNZ.Service.JobPostService;
 
 public class Response
 {
+    public class CreateJobPostResponse
+    {
+        public Guid Id { get; set; }
+        public required string Status { get; set; }
+        public Guid CreatedBy { get; set; }
+        public DateTimeOffset CreatedAt { get; set; }
+        public bool IsPubliclyVisible { get; set; }
+    }
+
     public class PagedJobPostListResponse
     {
         public required List<JobPostListItemResponse> Items { get; set; }

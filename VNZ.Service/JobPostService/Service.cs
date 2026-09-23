@@ -1,6 +1,7 @@
 using System.ComponentModel.DataAnnotations;
 using Microsoft.EntityFrameworkCore;
 using VNZ.Repository;
+using VNZ.Repository.Entity;
 using VNZ.Repository.Entity.Enum;
 using VNZ.Service.Exceptions;
 
@@ -13,6 +14,171 @@ public class Service : IService
     public Service(AppDbContext dbContext)
     {
         _dbContext = dbContext;
+    }
+
+    public async Task<Response.CreateJobPostResponse> CreateJobPostAsync(
+        Request.CreateJobPostRequest request,
+        Guid createdBy)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+
+        if (!request.Action.HasValue)
+        {
+            throw new JobPostException(
+                "JOB_POST_INVALID_ACTION",
+                "Hành động tạo tin không được để trống.",
+                "action");
+        }
+
+        if (request.Action != JobPostAction.SavedDraft &&
+            request.Action != JobPostAction.Publish)
+        {
+            throw new JobPostException(
+                "JOB_POST_INVALID_ACTION",
+                "Hành động tạo tin không hợp lệ.",
+                "action");
+        }
+
+        var title = request.Title?.Trim();
+
+        if (string.IsNullOrWhiteSpace(title) || title.Length > 300)
+        {
+            throw new JobPostException(
+                "JOB_POST_VALIDATION_FAILED",
+                "Tiêu đề tin tuyển dụng không hợp lệ.",
+                "title");
+        }
+
+        var isPublishing = request.Action == JobPostAction.Publish;
+
+        if (isPublishing)
+        {
+            var requiredFields = new List<string>();
+
+            if (!request.DepartmentId.HasValue)
+            {
+                requiredFields.Add("departmentId");
+            }
+
+            if (!request.EmploymentType.HasValue)
+            {
+                requiredFields.Add("employmentType");
+            }
+
+            if (!request.JobLevel.HasValue)
+            {
+                requiredFields.Add("jobLevel");
+            }
+
+            if (!request.NumberOfPositions.HasValue || request.NumberOfPositions < 1)
+            {
+                requiredFields.Add("numberOfPositions");
+            }
+
+            if (request.Skills is null || request.Skills.Count == 0)
+            {
+                requiredFields.Add("skills");
+            }
+
+            if (string.IsNullOrWhiteSpace(request.ShortDescription))
+            {
+                requiredFields.Add("shortDescription");
+            }
+
+            if (string.IsNullOrWhiteSpace(request.Description))
+            {
+                requiredFields.Add("description");
+            }
+
+            if (string.IsNullOrWhiteSpace(request.Requirements))
+            {
+                requiredFields.Add("requirements");
+            }
+
+            if (requiredFields.Count > 0)
+            {
+                throw new JobPostException(
+                    "JOB_POST_VALIDATION_FAILED",
+                    "Vui lòng nhập đầy đủ thông tin để đăng tin.",
+                    requiredFields.ToArray());
+            }
+
+            if (!request.ExpiredAt.HasValue || request.ExpiredAt.Value <= DateTimeOffset.UtcNow)
+            {
+                throw new JobPostException(
+                    "JOB_POST_INVALID_EXPIRY",
+                    "Ngày hết hạn phải sau thời điểm hiện tại.",
+                    "expiredAt");
+            }
+        }
+
+        if (request.DepartmentId.HasValue)
+        {
+            var departmentExists = await _dbContext.Departments
+                .AnyAsync(department => department.Id == request.DepartmentId.Value);
+
+            if (!departmentExists)
+            {
+                throw new JobPostException(
+                    "DEPARTMENT_NOT_FOUND",
+                    "Phòng ban không tồn tại.",
+                    "departmentId");
+            }
+        }
+
+        var skills = new List<string>();
+
+        if (request.Skills is not null)
+        {
+            foreach (var skill in request.Skills)
+            {
+                if (!string.IsNullOrWhiteSpace(skill))
+                {
+                    skills.Add(skill.Trim());
+                }
+            }
+        }
+
+        if (isPublishing && skills.Count == 0)
+        {
+            throw new JobPostException(
+                "JOB_POST_VALIDATION_FAILED",
+                "Danh sách kỹ năng phải có ít nhất một giá trị.",
+                "skills");
+        }
+
+        var jobPost = new JobPost
+        {
+            Id = Guid.NewGuid(),
+            CreatedBy = createdBy,
+            Status = isPublishing ? JobPostStatus.Open : JobPostStatus.Draft,
+            ExpiredAt = request.ExpiredAt,
+            CreatedAt = DateTimeOffset.UtcNow,
+            Title = title,
+            DepartmentId = request.DepartmentId,
+            EmploymentType = request.EmploymentType,
+            JobLevel = request.JobLevel,
+            NumberOfPositions = request.NumberOfPositions ?? 0,
+            Skills = skills,
+            ShortDescription = request.ShortDescription?.Trim(),
+            Description = request.Description?.Trim(),
+            Requirements = request.Requirements?.Trim()
+        };
+
+        await using var transaction = await _dbContext.Database.BeginTransactionAsync();
+
+        _dbContext.JobPosts.Add(jobPost);
+        await _dbContext.SaveChangesAsync();
+        await transaction.CommitAsync();
+
+        return new Response.CreateJobPostResponse
+        {
+            Id = jobPost.Id,
+            Status = GetDisplayName(jobPost.Status),
+            CreatedBy = createdBy,
+            CreatedAt = jobPost.CreatedAt,
+            IsPubliclyVisible = isPublishing
+        };
     }
 
     public async Task<Response.PagedJobPostListResponse> GetJobPostListAsync(
