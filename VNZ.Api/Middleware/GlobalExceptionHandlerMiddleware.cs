@@ -37,6 +37,7 @@ public class GlobalExceptionHandlerMiddleware : IMiddleware
             NewsException newsStatusException => GetNewsStatusCode(newsStatusException.Code),
             TeamMemberException teamMemberStatusException => GetTeamMemberStatusCode(teamMemberStatusException.Code),
             DbException when IsCreateNewsRequest(context) => HttpStatusCode.InternalServerError,
+            DbException when IsUpdateNewsRequest(context) => HttpStatusCode.InternalServerError,
             DbException when IsNewsDetailRequest(context) => HttpStatusCode.InternalServerError,
             DbException when IsNewsListRequest(context) => HttpStatusCode.InternalServerError,
             DbUpdateException when IsCreateMemberRequest(context) || IsCreateJobPostRequest(context) =>
@@ -59,6 +60,8 @@ public class GlobalExceptionHandlerMiddleware : IMiddleware
             TeamMemberException teamMemberPayloadException => (teamMemberPayloadException.Code, teamMemberPayloadException.Message),
             DbException when IsCreateNewsRequest(context) =>
                 ("NEWS_ARTICLE_CREATE_FAILED", "Không thể tạo bài viết."),
+            DbException when IsUpdateNewsRequest(context) =>
+                ("NEWS_ARTICLE_UPDATE_FAILED", "Không thể cập nhật bài viết."),
             DbException when IsNewsDetailRequest(context) =>
                 ("NEWS_DETAIL_READ_FAILED", "Không thể đọc chi tiết bài viết."),
             DbException when IsNewsListRequest(context) =>
@@ -149,9 +152,12 @@ public class GlobalExceptionHandlerMiddleware : IMiddleware
             "NEWS_CATEGORY_REQUIRED" or
             "NEWS_CATEGORY_INVALID" => HttpStatusCode.BadRequest,
             "NEWS_ARTICLE_NOT_FOUND" => HttpStatusCode.NotFound,
+            "NEWS_ARTICLE_CLOSED" or
+            "NEWS_STATUS_TRANSITION_INVALID" => HttpStatusCode.Conflict,
             "NEWS_LIST_READ_FAILED" or
             "NEWS_DETAIL_READ_FAILED" or
-            "NEWS_ARTICLE_CREATE_FAILED" => HttpStatusCode.InternalServerError,
+            "NEWS_ARTICLE_CREATE_FAILED" or
+            "NEWS_ARTICLE_UPDATE_FAILED" => HttpStatusCode.InternalServerError,
             _ => HttpStatusCode.InternalServerError
         };
     }
@@ -206,6 +212,26 @@ public class GlobalExceptionHandlerMiddleware : IMiddleware
     {
         return HttpMethods.IsPost(context.Request.Method) &&
             context.Request.Path.Equals("/api/v1/admin/news", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool IsUpdateNewsRequest(HttpContext context)
+    {
+        const string routePrefix = "/api/v1/admin/news/";
+
+        if (!HttpMethods.IsPut(context.Request.Method))
+        {
+            return false;
+        }
+
+        var path = context.Request.Path.Value;
+
+        if (path is null || !path.StartsWith(routePrefix, StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        var id = path[routePrefix.Length..];
+        return Guid.TryParse(id, out _);
     }
 
     private static bool IsCreateJobPostRequest(HttpContext context)
