@@ -43,6 +43,8 @@ public class GlobalExceptionHandlerMiddleware : IMiddleware
             DbException when IsNewsDetailRequest(context) => HttpStatusCode.InternalServerError,
             DbException when IsNewsListRequest(context) => HttpStatusCode.InternalServerError,
             DbException when IsContactListRequest(context) => HttpStatusCode.InternalServerError,
+            DbException when IsContactDetailRequest(context) => HttpStatusCode.InternalServerError,
+            DbUpdateException when IsContactDetailRequest(context) => HttpStatusCode.InternalServerError,
             DbUpdateException when IsCreateMemberRequest(context) || IsCreateJobPostRequest(context) =>
                 HttpStatusCode.InternalServerError,
             NotFoundException => HttpStatusCode.NotFound,
@@ -73,6 +75,10 @@ public class GlobalExceptionHandlerMiddleware : IMiddleware
                 ("NEWS_LIST_READ_FAILED", "Không thể đọc danh sách bài viết."),
             DbException when IsContactListRequest(context) =>
                 ("CONTACT_LIST_READ_FAILED", "Không thể đọc danh sách liên hệ."),
+            DbException when IsContactDetailRequest(context) =>
+                ("CONTACT_DETAIL_READ_FAILED", "Không thể đọc chi tiết liên hệ."),
+            DbUpdateException when IsContactDetailRequest(context) =>
+                ("CONTACT_DETAIL_READ_FAILED", "Không thể đọc chi tiết liên hệ."),
             DbUpdateException when IsCreateMemberRequest(context) =>
                 ("MEMBER_CREATE_FAILED", "Không thể tạo thành viên."),
             DbUpdateException when IsCreateJobPostRequest(context) =>
@@ -204,8 +210,11 @@ public class GlobalExceptionHandlerMiddleware : IMiddleware
     {
         return code switch
         {
-            "CONTACT_QUERY_INVALID" => HttpStatusCode.BadRequest,
+            "CONTACT_QUERY_INVALID" or
+            "CONTACT_ID_INVALID" => HttpStatusCode.BadRequest,
+            "CONTACT_NOT_FOUND" => HttpStatusCode.NotFound,
             "CONTACT_LIST_READ_FAILED" => HttpStatusCode.InternalServerError,
+            "CONTACT_DETAIL_READ_FAILED" => HttpStatusCode.InternalServerError,
             _ => HttpStatusCode.InternalServerError
         };
     }
@@ -226,6 +235,26 @@ public class GlobalExceptionHandlerMiddleware : IMiddleware
     {
         return HttpMethods.IsGet(context.Request.Method) &&
             context.Request.Path.Equals("/api/v1/admin/contacts", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool IsContactDetailRequest(HttpContext context)
+    {
+        const string routePrefix = "/api/v1/admin/contacts/";
+
+        if (!HttpMethods.IsGet(context.Request.Method))
+        {
+            return false;
+        }
+
+        var path = context.Request.Path.Value;
+
+        if (path is null || !path.StartsWith(routePrefix, StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        var id = path[routePrefix.Length..];
+        return Guid.TryParse(id, out _);
     }
 
     private static bool IsNewsDetailRequest(HttpContext context)

@@ -140,13 +140,61 @@ public class Service : IService
         };
     }
 
-    private static string GetDisplayName(ContactStatus status)
+    public async Task<Response.ContactDetailResponse> GetContactDetailAsync(Guid id)
     {
-        var member = typeof(ContactStatus).GetMember(status.ToString()).Single();
+        // 1. Read the entity as tracked because opening an unread contact changes IsRead.
+        var contact = await _dbContext.ContactInquiries
+            .SingleOrDefaultAsync(contact => contact.Id == id);
+
+        if (contact is null)
+        {
+            throw new ContactException(
+                "CONTACT_NOT_FOUND",
+                "Không tìm thấy yêu cầu liên hệ.",
+                "id");
+        }
+
+        // 2. Only opening an unread detail marks it as read.
+        if (!contact.IsRead)
+        {
+            contact.IsRead = true;
+            await _dbContext.SaveChangesAsync();
+        }
+
+        // 3. Return the persisted state without changing ContactStatus or ContactedBy.
+        return new Response.ContactDetailResponse
+        {
+            Id = contact.Id,
+            FullName = contact.FullName,
+            Email = contact.Email,
+            Phone = contact.Phone,
+            CompanyName = contact.CompanyName,
+            InquiryTopic = GetDisplayName(contact.InquiryTopic),
+            BudgetRange = contact.BudgetRange.HasValue
+                ? GetDisplayName(contact.BudgetRange.Value)
+                : null,
+            ExpectedStart = contact.ExpectedStart.HasValue
+                ? GetDisplayName(contact.ExpectedStart.Value)
+                : null,
+            Message = contact.Message,
+            Source = contact.Source.HasValue
+                ? GetDisplayName(contact.Source.Value)
+                : null,
+            CreatedAt = contact.CreatedAt,
+            IsRead = contact.IsRead,
+            ContactStatus = GetDisplayName(contact.ContactStatus),
+            CanSendEmail = contact.ContactStatus == ContactStatus.NotContacted
+        };
+    }
+
+    private static string GetDisplayName<TEnum>(TEnum value)
+        where TEnum : struct, Enum
+    {
+        var member = typeof(TEnum).GetMember(value.ToString()).Single();
 
         return member.GetCustomAttributes(typeof(DisplayAttribute), inherit: false)
             .OfType<DisplayAttribute>()
             .SingleOrDefault()?
-            .GetName() ?? status.ToString();
+            .GetName() ?? value.ToString();
     }
 }
