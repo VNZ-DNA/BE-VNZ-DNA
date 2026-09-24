@@ -6,6 +6,6 @@ public enum ProductStatus
 {
     [Display(Name = "Đang thực hiện")]
     InProgress = 1,
-    [Display(Name = "Hoàn thành")]
+    [Display(Name = "Đã hoàn thành")]
     Completed = 2
 }
