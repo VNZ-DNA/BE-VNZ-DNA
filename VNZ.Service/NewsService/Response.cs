@@ -51,6 +51,20 @@ public class Response
         public required List<NewsCategoryResponse> Categories { get; set; }
     }
 
+    public class UpdateNewsResponse
+    {
+        public Guid Id { get; set; }
+        public required string Title { get; set; }
+        public string? Summary { get; set; }
+        public string? Content { get; set; }
+        public required string AuthorName { get; set; }
+        public DateTimeOffset CreatedAt { get; set; }
+        public DateOnly? UpdatedAt { get; set; }
+        public DateTimeOffset? PublishAt { get; set; }
+        public required string Status { get; set; }
+        public required List<NewsCategoryResponse> Categories { get; set; }
+    }
+
     public class NewsCategoryResponse
     {
         public Guid Id { get; set; }

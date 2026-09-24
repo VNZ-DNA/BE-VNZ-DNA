@@ -6,6 +6,10 @@ public interface IService
         Request.CreateNewsRequest request,
         Guid createdBy);
 
+    Task<Response.UpdateNewsResponse> UpdateNewsAsync(
+        Guid id,
+        Request.UpdateNewsRequest request);
+
     Task<Response.PagedNewsListResponse> GetNewsListAsync(
         Request.GetNewsListRequest request);
 
