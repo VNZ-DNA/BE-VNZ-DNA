@@ -126,18 +126,10 @@ public class Service : IService
             }
         }
 
-        var skills = new List<string>();
-
-        if (request.Skills is not null)
-        {
-            foreach (var skill in request.Skills)
-            {
-                if (!string.IsNullOrWhiteSpace(skill))
-                {
-                    skills.Add(skill.Trim());
-                }
-            }
-        }
+        var skills = request.Skills?
+            .Where(skill => !string.IsNullOrWhiteSpace(skill))
+            .Select(skill => skill.Trim())
+            .ToList() ?? new List<string>();
 
         if (isPublishing && skills.Count == 0)
         {
@@ -278,11 +270,8 @@ public class Service : IService
             .ToListAsync();
 
         // 6. Map dữ liệu database sang response API.
-        var items = new List<Response.JobPostListItemResponse>();
-
-        foreach (var jobPost in jobPosts)
-        {
-            items.Add(new Response.JobPostListItemResponse
+        var items = jobPosts
+            .Select(jobPost => new Response.JobPostListItemResponse
             {
                 Id = jobPost.Id,
                 Title = jobPost.Title,
@@ -291,8 +280,8 @@ public class Service : IService
                 NumberOfPositions = jobPost.NumberOfPositions,
                 Status = GetDisplayName(jobPost.Status),
                 PendingApplicationCount = jobPost.PendingApplicationCount
-            });
-        }
+            })
+            .ToList();
 
         var totalPages = total == 0
             ? 0
