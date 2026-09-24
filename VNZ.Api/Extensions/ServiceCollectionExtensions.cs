@@ -34,6 +34,7 @@ public static class ServiceCollectionExtensions
         services.AddScoped<VNZ.Service.AuthService.IService, VNZ.Service.AuthService.Service>();
         services.AddScoped<VNZ.Service.DashboardService.IService, VNZ.Service.DashboardService.Service>();
         services.AddScoped<VNZ.Service.JobPostService.IService, VNZ.Service.JobPostService.Service>();
+        services.AddScoped<VNZ.Service.NewsService.IService, VNZ.Service.NewsService.Service>();
         services.AddScoped<VNZ.Service.JobApplicationService.IService, VNZ.Service.JobApplicationService.Service>();
         services.AddScoped<VNZ.Service.TeamMembers.IService, VNZ.Service.TeamMembers.Service>();
         services.AddScoped<MailService.IService, MailService.Service>();
