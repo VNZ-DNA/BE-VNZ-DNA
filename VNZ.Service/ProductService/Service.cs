@@ -18,6 +18,52 @@ public sealed class Service : IService
         _dbContext = dbContext;
     }
 
+    public async Task<Response.ProductDetailResponse> CreateProductAsync(
+        Request.CreateProductRequest request,
+        Guid createdBy)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+
+        var name = request.Name?.Trim();
+
+        if (string.IsNullOrWhiteSpace(name) || name.Length > 200)
+        {
+            throw new ProductException("PRODUCT_VALIDATION_FAILED", "Tên Product là bắt buộc.", "name");
+        }
+
+        ValidateProductContent(request.Content);
+
+        var product = new Product
+        {
+            Id = Guid.NewGuid(),
+            Name = name,
+            LogoUrl = request.LogoUrl,
+            ProductUrl = request.ProductUrl,
+            Content = ToProductContent(request.Content),
+            Status = ProductStatus.InProgress,
+            IsPublished = false,
+            DisplayOrder = null,
+            CreatedBy = createdBy,
+            CreatedAt = DateTimeOffset.UtcNow,
+            UpdatedAt = null
+        };
+
+        try
+        {
+            await using var transaction = await _dbContext.Database.BeginTransactionAsync();
+
+            _dbContext.Products.Add(product);
+            await _dbContext.SaveChangesAsync();
+            await transaction.CommitAsync();
+
+            return ToDetailResponse(product);
+        }
+        catch (Exception exception) when (exception is DbUpdateException or PostgresException)
+        {
+            throw new ProductException("PRODUCT_CREATE_FAILED", "Không thể tạo Product.", exception);
+        }
+    }
+
     public async Task<Response.ProductDetailResponse> GetProductDetailAsync(Guid id)
     {
         var product = await _dbContext.Products
@@ -66,6 +112,8 @@ public sealed class Service : IService
                     "Không tìm thấy Product.");
             }
 
+            var updatedAt = DateTimeOffset.UtcNow;
+
             if (!product.IsPublished && request.IsPublished)
             {
                 var lastDisplayOrder = await _dbContext.Products
@@ -77,6 +125,27 @@ public sealed class Service : IService
             else if (product.IsPublished && !request.IsPublished)
             {
                 product.DisplayOrder = null;
+
+                var publishedProducts = await _dbContext.Products
+                    .Where(item => item.IsPublished && item.Id != product.Id)
+                    .OrderBy(item => item.DisplayOrder)
+                    .ThenBy(item => item.CreatedAt)
+                    .ThenBy(item => item.Id)
+                    .ToListAsync();
+
+                for (var index = 0; index < publishedProducts.Count; index++)
+                {
+                    var publishedProduct = publishedProducts[index];
+                    var displayOrder = index + 1;
+
+                    if (publishedProduct.DisplayOrder == displayOrder)
+                    {
+                        continue;
+                    }
+
+                    publishedProduct.DisplayOrder = displayOrder;
+                    publishedProduct.UpdatedAt = updatedAt;
+                }
             }
 
             product.Name = request.Name.Trim();
@@ -85,7 +154,7 @@ public sealed class Service : IService
             product.Content = ToProductContent(request.Content);
             product.Status = request.Status;
             product.IsPublished = request.IsPublished;
-            product.UpdatedAt = DateTimeOffset.UtcNow;
+            product.UpdatedAt = updatedAt;
 
             await _dbContext.SaveChangesAsync();
             await transaction.CommitAsync();
@@ -286,12 +355,17 @@ public sealed class Service : IService
                 fields.ToArray());
         }
 
-        if (request.Content is null)
+        ValidateProductContent(request.Content);
+    }
+
+    private static void ValidateProductContent(Request.ProductContentRequest? content)
+    {
+        if (content is null)
         {
             return;
         }
 
-        var blocks = request.Content.Blocks;
+        var blocks = content.Blocks;
         if (blocks is null)
         {
             throw new ProductException(

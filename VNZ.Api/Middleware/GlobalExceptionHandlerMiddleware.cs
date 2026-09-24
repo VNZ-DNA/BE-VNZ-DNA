@@ -185,6 +185,7 @@ public class GlobalExceptionHandlerMiddleware : IMiddleware
         {
             "PRODUCT_LIST_QUERY_INVALID" or
             "PRODUCT_ORDER_INVALID" or
+            "PRODUCT_VALIDATION_FAILED" or
             "PRODUCT_VALIDATION_ERROR" or
             "PRODUCT_CONTENT_INVALID" => HttpStatusCode.BadRequest,
             "PRODUCT_NOT_FOUND" => HttpStatusCode.NotFound,
@@ -192,6 +193,7 @@ public class GlobalExceptionHandlerMiddleware : IMiddleware
             "PRODUCT_IN_PROGRESS_CANNOT_PUBLISH" or
             "PRODUCT_DELETE_FORBIDDEN" => HttpStatusCode.Conflict,
             "PRODUCT_LIST_READ_FAILED" or
+            "PRODUCT_CREATE_FAILED" or
             "PRODUCT_ORDER_UPDATE_FAILED" or
             "PRODUCT_OPERATION_FAILED" => HttpStatusCode.InternalServerError,
             _ => HttpStatusCode.InternalServerError

@@ -1,3 +1,4 @@
+using System.Security.Claims;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using VNZ.Service.Models;
@@ -15,6 +16,24 @@ public sealed class ProductsController : ControllerBase
     public ProductsController(ProductService.IService productService)
     {
         _productService = productService;
+    }
+
+    [HttpPost]
+    public async Task<IActionResult> CreateProduct(
+        [FromBody] ProductService.Request.CreateProductRequest request)
+    {
+        var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+
+        if (!Guid.TryParse(userId, out var createdBy))
+        {
+            return Unauthorized();
+        }
+
+        var data = await _productService.CreateProductAsync(request, createdBy);
+
+        return StatusCode(StatusCodes.Status201Created, ResponseBuilder.SuccessResponse(data, 
+            "Tạo Product thành công.",
+            HttpContext.TraceIdentifier));
     }
 
     [HttpGet]
