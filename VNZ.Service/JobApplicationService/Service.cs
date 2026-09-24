@@ -22,12 +22,14 @@ public sealed class Service : IService
     {
         ArgumentNullException.ThrowIfNull(request);
 
+        var decision = request.Decision?.Trim().ToLowerInvariant();
         JobApplicationStatus nextStatus;
-        if (string.Equals(request.Decision?.Trim(), nameof(JobApplicationStatus.Accepted), StringComparison.OrdinalIgnoreCase))
+
+        if (decision == "accepted")
         {
             nextStatus = JobApplicationStatus.Accepted;
         }
-        else if (string.Equals(request.Decision?.Trim(), nameof(JobApplicationStatus.Rejected), StringComparison.OrdinalIgnoreCase))
+        else if (decision == "rejected")
         {
             nextStatus = JobApplicationStatus.Rejected;
         }
