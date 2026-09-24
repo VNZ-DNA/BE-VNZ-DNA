@@ -15,7 +15,7 @@ public class Request
         public string? ShortDescription { get; set; }
         public string? Description { get; set; }
         public string? Requirements { get; set; }
-        public DateTimeOffset? ExpiredAt { get; set; }
+        public DateOnly? ExpiredDate { get; set; }
         public JobPostAction? Action { get; set; }
     }
 
@@ -38,7 +38,7 @@ public class Request
         public string? ShortDescription { get; set; }
         public string? Description { get; set; }
         public string? Requirements { get; set; }
-        public DateTimeOffset? ExpiredAt { get; set; }
+        public DateOnly? ExpiredDate { get; set; }
         public JobPostAction? Action { get; set; }
     }
 }
