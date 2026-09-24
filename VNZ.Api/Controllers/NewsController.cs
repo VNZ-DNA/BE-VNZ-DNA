@@ -1,3 +1,4 @@
+using System.Security.Claims;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using VNZ.Service.Exceptions;
@@ -16,6 +17,26 @@ public sealed class NewsController : ControllerBase
     public NewsController(NewsService.IService newsService)
     {
         _newsService = newsService;
+    }
+
+    [HttpPost]
+    public async Task<IActionResult> CreateNews([FromBody] NewsService.Request.CreateNewsRequest request)
+    {
+        var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+
+        if (!Guid.TryParse(userId, out var createdBy))
+        {
+            throw new UnauthorizedException("Yêu cầu đăng nhập để tiếp tục.");
+        }
+
+        var data = await _newsService.CreateNewsAsync(request, createdBy);
+        var message = request.Status == "Draft"
+            ? "Lưu bản nháp thành công."
+            : "Đăng bài viết thành công.";
+
+        return StatusCode(
+            StatusCodes.Status201Created,
+            ResponseBuilder.SuccessResponse(data, message, HttpContext.TraceIdentifier));
     }
 
     [HttpGet]
