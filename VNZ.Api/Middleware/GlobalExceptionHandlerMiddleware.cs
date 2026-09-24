@@ -36,6 +36,7 @@ public class GlobalExceptionHandlerMiddleware : IMiddleware
             JobPostException jobPostStatusException => GetJobPostStatusCode(jobPostStatusException.Code),
             NewsException newsStatusException => GetNewsStatusCode(newsStatusException.Code),
             TeamMemberException teamMemberStatusException => GetTeamMemberStatusCode(teamMemberStatusException.Code),
+            DbException when IsNewsDetailRequest(context) => HttpStatusCode.InternalServerError,
             DbException when IsNewsListRequest(context) => HttpStatusCode.InternalServerError,
             DbUpdateException when IsCreateMemberRequest(context) || IsCreateJobPostRequest(context) =>
                 HttpStatusCode.InternalServerError,
@@ -55,6 +56,8 @@ public class GlobalExceptionHandlerMiddleware : IMiddleware
             JobPostException jobPostPayloadException => (jobPostPayloadException.Code, jobPostPayloadException.Message),
             NewsException newsPayloadException => (newsPayloadException.Code, newsPayloadException.Message),
             TeamMemberException teamMemberPayloadException => (teamMemberPayloadException.Code, teamMemberPayloadException.Message),
+            DbException when IsNewsDetailRequest(context) =>
+                ("NEWS_DETAIL_READ_FAILED", "Không thể đọc chi tiết bài viết."),
             DbException when IsNewsListRequest(context) =>
                 ("NEWS_LIST_READ_FAILED", "Không thể đọc danh sách bài viết."),
             DbUpdateException when IsCreateMemberRequest(context) =>
@@ -135,8 +138,11 @@ public class GlobalExceptionHandlerMiddleware : IMiddleware
     {
         return code switch
         {
-            "NEWS_QUERY_INVALID" => HttpStatusCode.BadRequest,
-            "NEWS_LIST_READ_FAILED" => HttpStatusCode.InternalServerError,
+            "NEWS_QUERY_INVALID" or
+            "NEWS_ARTICLE_ID_INVALID" => HttpStatusCode.BadRequest,
+            "NEWS_ARTICLE_NOT_FOUND" => HttpStatusCode.NotFound,
+            "NEWS_LIST_READ_FAILED" or
+            "NEWS_DETAIL_READ_FAILED" => HttpStatusCode.InternalServerError,
             _ => HttpStatusCode.InternalServerError
         };
     }
@@ -165,6 +171,26 @@ public class GlobalExceptionHandlerMiddleware : IMiddleware
     {
         return HttpMethods.IsGet(context.Request.Method) &&
             context.Request.Path.Equals("/api/v1/admin/news", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool IsNewsDetailRequest(HttpContext context)
+    {
+        const string routePrefix = "/api/v1/admin/news/";
+
+        if (!HttpMethods.IsGet(context.Request.Method))
+        {
+            return false;
+        }
+
+        var path = context.Request.Path.Value;
+
+        if (path is null || !path.StartsWith(routePrefix, StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        var id = path[routePrefix.Length..];
+        return Guid.TryParse(id, out _);
     }
 
     private static bool IsCreateJobPostRequest(HttpContext context)

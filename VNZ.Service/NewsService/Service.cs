@@ -8,6 +8,8 @@ namespace VNZ.Service.NewsService;
 
 public sealed class Service : IService
 {
+    private static readonly TimeSpan VietnamUtcOffset = TimeSpan.FromHours(7);
+
     private readonly AppDbContext _dbContext;
 
     public Service(AppDbContext dbContext)
@@ -174,6 +176,70 @@ public sealed class Service : IService
         };
     }
 
+    public async Task<Response.NewsDetailResponse> GetNewsDetailAsync(Guid id)
+    {
+        // 1. Đọc bài viết cùng tác giả và toàn bộ danh mục đang được gắn.
+        var article = await _dbContext.NewsArticles
+            .AsNoTracking()
+            .Include(item => item.Creator)
+            .Include(item => item.NewsArticleCategories)
+            .ThenInclude(item => item.NewsCategory)
+            .SingleOrDefaultAsync(item => item.Id == id);
+
+        if (article is null)
+        {
+            throw new NewsException(
+                "NEWS_ARTICLE_NOT_FOUND",
+                "Không tìm thấy bài viết.",
+                "id");
+        }
+
+        // 2. Suy ra các thao tác được phép từ trạng thái hiện tại của bài viết.
+        var actions = new List<string>();
+
+        if (article.Status == NewsStatus.Draft)
+        {
+            actions.Add("Edit");
+            actions.Add("Publish");
+        }
+        else if (article.Status == NewsStatus.Published)
+        {
+            actions.Add("Edit");
+            actions.Add("Close");
+        }
+        else if (article.Status != NewsStatus.Closed)
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(article.Status),
+                article.Status,
+                "Trạng thái bài viết không hợp lệ.");
+        }
+
+        // 3. Map dữ liệu đọc được sang contract detail; không thay đổi database.
+        return new Response.NewsDetailResponse
+        {
+            Id = article.Id,
+            Title = article.Title,
+            Summary = article.Summary,
+            Content = article.Content,
+            AuthorName = article.Creator.FullName,
+            CreatedAt = article.CreatedAt,
+            UpdatedAt = ConvertUpdatedAtToVietnamDate(article.UpdatedAt),
+            PublishAt = article.PublishAt,
+            Status = GetDisplayName(article.Status),
+            Categories = article.NewsArticleCategories
+                .OrderBy(link => link.NewsCategory.Name)
+                .ThenBy(link => link.NewsCategory.Id)
+                .Select(link => new Response.NewsCategoryResponse
+                {
+                    Id = link.NewsCategory.Id,
+                    Name = link.NewsCategory.Name
+                })
+                .ToList(),
+            Actions = actions
+        };
+    }
+
     public async Task<List<Response.NewsCategoryResponse>> GetNewsCategoriesAsync()
     {
         return await _dbContext.NewsCategories
@@ -209,5 +275,16 @@ public sealed class Service : IService
         }
 
         return new List<Response.NewsCategoryResponse>();
+    }
+
+    private static DateOnly? ConvertUpdatedAtToVietnamDate(DateTimeOffset? updatedAt)
+    {
+        if (!updatedAt.HasValue)
+        {
+            return null;
+        }
+
+        var updatedAtInVietnam = updatedAt.Value.ToOffset(VietnamUtcOffset);
+        return DateOnly.FromDateTime(updatedAtInVietnam.DateTime);
     }
 }
