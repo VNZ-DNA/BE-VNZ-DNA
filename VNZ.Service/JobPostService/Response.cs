@@ -6,6 +6,7 @@ public class Response
     {
         public Guid Id { get; set; }
         public required string Status { get; set; }
+        public DateOnly? ExpiredDate { get; set; }
         public Guid CreatedBy { get; set; }
         public DateTimeOffset CreatedAt { get; set; }
         public bool IsPubliclyVisible { get; set; }
@@ -25,7 +26,7 @@ public class Response
         public Guid Id { get; set; }
         public required string Title { get; set; }
         public string? ShortDescription { get; set; }
-        public DateTimeOffset? ExpiredAt { get; set; }
+        public DateOnly? ExpiredDate { get; set; }
         public int NumberOfPositions { get; set; }
         public required string Status { get; set; }
         public int PendingApplicationCount { get; set; }
@@ -38,7 +39,7 @@ public class Response
         public string? CreatedByName { get; set; }
         public DateTimeOffset? UpdatedAt { get; set; }
         public required string Status { get; set; }
-        public DateTimeOffset? ExpiredAt { get; set; }
+        public DateOnly? ExpiredDate { get; set; }
         public string? Department { get; set; }
         public string? EmploymentType { get; set; }
         public string? JobLevel { get; set; }
@@ -57,7 +58,7 @@ public class Response
         public string? CreatedByName { get; set; }
         public DateTimeOffset? UpdatedAt { get; set; }
         public required string Status { get; set; }
-        public DateTimeOffset? ExpiredAt { get; set; }
+        public DateOnly? ExpiredDate { get; set; }
         public string? Department { get; set; }
         public string? EmploymentType { get; set; }
         public string? JobLevel { get; set; }

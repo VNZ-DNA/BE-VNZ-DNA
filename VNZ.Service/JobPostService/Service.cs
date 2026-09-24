@@ -9,6 +9,8 @@ namespace VNZ.Service.JobPostService;
 
 public class Service : IService
 {
+    private static readonly TimeSpan VietnamUtcOffset = TimeSpan.FromHours(7);
+
     private readonly AppDbContext _dbContext;
 
     public Service(AppDbContext dbContext)
@@ -50,6 +52,8 @@ public class Service : IService
         }
 
         var isPublishing = request.Action == JobPostAction.Publish;
+        var expiredAt = ConvertExpiredDateToUtc(request.ExpiredDate);
+        var nowUtc = DateTimeOffset.UtcNow;
 
         if (isPublishing)
         {
@@ -103,12 +107,12 @@ public class Service : IService
                     requiredFields.ToArray());
             }
 
-            if (!request.ExpiredAt.HasValue || request.ExpiredAt.Value <= DateTimeOffset.UtcNow)
+            if (!expiredAt.HasValue || expiredAt.Value <= nowUtc)
             {
                 throw new JobPostException(
                     "JOB_POST_INVALID_EXPIRY",
                     "Ngày hết hạn phải sau thời điểm hiện tại.",
-                    "expiredAt");
+                    "expiredDate");
             }
         }
 
@@ -144,8 +148,8 @@ public class Service : IService
             Id = Guid.NewGuid(),
             CreatedBy = createdBy,
             Status = isPublishing ? JobPostStatus.Open : JobPostStatus.Draft,
-            ExpiredAt = request.ExpiredAt,
-            CreatedAt = DateTimeOffset.UtcNow,
+            ExpiredAt = expiredAt,
+            CreatedAt = nowUtc,
             Title = title,
             DepartmentId = request.DepartmentId,
             EmploymentType = request.EmploymentType,
@@ -167,6 +171,7 @@ public class Service : IService
         {
             Id = jobPost.Id,
             Status = GetDisplayName(jobPost.Status),
+            ExpiredDate = ConvertExpiredAtToDate(jobPost.ExpiredAt),
             CreatedBy = createdBy,
             CreatedAt = jobPost.CreatedAt,
             IsPubliclyVisible = isPublishing
@@ -276,7 +281,7 @@ public class Service : IService
                 Id = jobPost.Id,
                 Title = jobPost.Title,
                 ShortDescription = jobPost.ShortDescription,
-                ExpiredAt = jobPost.ExpiredAt,
+                ExpiredDate = ConvertExpiredAtToDate(jobPost.ExpiredAt),
                 NumberOfPositions = jobPost.NumberOfPositions,
                 Status = GetDisplayName(jobPost.Status),
                 PendingApplicationCount = jobPost.PendingApplicationCount
@@ -328,7 +333,7 @@ public class Service : IService
             CreatedByName = jobPost.Creator?.FullName,
             UpdatedAt = jobPost.UpdatedAt,
             Status = GetDisplayName(jobPost.Status),
-            ExpiredAt = jobPost.ExpiredAt,
+            ExpiredDate = ConvertExpiredAtToDate(jobPost.ExpiredAt),
             Department = jobPost.Department?.Name,
             EmploymentType = jobPost.EmploymentType.HasValue
                 ? GetDisplayName(jobPost.EmploymentType.Value)
@@ -386,6 +391,7 @@ public class Service : IService
         }
 
         var nowUtc = DateTimeOffset.UtcNow;
+        var expiredAt = ConvertExpiredDateToUtc(request.ExpiredDate);
 
         if (jobPost.Status == JobPostStatus.Open &&
             jobPost.ExpiredAt.HasValue &&
@@ -409,7 +415,7 @@ public class Service : IService
             jobPost.Status = JobPostStatus.Closed;
             jobPost.UpdatedAt = nowUtc;
 
-            await SaveJobPostUpdateAsync(jobPost);
+            await SaveJobPostUpdateAsync();
             return ToUpdateResponse(jobPost);
         }
 
@@ -478,9 +484,9 @@ public class Service : IService
                 requiredFields.Add("requirements");
             }
 
-            if (!request.ExpiredAt.HasValue || request.ExpiredAt.Value <= nowUtc)
+            if (!expiredAt.HasValue || expiredAt.Value <= nowUtc)
             {
-                requiredFields.Add("expiredAt");
+                requiredFields.Add("expiredDate");
             }
 
             if (requiredFields.Count > 0)
@@ -511,13 +517,13 @@ public class Service : IService
         jobPost.ShortDescription = request.ShortDescription?.Trim();
         jobPost.Description = request.Description?.Trim();
         jobPost.Requirements = request.Requirements?.Trim();
-        jobPost.ExpiredAt = request.ExpiredAt;
+        jobPost.ExpiredAt = expiredAt;
         jobPost.Status = request.Action == JobPostAction.Publish
             ? JobPostStatus.Open
             : JobPostStatus.Draft;
         jobPost.UpdatedAt = nowUtc;
 
-        await SaveJobPostUpdateAsync(jobPost);
+        await SaveJobPostUpdateAsync();
         return ToUpdateResponse(jobPost);
     }
 
@@ -555,7 +561,34 @@ public class Service : IService
             .ToList();
     }
 
-    private async Task SaveJobPostUpdateAsync(JobPost jobPost)
+    private static DateTimeOffset? ConvertExpiredDateToUtc(DateOnly? expiredDate)
+    {
+        if (!expiredDate.HasValue)
+        {
+            return null;
+        }
+
+        var nextDate = expiredDate.Value.AddDays(1);
+        var nextDateStartInVietnam = nextDate.ToDateTime(TimeOnly.MinValue);
+        var expirationTime = new DateTimeOffset(nextDateStartInVietnam, VietnamUtcOffset);
+
+        return expirationTime.ToUniversalTime();
+    }
+
+    private static DateOnly? ConvertExpiredAtToDate(DateTimeOffset? expiredAt)
+    {
+        if (!expiredAt.HasValue)
+        {
+            return null;
+        }
+
+        var expirationTimeInVietnam = expiredAt.Value.ToOffset(VietnamUtcOffset);
+        var nextDate = DateOnly.FromDateTime(expirationTimeInVietnam.DateTime);
+
+        return nextDate.AddDays(-1);
+    }
+
+    private async Task SaveJobPostUpdateAsync()
     {
         try
         {
@@ -581,7 +614,7 @@ public class Service : IService
             CreatedByName = jobPost.Creator?.FullName,
             UpdatedAt = jobPost.UpdatedAt,
             Status = GetDisplayName(jobPost.Status),
-            ExpiredAt = jobPost.ExpiredAt,
+            ExpiredDate = ConvertExpiredAtToDate(jobPost.ExpiredAt),
             Department = jobPost.Department?.Name,
             EmploymentType = jobPost.EmploymentType.HasValue
                 ? GetDisplayName(jobPost.EmploymentType.Value)
