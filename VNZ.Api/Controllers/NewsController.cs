@@ -39,6 +39,29 @@ public sealed class NewsController : ControllerBase
             ResponseBuilder.SuccessResponse(data, message, HttpContext.TraceIdentifier));
     }
 
+    [HttpPut("{id}")]
+    public async Task<IActionResult> UpdateNews(
+        string id,
+        [FromBody] NewsService.Request.UpdateNewsRequest request)
+    {
+        var isValidId = Guid.TryParse(id, out var newsId);
+
+        if (!isValidId)
+        {
+            throw new NewsException(
+                "NEWS_ARTICLE_ID_INVALID",
+                "Mã bài viết không hợp lệ.",
+                "id");
+        }
+
+        var data = await _newsService.UpdateNewsAsync(newsId, request);
+
+        return Ok(ResponseBuilder.SuccessResponse(
+            data,
+            "Cập nhật bài viết thành công.",
+            HttpContext.TraceIdentifier));
+    }
+
     [HttpGet]
     public async Task<IActionResult> GetNewsList(
         [FromQuery] NewsService.Request.GetNewsListRequest request)

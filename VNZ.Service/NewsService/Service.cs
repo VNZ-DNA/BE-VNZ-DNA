@@ -187,6 +187,217 @@ public sealed class Service : IService
         };
     }
 
+    public async Task<Response.UpdateNewsResponse> UpdateNewsAsync(
+        Guid id,
+        Request.UpdateNewsRequest request)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+
+        // 1. Đọc bài viết hiện tại để kiểm tra trạng thái và thay category links.
+        var article = await _dbContext.NewsArticles
+            .Include(item => item.Creator)
+            .Include(item => item.NewsArticleCategories)
+            .SingleOrDefaultAsync(item => item.Id == id);
+
+        if (article is null)
+        {
+            throw new NewsException(
+                "NEWS_ARTICLE_NOT_FOUND",
+                "Không tìm thấy bài viết.",
+                "id");
+        }
+
+        if (article.Status == NewsStatus.Closed)
+        {
+            throw new NewsException(
+                "NEWS_ARTICLE_CLOSED",
+                "Bài viết đã đóng không thể chỉnh sửa hoặc đăng lại.",
+                "id");
+        }
+
+        // 2. Parse trạng thái đích và kiểm tra transition từ trạng thái hiện tại.
+        var isStatusParsed = Enum.TryParse<NewsStatus>(
+            request.Status,
+            ignoreCase: false,
+            out var targetStatus);
+
+        if (!isStatusParsed || !Enum.IsDefined(targetStatus))
+        {
+            throw new NewsException(
+                "NEWS_VALIDATION_ERROR",
+                "Thông tin cập nhật bài viết không hợp lệ.",
+                "status");
+        }
+
+        var isValidTransition = false;
+
+        if (article.Status == NewsStatus.Draft)
+        {
+            isValidTransition = targetStatus == NewsStatus.Draft ||
+                targetStatus == NewsStatus.Published;
+        }
+        else if (article.Status == NewsStatus.Published)
+        {
+            isValidTransition = targetStatus == NewsStatus.Published ||
+                targetStatus == NewsStatus.Closed;
+        }
+
+        if (!isValidTransition)
+        {
+            throw new NewsException(
+                "NEWS_STATUS_TRANSITION_INVALID",
+                "Không thể chuyển bài viết sang trạng thái đã chọn.",
+                "status");
+        }
+
+        // 3. Validate nội dung theo trạng thái đích.
+        var title = request.Title?.Trim();
+        var summary = request.Summary?.Trim();
+        var content = request.Content?.Trim();
+        var requiredFields = new List<string>();
+
+        if (string.IsNullOrWhiteSpace(title))
+        {
+            requiredFields.Add("title");
+        }
+
+        if (targetStatus == NewsStatus.Published)
+        {
+            if (string.IsNullOrWhiteSpace(summary))
+            {
+                requiredFields.Add("summary");
+            }
+
+            if (string.IsNullOrWhiteSpace(content))
+            {
+                requiredFields.Add("content");
+            }
+        }
+
+        if (requiredFields.Count > 0)
+        {
+            throw new NewsException(
+                "NEWS_VALIDATION_ERROR",
+                "Thông tin cập nhật bài viết không hợp lệ.",
+                requiredFields.ToArray());
+        }
+
+        if (targetStatus == NewsStatus.Published &&
+            !HasMinimumPublishedContentLength(content!))
+        {
+            throw new NewsException(
+                "NEWS_CONTENT_TOO_SHORT",
+                "Nội dung bài viết phải có ít nhất 300 ký tự.",
+                "content");
+        }
+
+        var categoryIds = request.CategoryIds ?? new List<Guid>();
+
+        if (targetStatus == NewsStatus.Published && categoryIds.Count == 0)
+        {
+            throw new NewsException(
+                "NEWS_CATEGORY_REQUIRED",
+                "Vui lòng chọn ít nhất một danh mục để đăng bài viết.",
+                "categoryIds");
+        }
+
+        var hasDuplicateCategory = categoryIds
+            .GroupBy(categoryId => categoryId)
+            .Any(group => group.Count() > 1);
+
+        if (hasDuplicateCategory)
+        {
+            throw new NewsException(
+                "NEWS_CATEGORY_INVALID",
+                "Danh mục bài viết không được trùng lặp.",
+                "categoryIds");
+        }
+
+        var categories = await _dbContext.NewsCategories
+            .AsNoTracking()
+            .Where(category => categoryIds.Contains(category.Id))
+            .OrderBy(category => category.Name)
+            .ThenBy(category => category.Id)
+            .ToListAsync();
+
+        if (categories.Count != categoryIds.Count)
+        {
+            throw new NewsException(
+                "NEWS_CATEGORY_INVALID",
+                "Một hoặc nhiều danh mục không tồn tại.",
+                "categoryIds");
+        }
+
+        // 4. Áp dụng trạng thái và thời gian xuất bản theo transition hợp lệ.
+        var nowUtc = DateTimeOffset.UtcNow;
+        var publishAt = article.PublishAt;
+
+        if (article.Status == NewsStatus.Draft && targetStatus == NewsStatus.Draft)
+        {
+            publishAt = null;
+        }
+        else if (article.Status == NewsStatus.Draft && targetStatus == NewsStatus.Published)
+        {
+            publishAt = nowUtc;
+        }
+
+        article.Title = title!;
+        article.Summary = summary;
+        article.Content = content;
+        article.Status = targetStatus;
+        article.Published = targetStatus == NewsStatus.Published;
+        article.PublishAt = publishAt;
+        article.UpdatedAt = nowUtc;
+
+        var newCategoryLinks = categories
+            .Select(category => new NewsArticleCategory
+            {
+                Id = Guid.NewGuid(),
+                NewsArticleId = article.Id,
+                NewsCategoryId = category.Id
+            })
+            .ToList();
+
+        // 5. Lưu nội dung, trạng thái và category links trong cùng một transaction.
+        try
+        {
+            await using var transaction = await _dbContext.Database.BeginTransactionAsync();
+
+            _dbContext.NewsArticleCategories.RemoveRange(article.NewsArticleCategories);
+            _dbContext.NewsArticleCategories.AddRange(newCategoryLinks);
+            await _dbContext.SaveChangesAsync();
+            await transaction.CommitAsync();
+        }
+        catch (DbUpdateException exception)
+        {
+            throw new NewsException(
+                "NEWS_ARTICLE_UPDATE_FAILED",
+                "Không thể cập nhật bài viết.",
+                exception);
+        }
+
+        // 6. Trả dữ liệu bài viết sau cập nhật theo contract TDD-010.
+        return new Response.UpdateNewsResponse
+        {
+            Id = article.Id,
+            Title = article.Title,
+            Summary = article.Summary,
+            Content = article.Content,
+            AuthorName = article.Creator.FullName,
+            CreatedAt = article.CreatedAt,
+            UpdatedAt = ConvertUpdatedAtToVietnamDate(article.UpdatedAt),
+            PublishAt = article.PublishAt,
+            Status = GetDisplayName(article.Status),
+            Categories = categories
+                .Select(category => new Response.NewsCategoryResponse
+                {
+                    Id = category.Id,
+                    Name = category.Name
+                })
+                .ToList()
+        };
+    }
+
     private static bool HasMinimumPublishedContentLength(string content)
     {
         var nonWhitespaceCharacterCount = 0;

@@ -1,8 +1,17 @@
 namespace VNZ.Service.NewsService;
 
-public class Request
+public class  Request
 {
     public class CreateNewsRequest
+    {
+        public string? Title { get; set; }
+        public string? Summary { get; set; }
+        public string? Content { get; set; }
+        public List<Guid>? CategoryIds { get; set; } = new();
+        public string? Status { get; set; }
+    }
+
+    public class UpdateNewsRequest
     {
         public string? Title { get; set; }
         public string? Summary { get; set; }
