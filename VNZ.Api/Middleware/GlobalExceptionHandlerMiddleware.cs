@@ -33,6 +33,7 @@ public class GlobalExceptionHandlerMiddleware : IMiddleware
         {
             AuthException authStatusException => GetAuthStatusCode(authStatusException.Code),
             JobPostException jobPostStatusException => GetJobPostStatusCode(jobPostStatusException.Code),
+            NewsException newsStatusException => GetNewsStatusCode(newsStatusException.Code),
             TeamMemberException teamMemberStatusException => GetTeamMemberStatusCode(teamMemberStatusException.Code),
             DbUpdateException when IsCreateMemberRequest(context) || IsCreateJobPostRequest(context) =>
                 HttpStatusCode.InternalServerError,
@@ -50,6 +51,7 @@ public class GlobalExceptionHandlerMiddleware : IMiddleware
         {
             AuthException authPayloadException => (authPayloadException.Code, authPayloadException.Message),
             JobPostException jobPostPayloadException => (jobPostPayloadException.Code, jobPostPayloadException.Message),
+            NewsException newsPayloadException => (newsPayloadException.Code, newsPayloadException.Message),
             TeamMemberException teamMemberPayloadException => (teamMemberPayloadException.Code, teamMemberPayloadException.Message),
             DbUpdateException when IsCreateMemberRequest(context) =>
                 ("MEMBER_CREATE_FAILED", "Không thể tạo thành viên."),
@@ -75,9 +77,11 @@ public class GlobalExceptionHandlerMiddleware : IMiddleware
                         ? authException.Fields
                         : exception is JobPostException jobPostException
                             ? jobPostException.Fields
-                            : exception is TeamMemberException teamMemberException
-                                ? teamMemberException.Fields
-                    : Array.Empty<string>()
+                            : exception is NewsException newsException
+                                ? newsException.Fields
+                                : exception is TeamMemberException teamMemberException
+                                    ? teamMemberException.Fields
+                                    : Array.Empty<string>()
             },
             message: message,
             traceId: context.TraceIdentifier);
@@ -119,6 +123,16 @@ public class GlobalExceptionHandlerMiddleware : IMiddleware
             "JOB_POST_EXPIRED" => HttpStatusCode.Conflict,
             "JOB_POST_CREATE_FAILED" => HttpStatusCode.InternalServerError,
             "JOB_POST_UPDATE_FAILED" => HttpStatusCode.InternalServerError,
+            _ => HttpStatusCode.InternalServerError
+        };
+    }
+
+    private static HttpStatusCode GetNewsStatusCode(string code)
+    {
+        return code switch
+        {
+            "NEWS_QUERY_INVALID" => HttpStatusCode.BadRequest,
+            "NEWS_LIST_READ_FAILED" => HttpStatusCode.InternalServerError,
             _ => HttpStatusCode.InternalServerError
         };
     }
