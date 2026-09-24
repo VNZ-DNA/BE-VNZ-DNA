@@ -5,16 +5,17 @@ using VNZ.Repository.Entity.Enum;
 
 public class ContactInquiry : BaseEntity
 {
+    public ContactInquiryTopic InquiryTopic { get; set; }
     public string FullName { get; set; } = null!;
     public string Email { get; set; } = null!;
     public string? Phone { get; set; }
     public string? CompanyName { get; set; }
-    public string? BudgetRange { get; set; }
-    public DateTimeOffset? ExpectedStartDate { get; set; }
+    public ContactBudgetRange? BudgetRange { get; set; }
+    public ContactExpectedStart? ExpectedStart { get; set; }
     public string? Message { get; set; }
     public string? Source { get; set; }
     public bool IsRead { get; set; }
-    public ContactStatus? ContactStatus { get; set; }
+    public ContactStatus ContactStatus { get; set; } = ContactStatus.NotContacted;
     public Guid? ContactedBy { get; set; }
     public DateTimeOffset CreatedAt { get; set; }
 

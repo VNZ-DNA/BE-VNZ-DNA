@@ -36,10 +36,12 @@ public class GlobalExceptionHandlerMiddleware : IMiddleware
             JobPostException jobPostStatusException => GetJobPostStatusCode(jobPostStatusException.Code),
             NewsException newsStatusException => GetNewsStatusCode(newsStatusException.Code),
             TeamMemberException teamMemberStatusException => GetTeamMemberStatusCode(teamMemberStatusException.Code),
+            ContactException contactStatusException => GetContactStatusCode(contactStatusException.Code),
             DbException when IsCreateNewsRequest(context) => HttpStatusCode.InternalServerError,
             DbException when IsUpdateNewsRequest(context) => HttpStatusCode.InternalServerError,
             DbException when IsNewsDetailRequest(context) => HttpStatusCode.InternalServerError,
             DbException when IsNewsListRequest(context) => HttpStatusCode.InternalServerError,
+            DbException when IsContactListRequest(context) => HttpStatusCode.InternalServerError,
             DbUpdateException when IsCreateMemberRequest(context) || IsCreateJobPostRequest(context) =>
                 HttpStatusCode.InternalServerError,
             NotFoundException => HttpStatusCode.NotFound,
@@ -58,6 +60,7 @@ public class GlobalExceptionHandlerMiddleware : IMiddleware
             JobPostException jobPostPayloadException => (jobPostPayloadException.Code, jobPostPayloadException.Message),
             NewsException newsPayloadException => (newsPayloadException.Code, newsPayloadException.Message),
             TeamMemberException teamMemberPayloadException => (teamMemberPayloadException.Code, teamMemberPayloadException.Message),
+            ContactException contactPayloadException => (contactPayloadException.Code, contactPayloadException.Message),
             DbException when IsCreateNewsRequest(context) =>
                 ("NEWS_ARTICLE_CREATE_FAILED", "Không thể tạo bài viết."),
             DbException when IsUpdateNewsRequest(context) =>
@@ -66,6 +69,8 @@ public class GlobalExceptionHandlerMiddleware : IMiddleware
                 ("NEWS_DETAIL_READ_FAILED", "Không thể đọc chi tiết bài viết."),
             DbException when IsNewsListRequest(context) =>
                 ("NEWS_LIST_READ_FAILED", "Không thể đọc danh sách bài viết."),
+            DbException when IsContactListRequest(context) =>
+                ("CONTACT_LIST_READ_FAILED", "Không thể đọc danh sách liên hệ."),
             DbUpdateException when IsCreateMemberRequest(context) =>
                 ("MEMBER_CREATE_FAILED", "Không thể tạo thành viên."),
             DbUpdateException when IsCreateJobPostRequest(context) =>
@@ -94,7 +99,9 @@ public class GlobalExceptionHandlerMiddleware : IMiddleware
                                 ? newsException.Fields
                                 : exception is TeamMemberException teamMemberException
                                     ? teamMemberException.Fields
-                                    : Array.Empty<string>()
+                                    : exception is ContactException contactException
+                                        ? contactException.Fields
+                                        : Array.Empty<string>()
             },
             message: message,
             traceId: context.TraceIdentifier);
@@ -176,6 +183,16 @@ public class GlobalExceptionHandlerMiddleware : IMiddleware
         };
     }
 
+    private static HttpStatusCode GetContactStatusCode(string code)
+    {
+        return code switch
+        {
+            "CONTACT_QUERY_INVALID" => HttpStatusCode.BadRequest,
+            "CONTACT_LIST_READ_FAILED" => HttpStatusCode.InternalServerError,
+            _ => HttpStatusCode.InternalServerError
+        };
+    }
+
     private static bool IsCreateMemberRequest(HttpContext context)
     {
         return HttpMethods.IsPost(context.Request.Method) &&
@@ -186,6 +203,12 @@ public class GlobalExceptionHandlerMiddleware : IMiddleware
     {
         return HttpMethods.IsGet(context.Request.Method) &&
             context.Request.Path.Equals("/api/v1/admin/news", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool IsContactListRequest(HttpContext context)
+    {
+        return HttpMethods.IsGet(context.Request.Method) &&
+            context.Request.Path.Equals("/api/v1/admin/contacts", StringComparison.OrdinalIgnoreCase);
     }
 
     private static bool IsNewsDetailRequest(HttpContext context)
