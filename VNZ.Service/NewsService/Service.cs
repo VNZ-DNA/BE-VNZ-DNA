@@ -160,9 +160,7 @@ public sealed class Service : IService
                 CreatedAt = article.CreatedAt,
                 PublishAt = article.PublishAt,
                 Status = GetDisplayName(article.Status),
-                Categories = categoriesByArticleId.TryGetValue(article.Id, out var categories)
-                    ? categories
-                    : new List<Response.NewsCategoryResponse>()
+                Categories = GetCategories(categoriesByArticleId, article.Id)
             })
             .ToList();
 
@@ -187,5 +185,17 @@ public sealed class Service : IService
             .OfType<DisplayAttribute>()
             .SingleOrDefault()?
             .GetName() ?? value.ToString();
+    }
+
+    private static List<Response.NewsCategoryResponse> GetCategories(
+        Dictionary<Guid, List<Response.NewsCategoryResponse>> categoriesByArticleId,
+        Guid articleId)
+    {
+        if (categoriesByArticleId.ContainsKey(articleId))
+        {
+            return categoriesByArticleId[articleId];
+        }
+
+        return new List<Response.NewsCategoryResponse>();
     }
 }
