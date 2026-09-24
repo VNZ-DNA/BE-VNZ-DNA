@@ -28,4 +28,15 @@ public sealed class NewsController : ControllerBase
             "Lấy danh sách bài viết thành công.",
             HttpContext.TraceIdentifier));
     }
+
+    [HttpGet("categories")]
+    public async Task<IActionResult> GetNewsCategories()
+    {
+        var data = await _newsService.GetNewsCategoriesAsync();
+
+        return Ok(ResponseBuilder.SuccessResponse(
+            data,
+            "Lấy danh sách danh mục bài viết thành công.",
+            HttpContext.TraceIdentifier));
+    }
 }
