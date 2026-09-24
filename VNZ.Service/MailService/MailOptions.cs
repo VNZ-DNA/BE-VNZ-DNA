@@ -1,12 +1,10 @@
-using System.ComponentModel.DataAnnotations;
-
 namespace VNZ.Service.MailService;
 
 public class MailOptions
 {
-    [Required] public string Mail { get; set; } = string.Empty;
-    [Required] public string DisplayName { get; set; } = string.Empty;
-    [Required] public string Password { get; set; } = string.Empty;
-    [Required] public string Host { get; set; } = string.Empty;
-    [Required] public int Port { get; set; }
+    public string BaseUrl { get; set; } = "https://api.brevo.com/v3/";
+    public string ApiKey { get; set; } = string.Empty;
+    public string SenderEmail { get; set; } = string.Empty;
+    public string SenderName { get; set; } = string.Empty;
+    public string ReplyToEmail { get; set; } = string.Empty;
 }

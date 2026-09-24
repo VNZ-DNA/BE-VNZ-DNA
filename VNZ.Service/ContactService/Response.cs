@@ -39,4 +39,11 @@ public class Response
         public string ContactStatus { get; set; } = string.Empty;
         public bool CanSendEmail { get; set; }
     }
+
+    public class SendContactReplyResponse
+    {
+        public Guid Id { get; set; }
+        public string ContactStatus { get; set; } = string.Empty;
+        public Guid ContactedBy { get; set; }
+    }
 }

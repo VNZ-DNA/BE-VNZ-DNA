@@ -2,12 +2,15 @@ namespace VNZ.Service.MailService;
 
 public interface IService
 {
-    public Task SendMail(MailContent content);
+    Task SendAsync(MailContent content);
 }
 
 public class MailContent
 {
-    public required string To { get; set; }
-    public required string Subject { get; set; }
-    public required string Body { get; set; }
+    public string To { get; set; } = string.Empty;
+    public string ToName { get; set; } = string.Empty;
+    public string Subject { get; set; } = string.Empty;
+    public string Body { get; set; } = string.Empty;
+    public string IdempotencyKey { get; set; } = string.Empty;
+    public bool IsHtmlBody { get; set; }
 }
