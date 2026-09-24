@@ -35,9 +35,7 @@ public sealed class JobApplicationController : ControllerBase
     }
 
     [HttpPost("{id:guid}/review")]
-    public async Task<IActionResult> Review(
-        Guid id,
-        [FromBody] Request.ReviewJobApplicationRequest request)
+    public async Task<IActionResult> Review(Guid id, [FromBody] Request.ReviewJobApplicationRequest request)
     {
         var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
         if (!Guid.TryParse(userId, out var adminUserId))

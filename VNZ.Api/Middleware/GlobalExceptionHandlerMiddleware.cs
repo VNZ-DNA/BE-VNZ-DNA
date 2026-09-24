@@ -1,4 +1,5 @@
 using System.Net;
+using System.Data.Common;
 using Microsoft.EntityFrameworkCore;
 using VNZ.Service.Exceptions;
 using VNZ.Service.Models;
@@ -35,6 +36,7 @@ public class GlobalExceptionHandlerMiddleware : IMiddleware
             JobPostException jobPostStatusException => GetJobPostStatusCode(jobPostStatusException.Code),
             NewsException newsStatusException => GetNewsStatusCode(newsStatusException.Code),
             TeamMemberException teamMemberStatusException => GetTeamMemberStatusCode(teamMemberStatusException.Code),
+            DbException when IsNewsListRequest(context) => HttpStatusCode.InternalServerError,
             DbUpdateException when IsCreateMemberRequest(context) || IsCreateJobPostRequest(context) =>
                 HttpStatusCode.InternalServerError,
             NotFoundException => HttpStatusCode.NotFound,
@@ -53,6 +55,8 @@ public class GlobalExceptionHandlerMiddleware : IMiddleware
             JobPostException jobPostPayloadException => (jobPostPayloadException.Code, jobPostPayloadException.Message),
             NewsException newsPayloadException => (newsPayloadException.Code, newsPayloadException.Message),
             TeamMemberException teamMemberPayloadException => (teamMemberPayloadException.Code, teamMemberPayloadException.Message),
+            DbException when IsNewsListRequest(context) =>
+                ("NEWS_LIST_READ_FAILED", "Không thể đọc danh sách bài viết."),
             DbUpdateException when IsCreateMemberRequest(context) =>
                 ("MEMBER_CREATE_FAILED", "Không thể tạo thành viên."),
             DbUpdateException when IsCreateJobPostRequest(context) =>
@@ -155,6 +159,12 @@ public class GlobalExceptionHandlerMiddleware : IMiddleware
     {
         return HttpMethods.IsPost(context.Request.Method) &&
             context.Request.Path.Equals("/api/v1/admin/team-members", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool IsNewsListRequest(HttpContext context)
+    {
+        return HttpMethods.IsGet(context.Request.Method) &&
+            context.Request.Path.Equals("/api/v1/admin/news", StringComparison.OrdinalIgnoreCase);
     }
 
     private static bool IsCreateJobPostRequest(HttpContext context)
