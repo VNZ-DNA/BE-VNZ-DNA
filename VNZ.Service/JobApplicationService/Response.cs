@@ -46,6 +46,10 @@ public static class Response
         public string? Phone { get; set; }
         public string? University { get; set; }
         public string? Major { get; set; }
+        public int? GraduationYear { get; set; }
+        public string? Availability { get; set; }
+        public DateOnly? AvailableStartDate { get; set; }
+        public string? ReferralSource { get; set; }
         public string? CvUrl { get; set; }
         public string? PortfolioUrl { get; set; }
         public string? CoverLetter { get; set; }
