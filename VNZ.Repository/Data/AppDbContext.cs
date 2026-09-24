@@ -112,6 +112,7 @@ public class AppDbContext : DbContext
             entity.Property(x => x.FullName).HasMaxLength(200).IsRequired();
             entity.Property(x => x.Email).HasMaxLength(320).IsRequired();
             entity.Property(x => x.Availability).HasMaxLength(100);
+            entity.Property(x => x.AvailableStartDate).HasMaxLength(100);
             entity.Property(x => x.ReferralSource).HasMaxLength(200);
             entity.Property(x => x.Status).HasConversion<string>().IsRequired();
             entity.Property(x => x.JobPostSnapshot).HasColumnType("jsonb");
