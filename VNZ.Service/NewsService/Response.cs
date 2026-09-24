@@ -15,7 +15,7 @@ public class Response
     {
         public Guid Id { get; set; }
         public required string Title { get; set; }
-        public string? AuthorName { get; set; }
+        public required string AuthorName { get; set; }
         public DateTimeOffset CreatedAt { get; set; }
         public DateTimeOffset? PublishAt { get; set; }
         public required string Status { get; set; }

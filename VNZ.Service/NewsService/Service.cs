@@ -113,9 +113,7 @@ public sealed class Service : IService
             {
                 article.Id,
                 article.Title,
-                AuthorName = article.Creator == null
-                    ? null
-                    : article.Creator.FullName,
+                AuthorName = article.Creator!.FullName,
                 article.CreatedAt,
                 article.PublishAt,
                 article.Status
@@ -174,6 +172,20 @@ public sealed class Service : IService
                 ? 0
                 : (int)Math.Ceiling(totalItems / (double)request.PageSize)
         };
+    }
+
+    public async Task<List<Response.NewsCategoryResponse>> GetNewsCategoriesAsync()
+    {
+        return await _dbContext.NewsCategories
+            .AsNoTracking()
+            .OrderBy(category => category.Name)
+            .ThenBy(category => category.Id)
+            .Select(category => new Response.NewsCategoryResponse
+            {
+                Id = category.Id,
+                Name = category.Name
+            })
+            .ToListAsync();
     }
 
     private static string GetDisplayName<TEnum>(TEnum value)
