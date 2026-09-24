@@ -4,6 +4,14 @@ namespace VNZ.Service.ProductService;
 
 public class Request
 {
+    public class CreateProductRequest
+    {
+        public string Name { get; set; } = string.Empty;
+        public string? LogoUrl { get; set; }
+        public string? ProductUrl { get; set; }
+        public ProductContentRequest? Content { get; set; }
+    }
+
     public class UpdateProductRequest
     {
         public string Name { get; set; } = string.Empty;
