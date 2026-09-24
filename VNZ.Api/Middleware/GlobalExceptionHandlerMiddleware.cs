@@ -108,13 +108,17 @@ public class GlobalExceptionHandlerMiddleware : IMiddleware
             "JOB_POST_INVALID_REQUEST" or
             "JOB_POST_INVALID_STATUS" or
             "JOB_POST_VALIDATION_FAILED" or
+            "JOB_POST_VALIDATION_ERROR" or
             "JOB_POST_INVALID_EXPIRY" or
             "JOB_POST_INVALID_PAGINATION" or
             "JOB_POST_INVALID_SEARCH" or
             "JOB_POST_INVALID_STATUS_FILTER" => HttpStatusCode.BadRequest,
             "JOB_POST_NOT_FOUND" => HttpStatusCode.NotFound,
             "DEPARTMENT_NOT_FOUND" => HttpStatusCode.NotFound,
+            "JOB_POST_CLOSED" or
+            "JOB_POST_EXPIRED" => HttpStatusCode.Conflict,
             "JOB_POST_CREATE_FAILED" => HttpStatusCode.InternalServerError,
+            "JOB_POST_UPDATE_FAILED" => HttpStatusCode.InternalServerError,
             _ => HttpStatusCode.InternalServerError
         };
     }

@@ -49,4 +49,22 @@ public class Response
         public string? Requirements { get; set; }
         public bool CanEdit { get; set; }
     }
+
+    public class UpdateJobPostResponse
+    {
+        public Guid Id { get; set; }
+        public required string Title { get; set; }
+        public string? CreatedByName { get; set; }
+        public DateTimeOffset? UpdatedAt { get; set; }
+        public required string Status { get; set; }
+        public DateTimeOffset? ExpiredAt { get; set; }
+        public string? Department { get; set; }
+        public string? EmploymentType { get; set; }
+        public string? JobLevel { get; set; }
+        public int NumberOfPositions { get; set; }
+        public required List<string> Skills { get; set; }
+        public string? ShortDescription { get; set; }
+        public string? Description { get; set; }
+        public string? Requirements { get; set; }
+    }
 }

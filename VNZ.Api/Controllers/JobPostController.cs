@@ -65,4 +65,19 @@ public class JobPostController : ControllerBase
 
         return Ok(response);
     }
+
+    [HttpPut("{id:guid}")]
+    public async Task<IActionResult> UpdateJobPost(
+        Guid id,
+        [FromBody] Request.UpdateJobPostRequest request)
+    {
+        var data = await _jobPostService.UpdateJobPostAsync(id, request);
+
+        var response = ResponseBuilder.SuccessResponse(
+            data,
+            "Cập nhật tin tuyển dụng thành công.",
+            HttpContext.TraceIdentifier);
+
+        return Ok(response);
+    }
 }
