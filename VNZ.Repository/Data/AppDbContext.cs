@@ -130,6 +130,7 @@ public class AppDbContext : DbContext
             entity.Property(x => x.Email).HasMaxLength(320).IsRequired();
             entity.Property(x => x.BudgetRange).HasConversion<string>();
             entity.Property(x => x.ExpectedStart).HasConversion<string>();
+            entity.Property(x => x.Source).HasConversion<string>();
             entity.Property(x => x.ContactStatus)
                 .HasConversion<string>()
                 .IsRequired()
