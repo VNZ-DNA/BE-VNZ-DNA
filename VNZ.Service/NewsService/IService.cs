@@ -2,6 +2,10 @@ namespace VNZ.Service.NewsService;
 
 public interface IService
 {
+    Task<Response.CreateNewsResponse> CreateNewsAsync(
+        Request.CreateNewsRequest request,
+        Guid createdBy);
+
     Task<Response.PagedNewsListResponse> GetNewsListAsync(
         Request.GetNewsListRequest request);
 

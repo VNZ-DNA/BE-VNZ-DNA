@@ -1,6 +1,7 @@
 using System.ComponentModel.DataAnnotations;
 using Microsoft.EntityFrameworkCore;
 using VNZ.Repository;
+using VNZ.Repository.Entity;
 using VNZ.Repository.Entity.Enum;
 using VNZ.Service.Exceptions;
 
@@ -8,6 +9,7 @@ namespace VNZ.Service.NewsService;
 
 public sealed class Service : IService
 {
+    private const int MinimumPublishedContentLength = 300;
     private static readonly TimeSpan VietnamUtcOffset = TimeSpan.FromHours(7);
 
     private readonly AppDbContext _dbContext;
@@ -15,6 +17,196 @@ public sealed class Service : IService
     public Service(AppDbContext dbContext)
     {
         _dbContext = dbContext;
+    }
+
+    public async Task<Response.CreateNewsResponse> CreateNewsAsync(
+        Request.CreateNewsRequest request,
+        Guid createdBy)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+
+        // 1. Parse trạng thái tạo bài viết.
+        var isStatusParsed = Enum.TryParse<NewsStatus>(
+            request.Status,
+            ignoreCase: false,
+            out var status);
+
+        if (!isStatusParsed || !Enum.IsDefined(status) ||
+            (status != NewsStatus.Draft && status != NewsStatus.Published))
+        {
+            throw new NewsException(
+                "NEWS_STATUS_INVALID",
+                "Trạng thái tạo bài viết không hợp lệ.",
+                "status");
+        }
+
+        // 2. Validate dữ liệu bắt buộc theo trạng thái đích.
+        var title = request.Title?.Trim();
+        var summary = request.Summary?.Trim();
+        var content = request.Content?.Trim();
+        var requiredFields = new List<string>();
+
+        if (string.IsNullOrWhiteSpace(title))
+        {
+            requiredFields.Add("title");
+        }
+
+        if (status == NewsStatus.Published)
+        {
+            if (string.IsNullOrWhiteSpace(summary))
+            {
+                requiredFields.Add("summary");
+            }
+
+            if (string.IsNullOrWhiteSpace(content))
+            {
+                requiredFields.Add("content");
+            }
+        }
+
+        if (requiredFields.Count > 0)
+        {
+            throw new NewsException(
+                "NEWS_VALIDATION_ERROR",
+                "Thông tin bài viết không hợp lệ.",
+                requiredFields.ToArray());
+        }
+
+        if (status == NewsStatus.Published &&
+            !HasMinimumPublishedContentLength(content!))
+        {
+            throw new NewsException(
+                "NEWS_CONTENT_TOO_SHORT",
+                "Nội dung bài viết phải có ít nhất 300 ký tự.",
+                "content");
+        }
+
+        var categoryIds = request.CategoryIds ?? new List<Guid>();
+
+        if (status == NewsStatus.Published && categoryIds.Count == 0)
+        {
+            throw new NewsException(
+                "NEWS_CATEGORY_REQUIRED",
+                "Vui lòng chọn ít nhất một danh mục để đăng bài viết.",
+                "categoryIds");
+        }
+
+        var hasDuplicateCategory = categoryIds
+            .GroupBy(categoryId => categoryId)
+            .Any(group => group.Count() > 1);
+
+        if (hasDuplicateCategory)
+        {
+            throw new NewsException(
+                "NEWS_CATEGORY_INVALID",
+                "Danh mục bài viết không được trùng lặp.",
+                "categoryIds");
+        }
+
+        // 3. Kiểm tra tác giả và danh mục trước khi mở transaction ghi.
+        var creator = await _dbContext.Users
+            .AsNoTracking()
+            .SingleAsync(user => user.Id == createdBy);
+
+        var categories = await _dbContext.NewsCategories
+            .AsNoTracking()
+            .Where(category => categoryIds.Contains(category.Id))
+            .OrderBy(category => category.Name)
+            .ThenBy(category => category.Id)
+            .ToListAsync();
+
+        if (categories.Count != categoryIds.Count)
+        {
+            throw new NewsException(
+                "NEWS_CATEGORY_INVALID",
+                "Một hoặc nhiều danh mục không tồn tại.",
+                "categoryIds");
+        }
+
+        // 4. Lưu bài viết và category links trong cùng một transaction.
+        var nowUtc = DateTimeOffset.UtcNow;
+        var article = new NewsArticle
+        {
+            Id = Guid.NewGuid(),
+            Title = title!,
+            Summary = summary,
+            Content = content,
+            Status = status,
+            Published = status == NewsStatus.Published,
+            CreatedBy = createdBy,
+            CreatedAt = nowUtc,
+            UpdatedAt = null,
+            PublishAt = status == NewsStatus.Published ? nowUtc : null
+        };
+
+        var categoryLinks = categories
+            .Select(category => new NewsArticleCategory
+            {
+                Id = Guid.NewGuid(),
+                NewsArticleId = article.Id,
+                NewsCategoryId = category.Id
+            })
+            .ToList();
+
+        try
+        {
+            await using var transaction = await _dbContext.Database.BeginTransactionAsync();
+
+            _dbContext.NewsArticles.Add(article);
+            _dbContext.NewsArticleCategories.AddRange(categoryLinks);
+            await _dbContext.SaveChangesAsync();
+            await transaction.CommitAsync();
+        }
+        catch (DbUpdateException exception)
+        {
+            throw new NewsException(
+                "NEWS_ARTICLE_CREATE_FAILED",
+                "Không thể tạo bài viết.",
+                exception);
+        }
+
+        // 5. Trả dữ liệu đã lưu theo contract create.
+        return new Response.CreateNewsResponse
+        {
+            Id = article.Id,
+            Title = article.Title,
+            Summary = article.Summary,
+            Content = article.Content,
+            AuthorName = creator.FullName,
+            CreatedAt = article.CreatedAt,
+            UpdatedAt = null,
+            PublishAt = article.PublishAt,
+            Status = GetDisplayName(article.Status),
+            Categories = categories
+                .Select(category => new Response.NewsCategoryResponse
+                {
+                    Id = category.Id,
+                    Name = category.Name
+                })
+            .ToList()
+        };
+    }
+
+    private static bool HasMinimumPublishedContentLength(string content)
+    {
+        var nonWhitespaceCharacterCount = 0;
+
+        foreach (var character in content)
+        {
+            if (char.IsWhiteSpace(character))
+            {
+                continue;
+            }
+
+            nonWhitespaceCharacterCount++;
+
+            if (nonWhitespaceCharacterCount >= MinimumPublishedContentLength)
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     public async Task<Response.PagedNewsListResponse> GetNewsListAsync(
