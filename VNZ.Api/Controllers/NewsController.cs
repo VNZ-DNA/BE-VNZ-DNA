@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using VNZ.Service.Exceptions;
 using VNZ.Service.Models;
 using NewsService = VNZ.Service.NewsService;
 
@@ -37,6 +38,27 @@ public sealed class NewsController : ControllerBase
         return Ok(ResponseBuilder.SuccessResponse(
             data,
             "Lấy danh sách danh mục bài viết thành công.",
+            HttpContext.TraceIdentifier));
+    }
+
+    [HttpGet("{id}")]
+    public async Task<IActionResult> GetNewsDetail(string id)
+    {
+        var isValidId = Guid.TryParse(id, out var newsId);
+
+        if (!isValidId)
+        {
+            throw new NewsException(
+                "NEWS_ARTICLE_ID_INVALID",
+                "Mã bài viết không hợp lệ.",
+                "id");
+        }
+
+        var data = await _newsService.GetNewsDetailAsync(newsId);
+
+        return Ok(ResponseBuilder.SuccessResponse(
+            data,
+            "Lấy chi tiết bài viết thành công.",
             HttpContext.TraceIdentifier));
     }
 }
