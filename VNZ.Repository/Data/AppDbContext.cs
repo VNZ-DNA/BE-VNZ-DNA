@@ -125,9 +125,16 @@ public class AppDbContext : DbContext
         {
             entity.ToTable("Contact_Inquiry");
             entity.HasKey(x => x.Id);
+            entity.Property(x => x.InquiryTopic).HasConversion<string>().IsRequired();
             entity.Property(x => x.FullName).HasMaxLength(200).IsRequired();
             entity.Property(x => x.Email).HasMaxLength(320).IsRequired();
-            entity.Property(x => x.ContactStatus).HasConversion<string>();
+            entity.Property(x => x.BudgetRange).HasConversion<string>();
+            entity.Property(x => x.ExpectedStart).HasConversion<string>();
+            entity.Property(x => x.ContactStatus)
+                .HasConversion<string>()
+                .IsRequired()
+                .HasSentinel(ContactStatus.NotContacted)
+                .HasDefaultValue(ContactStatus.NotContacted);
             entity.HasIndex(x => x.IsRead);
             entity.HasOne(x => x.ContactedByUser).WithMany(x => x.ContactInquiries).HasForeignKey(x => x.ContactedBy).OnDelete(DeleteBehavior.Restrict);
         });
