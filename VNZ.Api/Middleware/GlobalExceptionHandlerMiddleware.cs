@@ -34,6 +34,7 @@ public class GlobalExceptionHandlerMiddleware : IMiddleware
             AuthException authStatusException => GetAuthStatusCode(authStatusException.Code),
             JobPostException jobPostStatusException => GetJobPostStatusCode(jobPostStatusException.Code),
             NewsException newsStatusException => GetNewsStatusCode(newsStatusException.Code),
+            ProductException productStatusException => GetProductStatusCode(productStatusException.Code),
             TeamMemberException teamMemberStatusException => GetTeamMemberStatusCode(teamMemberStatusException.Code),
             DbUpdateException when IsCreateMemberRequest(context) || IsCreateJobPostRequest(context) =>
                 HttpStatusCode.InternalServerError,
@@ -52,6 +53,7 @@ public class GlobalExceptionHandlerMiddleware : IMiddleware
             AuthException authPayloadException => (authPayloadException.Code, authPayloadException.Message),
             JobPostException jobPostPayloadException => (jobPostPayloadException.Code, jobPostPayloadException.Message),
             NewsException newsPayloadException => (newsPayloadException.Code, newsPayloadException.Message),
+            ProductException productPayloadException => (productPayloadException.Code, productPayloadException.Message),
             TeamMemberException teamMemberPayloadException => (teamMemberPayloadException.Code, teamMemberPayloadException.Message),
             DbUpdateException when IsCreateMemberRequest(context) =>
                 ("MEMBER_CREATE_FAILED", "Không thể tạo thành viên."),
@@ -79,6 +81,8 @@ public class GlobalExceptionHandlerMiddleware : IMiddleware
                             ? jobPostException.Fields
                             : exception is NewsException newsException
                                 ? newsException.Fields
+                                : exception is ProductException productException
+                                    ? productException.Fields
                                 : exception is TeamMemberException teamMemberException
                                     ? teamMemberException.Fields
                                     : Array.Empty<string>()
@@ -133,6 +137,19 @@ public class GlobalExceptionHandlerMiddleware : IMiddleware
         {
             "NEWS_QUERY_INVALID" => HttpStatusCode.BadRequest,
             "NEWS_LIST_READ_FAILED" => HttpStatusCode.InternalServerError,
+            _ => HttpStatusCode.InternalServerError
+        };
+    }
+
+    private static HttpStatusCode GetProductStatusCode(string code)
+    {
+        return code switch
+        {
+            "PRODUCT_LIST_QUERY_INVALID" or
+            "PRODUCT_ORDER_INVALID" => HttpStatusCode.BadRequest,
+            "PRODUCT_ORDER_CONFLICT" => HttpStatusCode.Conflict,
+            "PRODUCT_LIST_READ_FAILED" or
+            "PRODUCT_ORDER_UPDATE_FAILED" => HttpStatusCode.InternalServerError,
             _ => HttpStatusCode.InternalServerError
         };
     }
