@@ -59,7 +59,11 @@ public class AppDbContext : DbContext
             entity.Property(x => x.Status).HasConversion<string>().IsRequired();
             entity.HasIndex(x => x.Status);
             entity.HasIndex(x => x.CreatedAt);
-            entity.HasOne(x => x.Creator).WithMany(x => x.NewsArticles).HasForeignKey(x => x.CreatedBy).OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne(x => x.Creator)
+                .WithMany(x => x.NewsArticles)
+                .HasForeignKey(x => x.CreatedBy)
+                .IsRequired()
+                .OnDelete(DeleteBehavior.Restrict);
         });
 
         modelBuilder.Entity<NewsCategory>(entity =>

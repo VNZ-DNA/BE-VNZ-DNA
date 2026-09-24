@@ -10,11 +10,11 @@ public class NewsArticle : BaseEntity
     public string? Content { get; set; }
     public NewsStatus Status { get; set; }
     public bool Published { get; set; }
-    public Guid? CreatedBy { get; set; }
+    public Guid CreatedBy { get; set; }
     public DateTimeOffset CreatedAt { get; set; }
     public DateTimeOffset? UpdatedAt { get; set; }
     public DateTimeOffset? PublishAt { get; set; }
 
-    public User? Creator { get; set; }
+    public User Creator { get; set; } = null!;
     public ICollection<NewsArticleCategory> NewsArticleCategories { get; set; } = new List<NewsArticleCategory>();
 }
