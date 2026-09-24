@@ -356,6 +356,258 @@ public class Service : IService
         };
     }
 
+    public async Task<Response.UpdateJobPostResponse> UpdateJobPostAsync(
+        Guid id,
+        Request.UpdateJobPostRequest request)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+
+        if (!request.Action.HasValue)
+        {
+            throw new JobPostException(
+                "JOB_POST_INVALID_ACTION",
+                "Hành động cập nhật tin không được để trống.",
+                "action");
+        }
+
+        var jobPost = await _dbContext.JobPosts
+            .Include(item => item.Department)
+            .Include(item => item.Creator)
+            .SingleOrDefaultAsync(item => item.Id == id);
+
+        if (jobPost is null)
+        {
+            throw new JobPostException(
+                "JOB_POST_NOT_FOUND",
+                "Không tìm thấy tin tuyển dụng.");
+        }
+
+        if (jobPost.Status == JobPostStatus.Closed)
+        {
+            throw new JobPostException(
+                "JOB_POST_CLOSED",
+                "Tin tuyển dụng đã đóng, không được chỉnh sửa.");
+        }
+
+        if (jobPost.Status == JobPostStatus.Expired)
+        {
+            throw new JobPostException(
+                "JOB_POST_EXPIRED",
+                "Tin tuyển dụng đã hết hạn, không được chỉnh sửa.");
+        }
+
+        var nowUtc = DateTimeOffset.UtcNow;
+
+        if (jobPost.Status == JobPostStatus.Open &&
+            jobPost.ExpiredAt.HasValue &&
+            jobPost.ExpiredAt.Value <= nowUtc)
+        {
+            throw new JobPostException(
+                "JOB_POST_EXPIRED",
+                "Tin tuyển dụng đã hết hạn, không được chỉnh sửa.");
+        }
+
+        if (request.Action == JobPostAction.Close)
+        {
+            if (jobPost.Status != JobPostStatus.Open)
+            {
+                throw new JobPostException(
+                    "JOB_POST_INVALID_ACTION",
+                    "Chỉ tin đang tuyển mới có thể đóng.",
+                    "action");
+            }
+
+            jobPost.Status = JobPostStatus.Closed;
+            jobPost.UpdatedAt = nowUtc;
+
+            await SaveJobPostUpdateAsync(jobPost);
+            return ToUpdateResponse(jobPost);
+        }
+
+        if (request.Action == JobPostAction.SavedDraft &&
+            jobPost.Status != JobPostStatus.Draft)
+        {
+            throw new JobPostException(
+                "JOB_POST_INVALID_ACTION",
+                "Chỉ tin bản nháp mới có thể được lưu dưới dạng bản nháp.",
+                "action");
+        }
+
+        var title = request.Title?.Trim();
+        if (string.IsNullOrWhiteSpace(title) || title.Length > 300)
+        {
+            throw new JobPostException(
+                "JOB_POST_VALIDATION_ERROR",
+                "Tiêu đề tin tuyển dụng không hợp lệ.",
+                "title");
+        }
+
+        var department = await FindDepartmentAsync(request.DepartmentId);
+        var skills = NormalizeSkills(request.Skills);
+
+        if (request.Action == JobPostAction.Publish)
+        {
+            var requiredFields = new List<string>();
+
+            if (!request.DepartmentId.HasValue)
+            {
+                requiredFields.Add("departmentId");
+            }
+
+            if (!request.EmploymentType.HasValue)
+            {
+                requiredFields.Add("employmentType");
+            }
+
+            if (!request.JobLevel.HasValue)
+            {
+                requiredFields.Add("jobLevel");
+            }
+
+            if (!request.NumberOfPositions.HasValue || request.NumberOfPositions < 1)
+            {
+                requiredFields.Add("numberOfPositions");
+            }
+
+            if (skills.Count == 0)
+            {
+                requiredFields.Add("skills");
+            }
+
+            if (string.IsNullOrWhiteSpace(request.ShortDescription))
+            {
+                requiredFields.Add("shortDescription");
+            }
+
+            if (string.IsNullOrWhiteSpace(request.Description))
+            {
+                requiredFields.Add("description");
+            }
+
+            if (string.IsNullOrWhiteSpace(request.Requirements))
+            {
+                requiredFields.Add("requirements");
+            }
+
+            if (!request.ExpiredAt.HasValue || request.ExpiredAt.Value <= nowUtc)
+            {
+                requiredFields.Add("expiredAt");
+            }
+
+            if (requiredFields.Count > 0)
+            {
+                throw new JobPostException(
+                    "JOB_POST_VALIDATION_ERROR",
+                    "Vui lòng nhập đầy đủ thông tin để lưu tin đang tuyển.",
+                    requiredFields.ToArray());
+            }
+        }
+
+        if (request.Action != JobPostAction.SavedDraft &&
+            request.Action != JobPostAction.Publish)
+        {
+            throw new JobPostException(
+                "JOB_POST_INVALID_ACTION",
+                "Hành động cập nhật tin không hợp lệ.",
+                "action");
+        }
+
+        jobPost.Title = title;
+        jobPost.DepartmentId = request.DepartmentId;
+        jobPost.Department = department;
+        jobPost.EmploymentType = request.EmploymentType;
+        jobPost.JobLevel = request.JobLevel;
+        jobPost.NumberOfPositions = request.NumberOfPositions ?? 0;
+        jobPost.Skills = skills;
+        jobPost.ShortDescription = request.ShortDescription?.Trim();
+        jobPost.Description = request.Description?.Trim();
+        jobPost.Requirements = request.Requirements?.Trim();
+        jobPost.ExpiredAt = request.ExpiredAt;
+        jobPost.Status = request.Action == JobPostAction.Publish
+            ? JobPostStatus.Open
+            : JobPostStatus.Draft;
+        jobPost.UpdatedAt = nowUtc;
+
+        await SaveJobPostUpdateAsync(jobPost);
+        return ToUpdateResponse(jobPost);
+    }
+
+    private async Task<Department?> FindDepartmentAsync(Guid? departmentId)
+    {
+        if (!departmentId.HasValue)
+        {
+            return null;
+        }
+
+        var department = await _dbContext.Departments
+            .SingleOrDefaultAsync(item => item.Id == departmentId.Value);
+
+        if (department is null)
+        {
+            throw new JobPostException(
+                "DEPARTMENT_NOT_FOUND",
+                "Phòng ban không tồn tại.",
+                "departmentId");
+        }
+
+        return department;
+    }
+
+    private static List<string> NormalizeSkills(List<string>? skills)
+    {
+        if (skills is null)
+        {
+            return new List<string>();
+        }
+
+        return skills
+            .Where(skill => !string.IsNullOrWhiteSpace(skill))
+            .Select(skill => skill.Trim())
+            .ToList();
+    }
+
+    private async Task SaveJobPostUpdateAsync(JobPost jobPost)
+    {
+        try
+        {
+            await using var transaction = await _dbContext.Database.BeginTransactionAsync();
+            await _dbContext.SaveChangesAsync();
+            await transaction.CommitAsync();
+        }
+        catch (DbUpdateException exception)
+        {
+            throw new JobPostException(
+                "JOB_POST_UPDATE_FAILED",
+                "Không thể cập nhật tin tuyển dụng.",
+                exception);
+        }
+    }
+
+    private static Response.UpdateJobPostResponse ToUpdateResponse(JobPost jobPost)
+    {
+        return new Response.UpdateJobPostResponse
+        {
+            Id = jobPost.Id,
+            Title = jobPost.Title,
+            CreatedByName = jobPost.Creator?.FullName,
+            UpdatedAt = jobPost.UpdatedAt,
+            Status = GetDisplayName(jobPost.Status),
+            ExpiredAt = jobPost.ExpiredAt,
+            Department = jobPost.Department?.Name,
+            EmploymentType = jobPost.EmploymentType.HasValue
+                ? GetDisplayName(jobPost.EmploymentType.Value)
+                : null,
+            JobLevel = jobPost.JobLevel.HasValue
+                ? GetDisplayName(jobPost.JobLevel.Value)
+                : null,
+            NumberOfPositions = jobPost.NumberOfPositions,
+            Skills = new List<string>(jobPost.Skills),
+            ShortDescription = jobPost.ShortDescription,
+            Description = jobPost.Description,
+            Requirements = jobPost.Requirements
+        };
+    }
+
     private static string GetDisplayName<TEnum>(TEnum value)
         where TEnum : struct, Enum
     {
