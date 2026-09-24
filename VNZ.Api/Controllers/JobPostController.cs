@@ -1,3 +1,4 @@
+using System.Security.Claims;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using VNZ.Service.JobPostService;
@@ -15,6 +16,28 @@ public class JobPostController : ControllerBase
     public JobPostController(IService jobPostService)
     {
         _jobPostService = jobPostService;
+    }
+
+    [HttpPost]
+    public async Task<IActionResult> CreateJobPost(
+        [FromBody] Request.CreateJobPostRequest request)
+    {
+        var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+
+        if (!Guid.TryParse(userId, out var createdBy))
+        {
+            return Unauthorized();
+        }
+
+        var data = await _jobPostService.CreateJobPostAsync(request, createdBy);
+        var response = ResponseBuilder.SuccessResponse(
+            data,
+            request.Action == JobPostAction.SavedDraft
+                ? "Lưu tin tuyển dụng thành công."
+                : "Đăng tin tuyển dụng thành công.",
+            HttpContext.TraceIdentifier);
+
+        return StatusCode(StatusCodes.Status201Created, response);
     }
 
     [HttpGet]
@@ -38,6 +61,21 @@ public class JobPostController : ControllerBase
         var response = ResponseBuilder.SuccessResponse(
             data,
             "Lấy chi tiết tin tuyển dụng thành công.",
+            HttpContext.TraceIdentifier);
+
+        return Ok(response);
+    }
+
+    [HttpPut("{id:guid}")]
+    public async Task<IActionResult> UpdateJobPost(
+        Guid id,
+        [FromBody] Request.UpdateJobPostRequest request)
+    {
+        var data = await _jobPostService.UpdateJobPostAsync(id, request);
+
+        var response = ResponseBuilder.SuccessResponse(
+            data,
+            "Cập nhật tin tuyển dụng thành công.",
             HttpContext.TraceIdentifier);
 
         return Ok(response);

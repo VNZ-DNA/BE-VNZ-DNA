@@ -2,6 +2,7 @@ namespace VNZ.Repository.Entity;
 
 using VNZ.Repository.Abstraction;
 using VNZ.Repository.Entity.Enum;
+using VNZ.Repository.Entity.Json;
 
 public class JobApplication : BaseEntity
 {
@@ -14,7 +15,7 @@ public class JobApplication : BaseEntity
     public string? CvUrl { get; set; }
     public string? PortfolioUrl { get; set; }
     public string? CoverLetter { get; set; }
-    public string? JobPostSnapshot { get; set; }
+    public JobPostSnapshot? JobPostSnapshot { get; set; }
     public JobApplicationStatus Status { get; set; }
     public DateTimeOffset? ReviewAt { get; set; }
     public Guid? ReviewedBy { get; set; }

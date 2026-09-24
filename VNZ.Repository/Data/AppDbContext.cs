@@ -41,7 +41,9 @@ public class AppDbContext : DbContext
             entity.HasKey(x => x.Id);
             entity.Property(x => x.FullName).HasMaxLength(200).IsRequired();
             entity.Property(x => x.Email).HasMaxLength(320).IsRequired();
-            entity.Property(x => x.PasswordHash).HasMaxLength(500);
+            entity.Property(x => x.PasswordHash)
+                .HasMaxLength(500)
+                .IsRequired();
             entity.Property(x => x.EmploymentStatus).HasConversion<string>().IsRequired();
             entity.Property(x => x.JobLevel).HasConversion<string>();
             entity.HasIndex(x => x.Email).IsUnique();

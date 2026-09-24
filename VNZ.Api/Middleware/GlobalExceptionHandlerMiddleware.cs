@@ -33,8 +33,10 @@ public class GlobalExceptionHandlerMiddleware : IMiddleware
         {
             AuthException authStatusException => GetAuthStatusCode(authStatusException.Code),
             JobPostException jobPostStatusException => GetJobPostStatusCode(jobPostStatusException.Code),
+            NewsException newsStatusException => GetNewsStatusCode(newsStatusException.Code),
             TeamMemberException teamMemberStatusException => GetTeamMemberStatusCode(teamMemberStatusException.Code),
-            DbUpdateException when IsCreateMemberRequest(context) => HttpStatusCode.InternalServerError,
+            DbUpdateException when IsCreateMemberRequest(context) || IsCreateJobPostRequest(context) =>
+                HttpStatusCode.InternalServerError,
             NotFoundException => HttpStatusCode.NotFound,
             ConflictException => HttpStatusCode.Conflict,
             UnauthorizedException => HttpStatusCode.Unauthorized,
@@ -49,9 +51,12 @@ public class GlobalExceptionHandlerMiddleware : IMiddleware
         {
             AuthException authPayloadException => (authPayloadException.Code, authPayloadException.Message),
             JobPostException jobPostPayloadException => (jobPostPayloadException.Code, jobPostPayloadException.Message),
+            NewsException newsPayloadException => (newsPayloadException.Code, newsPayloadException.Message),
             TeamMemberException teamMemberPayloadException => (teamMemberPayloadException.Code, teamMemberPayloadException.Message),
             DbUpdateException when IsCreateMemberRequest(context) =>
                 ("MEMBER_CREATE_FAILED", "Không thể tạo thành viên."),
+            DbUpdateException when IsCreateJobPostRequest(context) =>
+                ("JOB_POST_CREATE_FAILED", "Không thể tạo tin tuyển dụng."),
             NotFoundException =>
                 ("RESOURCE_NOT_FOUND", exception.Message),
             ConflictException =>
@@ -72,9 +77,11 @@ public class GlobalExceptionHandlerMiddleware : IMiddleware
                         ? authException.Fields
                         : exception is JobPostException jobPostException
                             ? jobPostException.Fields
-                            : exception is TeamMemberException teamMemberException
-                                ? teamMemberException.Fields
-                    : Array.Empty<string>()
+                            : exception is NewsException newsException
+                                ? newsException.Fields
+                                : exception is TeamMemberException teamMemberException
+                                    ? teamMemberException.Fields
+                                    : Array.Empty<string>()
             },
             message: message,
             traceId: context.TraceIdentifier);
@@ -101,10 +108,31 @@ public class GlobalExceptionHandlerMiddleware : IMiddleware
     {
         return code switch
         {
+            "JOB_POST_INVALID_ACTION" or
+            "JOB_POST_INVALID_REQUEST" or
+            "JOB_POST_INVALID_STATUS" or
+            "JOB_POST_VALIDATION_FAILED" or
+            "JOB_POST_VALIDATION_ERROR" or
+            "JOB_POST_INVALID_EXPIRY" or
             "JOB_POST_INVALID_PAGINATION" or
             "JOB_POST_INVALID_SEARCH" or
             "JOB_POST_INVALID_STATUS_FILTER" => HttpStatusCode.BadRequest,
             "JOB_POST_NOT_FOUND" => HttpStatusCode.NotFound,
+            "DEPARTMENT_NOT_FOUND" => HttpStatusCode.NotFound,
+            "JOB_POST_CLOSED" or
+            "JOB_POST_EXPIRED" => HttpStatusCode.Conflict,
+            "JOB_POST_CREATE_FAILED" => HttpStatusCode.InternalServerError,
+            "JOB_POST_UPDATE_FAILED" => HttpStatusCode.InternalServerError,
+            _ => HttpStatusCode.InternalServerError
+        };
+    }
+
+    private static HttpStatusCode GetNewsStatusCode(string code)
+    {
+        return code switch
+        {
+            "NEWS_QUERY_INVALID" => HttpStatusCode.BadRequest,
+            "NEWS_LIST_READ_FAILED" => HttpStatusCode.InternalServerError,
             _ => HttpStatusCode.InternalServerError
         };
     }
@@ -127,5 +155,11 @@ public class GlobalExceptionHandlerMiddleware : IMiddleware
     {
         return HttpMethods.IsPost(context.Request.Method) &&
             context.Request.Path.Equals("/api/v1/admin/team-members", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool IsCreateJobPostRequest(HttpContext context)
+    {
+        return HttpMethods.IsPost(context.Request.Method) &&
+            context.Request.Path.Equals("/api/v1/admin/job-posts", StringComparison.OrdinalIgnoreCase);
     }
 }

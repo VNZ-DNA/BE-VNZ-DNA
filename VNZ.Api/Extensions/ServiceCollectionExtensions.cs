@@ -4,6 +4,7 @@ using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
 using Npgsql;
 using System.Text;
+using System.Text.Json.Serialization;
 
 using VNZ.Api.BackgroundJob;
 
@@ -20,7 +21,12 @@ public static class ServiceCollectionExtensions
         this IServiceCollection services,
         IConfiguration configuration)
     {
-        services.AddControllers();
+        services.AddControllers()
+            .AddJsonOptions(options =>
+            {
+                options.JsonSerializerOptions.Converters.Add(
+                    new JsonStringEnumConverter());
+            });
         services.AddEndpointsApiExplorer();
         services.AddHttpContextAccessor();
         services.AddTransient<GlobalExceptionHandlerMiddleware>();
@@ -28,6 +34,7 @@ public static class ServiceCollectionExtensions
         services.AddScoped<VNZ.Service.AuthService.IService, VNZ.Service.AuthService.Service>();
         services.AddScoped<VNZ.Service.DashboardService.IService, VNZ.Service.DashboardService.Service>();
         services.AddScoped<VNZ.Service.JobPostService.IService, VNZ.Service.JobPostService.Service>();
+        services.AddScoped<VNZ.Service.NewsService.IService, VNZ.Service.NewsService.Service>();
         services.AddScoped<VNZ.Service.JobApplicationService.IService, VNZ.Service.JobApplicationService.Service>();
         services.AddScoped<VNZ.Service.TeamMembers.IService, VNZ.Service.TeamMembers.Service>();
         services.AddScoped<MailService.IService, MailService.Service>();
