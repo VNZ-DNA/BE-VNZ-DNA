@@ -409,7 +409,7 @@ public class Service : IService
             jobPost.Status = JobPostStatus.Closed;
             jobPost.UpdatedAt = nowUtc;
 
-            await SaveJobPostUpdateAsync(jobPost);
+            await SaveJobPostUpdateAsync();
             return ToUpdateResponse(jobPost);
         }
 
@@ -517,7 +517,7 @@ public class Service : IService
             : JobPostStatus.Draft;
         jobPost.UpdatedAt = nowUtc;
 
-        await SaveJobPostUpdateAsync(jobPost);
+        await SaveJobPostUpdateAsync();
         return ToUpdateResponse(jobPost);
     }
 
@@ -555,7 +555,7 @@ public class Service : IService
             .ToList();
     }
 
-    private async Task SaveJobPostUpdateAsync(JobPost jobPost)
+    private async Task SaveJobPostUpdateAsync()
     {
         try
         {
