@@ -235,7 +235,7 @@ public sealed class Service : IService
             }
 
             var now = DateTimeOffset.UtcNow;
-            application.InterViewAt = interviewAt;
+            application.InterViewAt = interviewAt.ToUniversalTime();
             application.Status = JobApplicationStatus.SendedEmail;
             application.UpdateAt = now;
 
@@ -257,7 +257,7 @@ public sealed class Service : IService
                 ApplicationId = application.Id,
                 Outcome = "Sent",
                 Status = application.Status.ToString(),
-                InterviewAt = application.InterViewAt
+                InterviewAt = interviewAt
             });
         }
 
