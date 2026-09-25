@@ -8,4 +8,6 @@ public interface IService
         Guid id,
         Request.ReviewJobApplicationRequest request,
         Guid adminUserId);
+    Task<Response.SendInterviewInvitationsResponse> SendInterviewInvitationsAsync(
+        Request.SendInterviewInvitationsRequest request);
 }
