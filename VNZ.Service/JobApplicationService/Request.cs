@@ -2,6 +2,24 @@ namespace VNZ.Service.JobApplicationService;
 
 public static class Request
 {
+    public class CreateJobApplicationRequest
+    {
+        public Guid? JobPostId { get; set; }
+        public string? FullName { get; set; }
+        public string? Email { get; set; }
+        public string? Phone { get; set; }
+        public int? GraduationYear { get; set; }
+        public string? University { get; set; }
+        public string? Major { get; set; }
+        public string? CvUrl { get; set; }
+        public string? PortfolioUrl { get; set; }
+        public string? CoverLetter { get; set; }
+        public string? Availability { get; set; }
+        public string? AvailableStartDate { get; set; }
+        public string? ReferralSource { get; set; }
+        public bool ConsentToDataProcessing { get; set; }
+    }
+
     public class GetJobApplicationListRequest
     {
         public string? Search { get; set; }

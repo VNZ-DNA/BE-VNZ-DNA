@@ -4,6 +4,33 @@ namespace VNZ.Service.JobApplicationService;
 
 public static class Response
 {
+    public class CreateJobApplicationResponse
+    {
+        public Guid Id { get; set; }
+        public Guid JobPostId { get; set; }
+        public required string JobPostTitle { get; set; }
+        public required string FullName { get; set; }
+        public required string Email { get; set; }
+        public required string Phone { get; set; }
+        public int? GraduationYear { get; set; }
+        public string? University { get; set; }
+        public string? Major { get; set; }
+        public required string CvUrl { get; set; }
+        public string? PortfolioUrl { get; set; }
+        public required string CoverLetter { get; set; }
+        public string? Availability { get; set; }
+        public string? AvailableStartDate { get; set; }
+        public string? ReferralSource { get; set; }
+        public bool ConsentToDataProcessing { get; set; }
+        public required string Status { get; set; }
+        public DateTimeOffset CreatedAt { get; set; }
+        public DateTimeOffset UpdatedAt { get; set; }
+        public DateTimeOffset? ReviewAt { get; set; }
+        public Guid? ReviewedBy { get; set; }
+        public DateTimeOffset? InterviewAt { get; set; }
+        public JobPostSnapshot? JobPostSnapshot { get; set; }
+    }
+
     public class JobApplicationListResponse
     {
         public required List<JobApplicationListItemResponse> Items { get; set; }
@@ -53,6 +80,7 @@ public static class Response
         public string? CvUrl { get; set; }
         public string? PortfolioUrl { get; set; }
         public string? CoverLetter { get; set; }
+        public bool ConsentToDataProcessing { get; set; }
         public JobPostSnapshot? JobPostSnapshot { get; set; }
         public string Status { get; set; } = string.Empty;
         public DateTimeOffset? ReviewAt { get; set; }

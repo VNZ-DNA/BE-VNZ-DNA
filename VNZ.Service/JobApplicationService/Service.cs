@@ -1,7 +1,9 @@
+using System.ComponentModel.DataAnnotations;
 using Microsoft.EntityFrameworkCore;
 using VNZ.Repository;
 using VNZ.Repository.Entity;
 using VNZ.Repository.Entity.Enum;
+using VNZ.Repository.Entity.Json;
 using VNZ.Service.Exceptions;
 
 namespace VNZ.Service.JobApplicationService;
@@ -13,6 +15,174 @@ public sealed class Service : IService
     public Service(AppDbContext dbContext)
     {
         _dbContext = dbContext;
+    }
+
+    public async Task<Response.CreateJobApplicationResponse> CreateAsync(Request.CreateJobApplicationRequest request)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+
+        var fullName = request.FullName?.Trim();
+        var email = request.Email?.Trim().ToLowerInvariant();
+        var phone = request.Phone?.Trim();
+        var cvUrl = request.CvUrl?.Trim();
+        var coverLetter = request.CoverLetter?.Trim();
+
+        var requiredFields = new List<string>();
+        if (!request.JobPostId.HasValue || request.JobPostId.Value == Guid.Empty)
+        {
+            requiredFields.Add("jobPostId");
+        }
+
+        if (string.IsNullOrWhiteSpace(fullName)) requiredFields.Add("fullName");
+        if (string.IsNullOrWhiteSpace(email)) requiredFields.Add("email");
+        if (string.IsNullOrWhiteSpace(phone)) requiredFields.Add("phone");
+        if (string.IsNullOrWhiteSpace(cvUrl)) requiredFields.Add("cvUrl");
+        if (string.IsNullOrWhiteSpace(coverLetter)) requiredFields.Add("coverLetter");
+
+        if (requiredFields.Count > 0)
+        {
+            throw new JobApplicationException("JOB_APPLICATION_VALIDATION_FAILED", "Vui lòng nhập đầy đủ thông tin bắt buộc.",
+                requiredFields.ToArray());
+        }
+
+        if (!request.ConsentToDataProcessing)
+        {
+            throw new JobApplicationException("JOB_APPLICATION_CONSENT_REQUIRED",
+                "Ứng viên phải đồng ý để VNZ lưu trữ và xử lý thông tin phục vụ tuyển dụng.",
+                "consentToDataProcessing");
+        }
+
+        if (fullName!.Length > 200)
+        {
+            throw new JobApplicationException("JOB_APPLICATION_VALIDATION_FAILED",
+                "Họ và tên không được vượt quá 200 ký tự.",
+                "fullName");
+        }
+
+        if (email!.Length > 320 || !new EmailAddressAttribute().IsValid(email))
+        {
+            throw new JobApplicationException(
+                "JOB_APPLICATION_VALIDATION_FAILED",
+                "Email không đúng định dạng.",
+                "email");
+        }
+
+        if (!IsHttpUrl(cvUrl!))
+        {
+            throw new JobApplicationException("JOB_APPLICATION_CV_URL_INVALID",
+                "Liên kết CV không hợp lệ.",
+                "cvUrl");
+        }
+
+        var portfolioUrl = NormalizeOptional(request.PortfolioUrl);
+        if (portfolioUrl is not null && !IsHttpUrl(portfolioUrl))
+        {
+            throw new JobApplicationException("JOB_APPLICATION_VALIDATION_FAILED",
+                "Liên kết portfolio không hợp lệ.",
+                "portfolioUrl");
+        }
+
+        var availability = NormalizeOptional(request.Availability);
+        var availableStartDate = NormalizeOptional(request.AvailableStartDate);
+        var referralSource = NormalizeOptional(request.ReferralSource);
+
+        if (availability?.Length > 100 || availableStartDate?.Length > 100 || referralSource?.Length > 200)
+        {
+            throw new JobApplicationException("JOB_APPLICATION_VALIDATION_FAILED",
+                "Thông tin bổ sung vượt quá độ dài cho phép.",
+                availability?.Length > 100 ? "availability" : availableStartDate?.Length > 100 ? "availableStartDate" : "referralSource");
+        }
+
+        var jobPost = await _dbContext.JobPosts
+            .Include(item => item.Department)
+            .SingleOrDefaultAsync(item => item.Id == request.JobPostId!.Value);
+
+        if (jobPost is null)
+        {
+            throw new JobApplicationException(
+                "JOB_POST_NOT_FOUND",
+                "Không tìm thấy vị trí tuyển dụng.",
+                "jobPostId");
+        }
+
+        var now = DateTimeOffset.UtcNow;
+        if (jobPost.Status != JobPostStatus.Open || !jobPost.ExpiredAt.HasValue || jobPost.ExpiredAt <= now)
+        {
+            throw new JobApplicationException("JOB_POST_NOT_AVAILABLE",
+                "Vị trí tuyển dụng không còn nhận hồ sơ.",
+                "jobPostId");
+        }
+
+        if (!jobPost.DepartmentId.HasValue || jobPost.Department is null ||
+            !jobPost.EmploymentType.HasValue || !jobPost.JobLevel.HasValue)
+        {
+            throw new JobApplicationException(
+                "JOB_APPLICATION_CREATE_FAILED",
+                "Không thể tạo hồ sơ ứng tuyển do dữ liệu vị trí tuyển dụng không đầy đủ.");
+        }
+
+        var application = new JobApplication
+        {
+            Id = Guid.NewGuid(),
+            JobPostId = jobPost.Id,
+            FullName = fullName,
+            Email = email,
+            Phone = phone,
+            GraduationYear = request.GraduationYear,
+            University = NormalizeOptional(request.University),
+            Major = NormalizeOptional(request.Major),
+            CvUrl = cvUrl,
+            PortfolioUrl = portfolioUrl,
+            CoverLetter = coverLetter,
+            Availability = availability,
+            AvailableStartDate = availableStartDate,
+            ReferralSource = referralSource,
+            ConsentToDataProcessing = true,
+            JobPostSnapshot = CreateJobPostSnapshot(jobPost),
+            Status = JobApplicationStatus.Pending,
+            CreatedAt = now,
+            UpdateAt = now
+        };
+
+        try
+        {
+            _dbContext.JobApplications.Add(application);
+            await _dbContext.SaveChangesAsync();
+        }
+        catch (DbUpdateException exception)
+        {
+            throw new JobApplicationException(
+                "JOB_APPLICATION_CREATE_FAILED",
+                "Không thể tạo hồ sơ ứng tuyển.",
+                exception);
+        }
+
+        return new Response.CreateJobApplicationResponse
+        {
+            Id = application.Id,
+            JobPostId = application.JobPostId,
+            JobPostTitle = jobPost.Title,
+            FullName = application.FullName,
+            Email = application.Email,
+            Phone = application.Phone!,
+            GraduationYear = application.GraduationYear,
+            University = application.University,
+            Major = application.Major,
+            CvUrl = application.CvUrl!,
+            PortfolioUrl = application.PortfolioUrl,
+            CoverLetter = application.CoverLetter!,
+            Availability = application.Availability,
+            AvailableStartDate = application.AvailableStartDate,
+            ReferralSource = application.ReferralSource,
+            ConsentToDataProcessing = application.ConsentToDataProcessing,
+            Status = GetStatusLabel(application.Status),
+            CreatedAt = application.CreatedAt,
+            UpdatedAt = application.UpdateAt,
+            ReviewAt = application.ReviewAt,
+            ReviewedBy = application.ReviewedBy,
+            InterviewAt = application.InterViewAt,
+            JobPostSnapshot = application.JobPostSnapshot
+        };
     }
 
     public async Task<Response.ReviewJobApplicationResponse> ReviewAsync(
@@ -217,6 +387,7 @@ public sealed class Service : IService
             CvUrl = application.CvUrl,
             PortfolioUrl = application.PortfolioUrl,
             CoverLetter = application.CoverLetter,
+            ConsentToDataProcessing = application.ConsentToDataProcessing,
             JobPostSnapshot = application.JobPostSnapshot,
             Status = application.Status.ToString(),
             ReviewAt = application.ReviewAt,
@@ -225,5 +396,38 @@ public sealed class Service : IService
             CreatedAt = application.CreatedAt,
             UpdatedAt = application.UpdateAt
         };
+    }
+
+    private static JobPostSnapshot CreateJobPostSnapshot(JobPost jobPost)
+    {
+        return new JobPostSnapshot
+        {
+            DepartmentId = jobPost.DepartmentId!.Value,
+            DepartmentName = jobPost.Department!.Name,
+            Title = jobPost.Title,
+            EmploymentType = jobPost.EmploymentType!.Value,
+            JobLevel = jobPost.JobLevel!.Value,
+            NumberOfPositions = jobPost.NumberOfPositions,
+            ShortDescription = jobPost.ShortDescription ?? string.Empty,
+            Description = jobPost.Description ?? string.Empty,
+            Requirements = jobPost.Requirements ?? string.Empty,
+            ExpiredAt = jobPost.ExpiredAt,
+            JobSkillsSnapshot = new JobSkillsSnapshot
+            {
+                Skills = jobPost.Skills.ToList()
+            }
+        };
+    }
+
+    private static string? NormalizeOptional(string? value)
+    {
+        var normalized = value?.Trim();
+        return string.IsNullOrWhiteSpace(normalized) ? null : normalized;
+    }
+
+    private static bool IsHttpUrl(string value)
+    {
+        return Uri.TryCreate(value, UriKind.Absolute, out var uri) &&
+            (uri.Scheme == Uri.UriSchemeHttp || uri.Scheme == Uri.UriSchemeHttps);
     }
 }
