@@ -1,4 +1,7 @@
+using System.Globalization;
+using System.ComponentModel.DataAnnotations;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
 using VNZ.Repository;
 using VNZ.Repository.Entity;
 using VNZ.Repository.Entity.Enum;
@@ -8,11 +11,20 @@ namespace VNZ.Service.JobApplicationService;
 
 public sealed class Service : IService
 {
-    private readonly AppDbContext _dbContext;
+    private static readonly TimeSpan VietnamOffset = TimeSpan.FromHours(7);
 
-    public Service(AppDbContext dbContext)
+    private readonly AppDbContext _dbContext;
+    private readonly MailService.IService _mailService;
+    private readonly ILogger<Service> _logger;
+
+    public Service(
+        AppDbContext dbContext,
+        MailService.IService mailService,
+        ILogger<Service> logger)
     {
         _dbContext = dbContext;
+        _mailService = mailService;
+        _logger = logger;
     }
 
     public async Task<Response.ReviewJobApplicationResponse> ReviewAsync(
@@ -69,7 +81,7 @@ public sealed class Service : IService
         return new Response.ReviewJobApplicationResponse
         {
             Id = application.Id,
-            Status = GetStatusLabel(application.Status),
+            Status = GetDisplayName(application.Status),
             ReviewedByName = reviewerName,
             ReviewAt = application.ReviewAt,
             CvUrl = application.CvUrl
@@ -151,7 +163,7 @@ public sealed class Service : IService
             Email = application.Email,
             JobPostId = application.JobPostId,
             JobPostTitle = application.JobPostTitle,
-            Status = GetStatusLabel(application.Status),
+            Status = GetDisplayName(application.Status),
             CvUrl = application.CvUrl,
             CreatedAt = application.CreatedAt,
             InterviewAt = application.InterviewAt,
@@ -168,24 +180,163 @@ public sealed class Service : IService
         };
     }
 
-    private static string GetStatusLabel(JobApplicationStatus status)
+    public async Task<Response.SendInterviewInvitationsResponse> SendInterviewInvitationsAsync(
+        Request.SendInterviewInvitationsRequest request)
     {
-        if (status == JobApplicationStatus.Pending)
+        ArgumentNullException.ThrowIfNull(request);
+
+        var applicationIds = ValidateApplicationIds(request.ApplicationIds);
+        var interviewAt = ParseInterviewAt(request.InterviewDate, request.InterviewTime);
+
+        if (interviewAt <= DateTimeOffset.UtcNow.ToOffset(VietnamOffset))
         {
-            return "Chờ duyệt";
+            throw new JobApplicationException(
+                "JOB_APPLICATION_INTERVIEW_TIME_INVALID",
+                "Lịch phỏng vấn phải lớn hơn thời điểm hiện tại.",
+                nameof(request.InterviewDate),
+                nameof(request.InterviewTime));
         }
 
-        if (status == JobApplicationStatus.Accepted)
+        var applications = await _dbContext.JobApplications
+            .Where(application => applicationIds.Contains(application.Id))
+            .ToListAsync();
+
+        if (applications.Count != applicationIds.Count ||
+            applications.Any(application => application.Status != JobApplicationStatus.Accepted))
         {
-            return "Đã duyệt";
+            throw new JobApplicationException(
+                "JOB_APPLICATION_INTERVIEW_BATCH_INVALID",
+                "Tất cả hồ sơ được chọn phải đang ở trạng thái Đã duyệt.",
+                nameof(request.ApplicationIds));
         }
 
-        if (status == JobApplicationStatus.Rejected)
+        // Query database không đảm bảo giữ thứ tự applicationIds từ request.
+        // Dictionary giúp lấy nhanh application theo ID, nhưng vẫn xử lý theo đúng thứ tự Admin đã chọn.
+        var applicationsById = applications.ToDictionary(application => application.Id);
+        var results = new List<Response.InterviewInvitationResultResponse>(applicationIds.Count);
+
+        foreach (var applicationId in applicationIds)
         {
-            return "Không duyệt";
+            var application = applicationsById[applicationId];
+
+            var deliveryResult = await _mailService.SendInterviewInvitationAsync(new MailService.InterviewInvitationMailContent
+            {
+                ApplicationId = application.Id,
+                To = application.Email,
+                ToName = application.FullName,
+                InterviewAt = interviewAt,
+                IdempotencyKey = $"interview-invitation-{application.Id}"
+            });
+
+            if (!deliveryResult.IsSuccess)
+            {
+                results.Add(CreateMailFailedResult(application));
+                continue;
+            }
+
+            var now = DateTimeOffset.UtcNow;
+            application.InterViewAt = interviewAt;
+            application.Status = JobApplicationStatus.SendedEmail;
+            application.UpdateAt = now;
+
+            try
+            {
+                await _dbContext.SaveChangesAsync();
+            }
+            catch (DbUpdateException exception)
+            {
+                _logger.LogError(exception, "Interview invitation was sent but could not be persisted. ApplicationId: {ApplicationId}", application.Id);
+                throw new JobApplicationException(
+                    "JOB_APPLICATION_INTERVIEW_PERSIST_FAILED",
+                    "Email đã được gửi nhưng không thể cập nhật hồ sơ ứng viên.",
+                    exception);
+            }
+
+            results.Add(new Response.InterviewInvitationResultResponse
+            {
+                ApplicationId = application.Id,
+                Outcome = "Sent",
+                Status = application.Status.ToString(),
+                InterviewAt = application.InterViewAt
+            });
         }
 
-        return "Đã gửi email phỏng vấn";
+        return new Response.SendInterviewInvitationsResponse
+        {
+            InterviewAt = interviewAt,
+            TotalRequested = applicationIds.Count,
+            SentCount = results.Count(result => result.Outcome == "Sent"),
+            FailedCount = results.Count(result => result.Outcome == "MailFailed"),
+            Results = results
+        };
+    }
+
+    private static string GetDisplayName<TEnum>(TEnum value)
+        where TEnum : struct, Enum
+    {
+        var member = typeof(TEnum).GetMember(value.ToString()).Single();
+
+        return member.GetCustomAttributes(typeof(DisplayAttribute), inherit: false)
+            .OfType<DisplayAttribute>()
+            .SingleOrDefault()?
+            .GetName() ?? value.ToString();
+    }
+
+    private static List<Guid> ValidateApplicationIds(List<Guid>? applicationIds)
+    {
+        if (applicationIds is null || applicationIds.Count == 0 || applicationIds.Any(id => id == Guid.Empty))
+        {
+            throw new JobApplicationException(
+                "JOB_APPLICATION_INTERVIEW_REQUEST_INVALID",
+                "Danh sách hồ sơ ứng viên không hợp lệ.",
+                "applicationIds");
+        }
+
+        if (applicationIds.Distinct().Count() != applicationIds.Count)
+        {
+            throw new JobApplicationException(
+                "JOB_APPLICATION_INTERVIEW_REQUEST_INVALID",
+                "Danh sách hồ sơ ứng viên không được chứa phần tử trùng lặp.",
+                "applicationIds");
+        }
+
+        return applicationIds;
+    }
+
+    private static DateTimeOffset ParseInterviewAt(string? interviewDate, string? interviewTime)
+    {
+        if (!DateOnly.TryParseExact(
+                interviewDate,
+                "yyyy-MM-dd",
+                CultureInfo.InvariantCulture,
+                DateTimeStyles.None,
+                out var date) ||
+            !TimeOnly.TryParseExact(
+                interviewTime,
+                "HH:mm",
+                CultureInfo.InvariantCulture,
+                DateTimeStyles.None,
+                out var time))
+        {
+            throw new JobApplicationException(
+                "JOB_APPLICATION_INTERVIEW_REQUEST_INVALID",
+                "Ngày hoặc giờ phỏng vấn không đúng định dạng.",
+                "interviewDate",
+                "interviewTime");
+        }
+
+        return new DateTimeOffset(date.ToDateTime(time), VietnamOffset);
+    }
+
+    private static Response.InterviewInvitationResultResponse CreateMailFailedResult(JobApplication application)
+    {
+        return new Response.InterviewInvitationResultResponse
+        {
+            ApplicationId = application.Id,
+            Outcome = "MailFailed",
+            Status = application.Status.ToString(),
+            InterviewAt = application.InterViewAt
+        };
     }
 
     public async Task<Response.JobApplicationDetailResponse> GetJobApplicationByIdAsync(Guid id)

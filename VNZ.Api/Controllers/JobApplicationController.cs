@@ -49,4 +49,16 @@ public sealed class JobApplicationController : ControllerBase
             "Review hồ sơ ứng viên thành công.",
             HttpContext.TraceIdentifier));
     }
+
+    [HttpPost("interview-invitations")]
+    public async Task<IActionResult> SendInterviewInvitations(
+        [FromBody] Request.SendInterviewInvitationsRequest request)
+    {
+        var data = await _jobApplicationService.SendInterviewInvitationsAsync(request);
+
+        return Ok(ResponseBuilder.SuccessResponse(
+            data,
+            "Đã xử lý gửi email mời phỏng vấn.",
+            HttpContext.TraceIdentifier));
+    }
 }

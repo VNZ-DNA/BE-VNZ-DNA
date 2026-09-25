@@ -36,6 +36,23 @@ public static class Response
         public string? CvUrl { get; set; }
     }
 
+    public class SendInterviewInvitationsResponse
+    {
+        public DateTimeOffset InterviewAt { get; set; }
+        public int TotalRequested { get; set; }
+        public int SentCount { get; set; }
+        public int FailedCount { get; set; }
+        public required List<InterviewInvitationResultResponse> Results { get; set; }
+    }
+
+    public class InterviewInvitationResultResponse
+    {
+        public Guid ApplicationId { get; set; }
+        public required string Outcome { get; set; }
+        public required string Status { get; set; }
+        public DateTimeOffset? InterviewAt { get; set; }
+    }
+
     public class JobApplicationDetailResponse
     {
         public Guid Id { get; set; }
