@@ -199,6 +199,7 @@ public sealed class Service : IService
 
         var applications = await _dbContext.JobApplications
             .Where(application => applicationIds.Contains(application.Id))
+            .Include(application => application.JobPost)
             .ToListAsync();
 
         if (applications.Count != applicationIds.Count ||
@@ -224,6 +225,7 @@ public sealed class Service : IService
                 ApplicationId = application.Id,
                 To = application.Email,
                 ToName = application.FullName,
+                PositionTitle = application.JobPostSnapshot?.Title ?? application.JobPost.Title,
                 InterviewAt = interviewAt,
                 IdempotencyKey = $"interview-invitation-{application.Id}"
             });
