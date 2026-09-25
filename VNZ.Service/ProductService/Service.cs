@@ -279,7 +279,7 @@ public sealed class Service : IService
         }
     }
 
-    public async Task<List<Response.ProductListItemResponse>> ReorderProductsAsync(
+    public async Task<List<Response.OrderableProductResponse>> ReorderProductsAsync(
         Request.ReorderProductsRequest request)
     {
         ArgumentNullException.ThrowIfNull(request);
@@ -339,7 +339,7 @@ public sealed class Service : IService
             await transaction.CommitAsync();
 
             return orderedProductIds
-                .Select(id => ToListItemResponse(productsById[id]))
+                .Select(id => ToOrderableProductResponse(productsById[id]))
                 .ToList();
         }
         catch (Exception exception) when (
@@ -347,7 +347,7 @@ public sealed class Service : IService
         {
             throw new ProductException(
                 "PRODUCT_ORDER_CONFLICT",
-                "Danh sách Product đang đăng đã thay đổi. Vui lòng tải lại và thử lại.",
+                "Thứ tự sản phẩm đã thay đổi. Vui lòng tải lại danh sách.",
                 exception);
         }
         catch (Exception exception) when (exception is DbUpdateException or PostgresException)
@@ -540,6 +540,17 @@ public sealed class Service : IService
             DisplayOrder = product.DisplayOrder,
             CreatedAt = product.CreatedAt,
             UpdatedAt = product.UpdatedAt
+        };
+    }
+
+    private static Response.OrderableProductResponse ToOrderableProductResponse(Product product)
+    {
+        return new Response.OrderableProductResponse
+        {
+            Id = product.Id,
+            Name = product.Name,
+            LogoUrl = product.LogoUrl,
+            DisplayOrder = product.DisplayOrder
         };
     }
 
