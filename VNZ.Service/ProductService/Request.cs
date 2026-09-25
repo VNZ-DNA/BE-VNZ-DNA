@@ -19,7 +19,7 @@ public class Request
         public string? ProductUrl { get; set; }
         public ProductContentRequest? Content { get; set; }
         public ProductStatus Status { get; set; }
-        public bool IsPublished { get; set; }
+        public bool? IsPublished { get; set; }
     }
 
     public class ProductContentRequest

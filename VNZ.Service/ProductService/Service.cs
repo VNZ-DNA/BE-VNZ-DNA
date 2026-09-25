@@ -86,17 +86,6 @@ public sealed class Service : IService
     {
         ArgumentNullException.ThrowIfNull(request);
 
-        ValidateUpdateRequest(request);
-
-        if (request.IsPublished && request.Status == ProductStatus.InProgress)
-        {
-            throw new ProductException(
-                "PRODUCT_IN_PROGRESS_CANNOT_PUBLISH",
-                "Chỉ sản phẩm đã hoàn thành mới có thể đăng.",
-                "status",
-                "isPublished");
-        }
-
         try
         {
             await using var transaction = await _dbContext.Database
@@ -114,16 +103,19 @@ public sealed class Service : IService
 
             var updatedAt = DateTimeOffset.UtcNow;
 
-            if (!product.IsPublished && request.IsPublished)
+            if (product.IsPublished)
             {
-                var lastDisplayOrder = await _dbContext.Products
-                    .Where(item => item.IsPublished)
-                    .MaxAsync(item => (int?)item.DisplayOrder) ?? 0;
+                if (request.IsPublished != false)
+                {
+                    throw new ProductException(
+                        "PRODUCT_PUBLISHED_CANNOT_EDIT",
+                        "Product đang được đăng. Hãy gỡ đăng trước khi chỉnh sửa.",
+                        "isPublished");
+                }
 
-                product.DisplayOrder = lastDisplayOrder + 1;
-            }
-            else if (product.IsPublished && !request.IsPublished)
-            {
+                // Khi Product đang đăng, PUT chỉ thực hiện gỡ đăng.
+                // Các field khác trong request không được áp dụng cho đến request tiếp theo.
+                product.IsPublished = false;
                 product.DisplayOrder = null;
 
                 var publishedProducts = await _dbContext.Products
@@ -146,6 +138,38 @@ public sealed class Service : IService
                     publishedProduct.DisplayOrder = displayOrder;
                     publishedProduct.UpdatedAt = updatedAt;
                 }
+
+                product.UpdatedAt = updatedAt;
+
+                await _dbContext.SaveChangesAsync();
+                await transaction.CommitAsync();
+
+                return ToDetailResponse(product);
+            }
+
+            ValidateUpdateRequest(request);
+            var isPublished = request.IsPublished.GetValueOrDefault();
+
+            if (isPublished && request.Status == ProductStatus.InProgress)
+            {
+                throw new ProductException(
+                    "PRODUCT_IN_PROGRESS_CANNOT_PUBLISH",
+                    "Chỉ sản phẩm đã hoàn thành mới có thể đăng.",
+                    "status",
+                    "isPublished");
+            }
+
+            if (isPublished)
+            {
+                var lastDisplayOrder = await _dbContext.Products
+                    .Where(item => item.IsPublished)
+                    .MaxAsync(item => (int?)item.DisplayOrder) ?? 0;
+
+                product.DisplayOrder = lastDisplayOrder + 1;
+            }
+            else
+            {
+                product.DisplayOrder = null;
             }
 
             product.Name = request.Name.Trim();
@@ -153,7 +177,7 @@ public sealed class Service : IService
             product.ProductUrl = request.ProductUrl;
             product.Content = ToProductContent(request.Content);
             product.Status = request.Status;
-            product.IsPublished = request.IsPublished;
+            product.IsPublished = isPublished;
             product.UpdatedAt = updatedAt;
 
             await _dbContext.SaveChangesAsync();
@@ -225,6 +249,33 @@ public sealed class Service : IService
                                           exception is not OperationCanceledException)
         {
             throw new ProductException("PRODUCT_LIST_READ_FAILED", "Không thể đọc danh sách sản phẩm.", exception);
+        }
+    }
+
+    public async Task<List<Response.OrderableProductResponse>> GetOrderableProductsAsync()
+    {
+        try
+        {
+            return await _dbContext.Products
+                .AsNoTracking()
+                .Where(product => product.IsPublished)
+                .OrderBy(product => product.DisplayOrder)
+                .Select(product => new Response.OrderableProductResponse
+                {
+                    Id = product.Id,
+                    Name = product.Name,
+                    LogoUrl = product.LogoUrl,
+                    DisplayOrder = product.DisplayOrder
+                })
+                .ToListAsync();
+        }
+        catch (Exception exception) when (exception is not ProductException &&
+                                          exception is not OperationCanceledException)
+        {
+            throw new ProductException(
+                "PRODUCT_LIST_READ_FAILED",
+                "Không thể đọc danh sách sản phẩm.",
+                exception);
         }
     }
 
@@ -362,6 +413,11 @@ public sealed class Service : IService
         if (string.IsNullOrWhiteSpace(request.Name) || request.Name.Trim().Length > 200)
         {
             fields.Add("name");
+        }
+
+        if (!request.IsPublished.HasValue)
+        {
+            fields.Add("isPublished");
         }
 
         if (!Enum.IsDefined(request.Status))
