@@ -37,8 +37,7 @@ public sealed class ProductsController : ControllerBase
     }
 
     [HttpGet]
-    public async Task<IActionResult> GetProductList(
-        [FromQuery] ProductService.Request.GetProductListRequest request)
+    public async Task<IActionResult> GetProductList([FromQuery] ProductService.Request.GetProductListRequest request)
     {
         var data = await _productService.GetProductListAsync(request);
 

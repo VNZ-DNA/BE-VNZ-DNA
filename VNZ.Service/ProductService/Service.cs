@@ -177,6 +177,7 @@ public sealed class Service : IService
         ValidateRequest(request);
 
         var search = request.Search?.Trim();
+        var status = ParseProductStatus(request.Status);
 
         try
         {
@@ -189,6 +190,11 @@ public sealed class Service : IService
                 var normalizedSearch = search.ToLower();
                 query = query.Where(product =>
                     product.Name.ToLower().Contains(normalizedSearch));
+            }
+
+            if (status.HasValue)
+            {
+                query = query.Where(product => product.Status == status.Value);
             }
 
             var total = await query.CountAsync();
@@ -316,21 +322,37 @@ public sealed class Service : IService
             fields.Add("pageSize");
         }
 
+        if (request.Search?.Trim().Length > 200)
+        {
+            fields.Add("search");
+        }
+
+        if (!string.IsNullOrWhiteSpace(request.Status) &&
+            !string.Equals(request.Status.Trim(), nameof(ProductStatus.InProgress), StringComparison.OrdinalIgnoreCase) &&
+            !string.Equals(request.Status.Trim(), nameof(ProductStatus.Completed), StringComparison.OrdinalIgnoreCase))
+        {
+            fields.Add("status");
+        }
+
         if (fields.Count > 0)
         {
             throw new ProductException(
                 "PRODUCT_LIST_QUERY_INVALID",
-                "Thông tin phân trang không hợp lệ.",
+                "Thông tin truy vấn danh sách Product không hợp lệ.",
                 fields.ToArray());
         }
+    }
 
-        if (request.Search?.Trim().Length > 200)
+    private static ProductStatus? ParseProductStatus(string? status)
+    {
+        if (string.IsNullOrWhiteSpace(status))
         {
-            throw new ProductException(
-                "PRODUCT_LIST_QUERY_INVALID",
-                "Từ khóa tìm kiếm không được vượt quá 200 ký tự.",
-                "search");
+            return null;
         }
+
+        return string.Equals(status.Trim(), nameof(ProductStatus.InProgress), StringComparison.OrdinalIgnoreCase)
+            ? ProductStatus.InProgress
+            : ProductStatus.Completed;
     }
 
     private static void ValidateUpdateRequest(Request.UpdateProductRequest request)

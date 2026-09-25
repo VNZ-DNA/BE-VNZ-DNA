@@ -20,17 +20,111 @@ public sealed class Service : IService
         _dbContext = dbContext;
     }
 
-    public async Task<List<Response.TeamMemberResponse>> GetMemberListAsync()
+    public async Task<Response.PagedTeamMemberListResponse> GetMemberListAsync(
+        Request.GetTeamMemberListRequest request)
     {
-        var members = await _dbContext.Users
-            .AsNoTracking()
-            .Where(member => member.RoleId == null)
-            .OrderBy(member => member.DisplayOrder == null)
-            .ThenBy(member => member.DisplayOrder)
-            .ThenByDescending(member => member.CreateAt)
-            .ToListAsync();
+        ArgumentNullException.ThrowIfNull(request);
 
-        return members.Select(ToResponse).ToList();
+        ValidateListRequest(request);
+
+        var search = request.Search?.Trim();
+        var status = ParseEmploymentStatus(request.Status);
+
+        try
+        {
+            var query = _dbContext.Users
+                .AsNoTracking()
+                .Where(member => member.RoleId == null);
+
+            if (!string.IsNullOrWhiteSpace(search))
+            {
+                var normalizedSearch = search.ToLowerInvariant();
+                query = query.Where(member =>
+                    member.FullName.ToLower().Contains(normalizedSearch) ||
+                    member.Email.ToLower().Contains(normalizedSearch) ||
+                    (member.Position != null && member.Position.ToLower().Contains(normalizedSearch)));
+            }
+
+            if (status.HasValue)
+            {
+                query = query.Where(member => member.EmploymentStatus == status.Value);
+            }
+
+            var total = await query.CountAsync();
+
+            var members = await query
+                .OrderBy(member => member.DisplayOrder == null)
+                .ThenBy(member => member.DisplayOrder)
+                .ThenByDescending(member => member.CreateAt)
+                .ThenByDescending(member => member.Id)
+                .Skip((request.Page - 1) * request.PageSize)
+                .Take(request.PageSize)
+                .ToListAsync();
+
+            return new Response.PagedTeamMemberListResponse
+            {
+                Items = members.Select(ToResponse).ToList(),
+                Page = request.Page,
+                PageSize = request.PageSize,
+                Total = total,
+                TotalPages = total == 0 ? 0 : (int)Math.Ceiling(total / (double)request.PageSize)
+            };
+        }
+        catch (Exception exception) when (exception is not TeamMemberException &&
+                                          exception is not OperationCanceledException)
+        {
+            throw new TeamMemberException(
+                "MEMBER_LIST_READ_FAILED",
+                "Không thể đọc danh sách thành viên.",
+                exception);
+        }
+    }
+
+    private static void ValidateListRequest(Request.GetTeamMemberListRequest request)
+    {
+        var fields = new List<string>();
+
+        if (request.Page < 1)
+        {
+            fields.Add("page");
+        }
+
+        if (request.PageSize < 1 || request.PageSize > 100)
+        {
+            fields.Add("pageSize");
+        }
+
+        if (request.Search?.Trim().Length > 300)
+        {
+            fields.Add("search");
+        }
+
+        if (!string.IsNullOrWhiteSpace(request.Status) &&
+            !string.Equals(request.Status.Trim(), nameof(EmploymentStatus.Working), StringComparison.OrdinalIgnoreCase) &&
+            !string.Equals(request.Status.Trim(), nameof(EmploymentStatus.Resigned), StringComparison.OrdinalIgnoreCase))
+        {
+            fields.Add("status");
+        }
+
+        if (fields.Count > 0)
+        {
+            throw new TeamMemberException(
+                "MEMBER_QUERY_INVALID",
+                "Thông tin truy vấn danh sách thành viên không hợp lệ.",
+                fields.ToArray());
+        }
+    }
+
+    private static EmploymentStatus? ParseEmploymentStatus(string? status)
+    {
+        if (string.IsNullOrWhiteSpace(status))
+        {
+            return null;
+        }
+
+        return string.Equals(status.Trim(), nameof(EmploymentStatus.Working), StringComparison.OrdinalIgnoreCase)
+            ? EmploymentStatus.Working
+            : EmploymentStatus.Resigned;
     }
 
     public async Task<List<Response.TeamMemberResponse>> ReorderMembersAsync(Request.ReorderTeamMembersRequest request)
