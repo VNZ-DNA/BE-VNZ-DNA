@@ -49,6 +49,17 @@ public sealed class PartnersController : ControllerBase
             HttpContext.TraceIdentifier));
     }
 
+    [HttpGet("display-order")]
+    public async Task<IActionResult> GetOrderablePartners()
+    {
+        var data = await _partnerService.GetOrderablePartnersAsync();
+
+        return Ok(ResponseBuilder.SuccessResponse(
+            data,
+            "Lấy danh sách Partner để sắp xếp thành công.",
+            HttpContext.TraceIdentifier));
+    }
+
     [HttpGet("{id:guid}")]
     public async Task<IActionResult> GetPartnerDetail(Guid id)
     {
