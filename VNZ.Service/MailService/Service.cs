@@ -14,6 +14,7 @@ public class Service : IService
     private const string InterviewLocation = "84 D5, KDC An Thiên Lý P, Phước Long, Hồ Chí Minh, Việt Nam";
     private const string InterviewLocationMapUrl =
         "https://www.google.com/maps/place/C%C3%94NG+TY+TNHH+KOKEN/@10.8210167,106.7842329,1018m/data=!3m2!1e3!4b1!4m6!3m5!1s0x3175277517c8d095:0xa5a0955a7ad81fc3!8m2!3d10.8210167!4d106.7842329!16s%2Fg%2F11svb4wcm6!18m1!1e1?entry=ttu&g_ep=EgoyMDI2MDkyMi4wIKXMDSoASAFQAw%3D%3D";
+    private const string VnzLogoUrl = "https://be-vnz-dna-latest.onrender.com/images/logo-dark.png";
 
     private readonly HttpClient _httpClient;
     private readonly MailOptions _mailOptions;
@@ -200,24 +201,40 @@ public class Service : IService
                 <meta name="viewport" content="width=device-width, initial-scale=1.0">
                 <title>Thư mời phỏng vấn tại VNZ</title>
             </head>
-            <body style="margin:0;padding:24px;background:#f4f0fa;font-family:Arial,Helvetica,sans-serif;color:#243447;line-height:1.6;">
-                <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width:640px;margin:0 auto;background:#ffffff;border-collapse:collapse;">
+            <body style="margin:0;padding:32px 16px;background:#eef2f6;font-family:Arial,Helvetica,sans-serif;color:#1f2937;line-height:1.65;">
+                <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width:600px;margin:0 auto;background:#ffffff;border-collapse:collapse;">
                     <tr>
-                        <td style="padding:24px;background:#f36b21;color:#ffffff;font-size:24px;font-weight:700;">VNZ Technology</td>
-                    </tr>
-                    <tr>
-                        <td style="padding:32px 24px;">
-                            <p>Chào {encodedFullName},</p>
-                            <p>Chúc mừng bạn đã vượt qua vòng xét duyệt CV. VNZ trân trọng mời bạn tham gia buổi phỏng vấn.</p>
-                            <p><strong>Thời gian:</strong> {formattedInterviewAt} (GMT+7)</p>
-                            <p><strong>Địa điểm:</strong> {encodedLocation}</p>
-                            <p><a href="{InterviewLocationMapUrl}" style="display:inline-block;padding:12px 18px;background:#f36b21;color:#ffffff;text-decoration:none;border-radius:4px;">Xem chỉ đường trên Google Maps</a></p>
-                            <p>Vui lòng có mặt đúng giờ.</p>
-                            <p>Trân trọng,<br>Đội ngũ VNZ</p>
+                        <td align="center" style="padding:28px 32px 20px;">
+                            <img src="{VnzLogoUrl}" width="180" alt="VNZ Technology" style="display:block;width:180px;max-width:100%;height:auto;border:0;">
                         </td>
                     </tr>
                     <tr>
-                        <td style="padding:16px 24px;background:#f4f0fa;color:#667085;font-size:12px;">VNZ Technology</td>
+                        <td style="padding:0 32px 36px;">
+                            <div style="border-top:1px solid #dbe2ea;padding-top:24px;"></div>
+                            <p style="margin:0 0 20px;">Thân chào {encodedFullName},</p>
+                            <p style="margin:0 0 24px;">Chúc mừng bạn đã vượt qua vòng xét duyệt CV. VNZ trân trọng mời bạn tham gia buổi phỏng vấn.</p>
+
+                            <h2 style="margin:0 0 12px;font-size:17px;color:#111827;">Thông tin buổi phỏng vấn</h2>
+                            <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="border-collapse:collapse;font-size:14px;">
+                                <tr>
+                                    <td style="width:38%;padding:12px;background:#f8fafc;border:1px solid #e5e7eb;color:#64748b;">Thời gian</td>
+                                    <td style="padding:12px;border:1px solid #e5e7eb;font-weight:700;color:#e85d04;">{formattedInterviewAt} (GMT+7)</td>
+                                </tr>
+                                <tr>
+                                    <td style="width:38%;padding:12px;background:#f8fafc;border:1px solid #e5e7eb;color:#64748b;">Địa điểm</td>
+                                    <td style="padding:12px;border:1px solid #e5e7eb;">{encodedLocation}</td>
+                                </tr>
+                            </table>
+
+                            <p style="margin:24px 0 0;">Vui lòng có mặt đúng giờ. Bạn có thể xem đường đi qua nút bên dưới.</p>
+                            <p style="margin:20px 0 28px;">
+                                <a href="{InterviewLocationMapUrl}" style="display:inline-block;padding:12px 20px;background:#f97316;color:#ffffff;text-decoration:none;border-radius:4px;font-weight:700;">Xem chỉ đường trên Google Maps</a>
+                            </p>
+                            <p style="margin:0;">Trân trọng,<br><strong>VNZ Technology</strong></p>
+                        </td>
+                    </tr>
+                    <tr>
+                        <td align="center" style="padding:16px 24px;background:#f8fafc;border-top:1px solid #e5e7eb;color:#64748b;font-size:12px;">VNZ Technology</td>
                     </tr>
                 </table>
             </body>
