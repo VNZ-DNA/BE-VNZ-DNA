@@ -36,6 +36,7 @@ public class GlobalExceptionHandlerMiddleware : IMiddleware
             JobPostException jobPostStatusException => GetJobPostStatusCode(jobPostStatusException.Code),
             NewsException newsStatusException => GetNewsStatusCode(newsStatusException.Code),
             ProductException productStatusException => GetProductStatusCode(productStatusException.Code),
+            PartnerException partnerStatusException => GetPartnerStatusCode(partnerStatusException.Code),
             TeamMemberException teamMemberStatusException => GetTeamMemberStatusCode(teamMemberStatusException.Code),
             ContactException contactStatusException => GetContactStatusCode(contactStatusException.Code),
             DbException when IsCreateNewsRequest(context) => HttpStatusCode.InternalServerError,
@@ -68,6 +69,7 @@ public class GlobalExceptionHandlerMiddleware : IMiddleware
             JobPostException jobPostPayloadException => (jobPostPayloadException.Code, jobPostPayloadException.Message),
             NewsException newsPayloadException => (newsPayloadException.Code, newsPayloadException.Message),
             ProductException productPayloadException => (productPayloadException.Code, productPayloadException.Message),
+            PartnerException partnerPayloadException => (partnerPayloadException.Code, partnerPayloadException.Message),
             TeamMemberException teamMemberPayloadException => (teamMemberPayloadException.Code, teamMemberPayloadException.Message),
             ContactException contactPayloadException => (contactPayloadException.Code, contactPayloadException.Message),
             DbException when IsCreateNewsRequest(context) =>
@@ -122,6 +124,8 @@ public class GlobalExceptionHandlerMiddleware : IMiddleware
                                 ? newsException.Fields
                                 : exception is ProductException productException
                                     ? productException.Fields
+                                : exception is PartnerException partnerException
+                                    ? partnerException.Fields
                                 : exception is TeamMemberException teamMemberException
                                     ? teamMemberException.Fields
                                     : exception is ContactException contactException
@@ -212,6 +216,23 @@ public class GlobalExceptionHandlerMiddleware : IMiddleware
             "PRODUCT_CREATE_FAILED" or
             "PRODUCT_ORDER_UPDATE_FAILED" or
             "PRODUCT_OPERATION_FAILED" => HttpStatusCode.InternalServerError,
+            _ => HttpStatusCode.InternalServerError
+        };
+    }
+
+    private static HttpStatusCode GetPartnerStatusCode(string code)
+    {
+        return code switch
+        {
+            "PARTNER_LIST_VALIDATION_FAILED" or
+            "PARTNER_VALIDATION_FAILED" or
+            "PARTNER_ORDER_INVALID" => HttpStatusCode.BadRequest,
+            "PARTNER_NOT_FOUND" => HttpStatusCode.NotFound,
+            "PARTNER_PUBLISHED_CANNOT_EDIT" => HttpStatusCode.Conflict,
+            "PARTNER_LIST_READ_FAILED" or
+            "PARTNER_CREATE_FAILED" or
+            "PARTNER_ORDER_UPDATE_FAILED" or
+            "PARTNER_UPDATE_FAILED" => HttpStatusCode.InternalServerError,
             _ => HttpStatusCode.InternalServerError
         };
     }
