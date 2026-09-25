@@ -252,22 +252,17 @@ public sealed class Service : IService
         }
     }
 
-    public async Task<List<Response.OrderableProductResponse>> GetOrderableProductsAsync()
+    public async Task<List<Response.ProductListItemResponse>> GetOrderableProductsAsync()
     {
         try
         {
-            return await _dbContext.Products
+            var products = await _dbContext.Products
                 .AsNoTracking()
                 .Where(product => product.IsPublished)
                 .OrderBy(product => product.DisplayOrder)
-                .Select(product => new Response.OrderableProductResponse
-                {
-                    Id = product.Id,
-                    Name = product.Name,
-                    LogoUrl = product.LogoUrl,
-                    DisplayOrder = product.DisplayOrder
-                })
                 .ToListAsync();
+
+            return products.Select(ToListItemResponse).ToList();
         }
         catch (Exception exception) when (exception is not ProductException &&
                                           exception is not OperationCanceledException)
@@ -347,7 +342,7 @@ public sealed class Service : IService
         {
             throw new ProductException(
                 "PRODUCT_ORDER_CONFLICT",
-                "Danh sách Product đang đăng đã thay đổi. Vui lòng tải lại và thử lại.",
+                "Thứ tự sản phẩm đã thay đổi. Vui lòng tải lại danh sách.",
                 exception);
         }
         catch (Exception exception) when (exception is DbUpdateException or PostgresException)
