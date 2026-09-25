@@ -4,17 +4,28 @@ using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Logging;
 
 namespace VNZ.Service.MailService;
 
 public class Service : IService
 {
+    private static readonly TimeSpan VietnamOffset = TimeSpan.FromHours(7);
+    private const string InterviewLocation = "84 D5, KDC An Thiên Lý P, Phước Long, Hồ Chí Minh, Việt Nam";
+    private const string InterviewLocationMapUrl =
+        "https://www.google.com/maps/place/C%C3%94NG+TY+TNHH+KOKEN/@10.8210167,106.7842329,1018m/data=!3m2!1e3!4b1!4m6!3m5!1s0x3175277517c8d095:0xa5a0955a7ad81fc3!8m2!3d10.8210167!4d106.7842329!16s%2Fg%2F11svb4wcm6!18m1!1e1?entry=ttu&g_ep=EgoyMDI2MDkyMi4wIKXMDSoASAFQAw%3D%3D";
+
     private readonly HttpClient _httpClient;
     private readonly MailOptions _mailOptions;
+    private readonly ILogger<Service> _logger;
 
-    public Service(HttpClient httpClient, IConfiguration configuration)
+    public Service(
+        HttpClient httpClient,
+        IConfiguration configuration,
+        ILogger<Service> logger)
     {
         _httpClient = httpClient;
+        _logger = logger;
         _mailOptions = new MailOptions
         {
             BaseUrl = configuration["BREVO_BASE_URL"] ?? "https://api.brevo.com/v3/",
@@ -80,6 +91,46 @@ public class Service : IService
         }
     }
 
+    public async Task<MailDeliveryResult> SendInterviewInvitationAsync(InterviewInvitationMailContent content)
+    {
+        try
+        {
+            await SendAsync(new MailContent
+            {
+                To = content.To,
+                ToName = content.ToName,
+                Subject = "Thư mời phỏng vấn tại VNZ",
+                Body = BuildInterviewInvitationHtml(content.ToName, content.InterviewAt),
+                IdempotencyKey = content.IdempotencyKey,
+                IsHtmlBody = true
+            });
+
+            return new MailDeliveryResult
+            {
+                IsSuccess = true
+            };
+        }
+        catch (HttpRequestException exception)
+        {
+            _logger.LogWarning(
+                exception,
+                "Unable to send interview invitation. ApplicationId: {ApplicationId}",
+                content.ApplicationId);
+        }
+        catch (TaskCanceledException exception)
+        {
+            _logger.LogWarning(
+                exception,
+                "Interview invitation timed out. ApplicationId: {ApplicationId}",
+                content.ApplicationId);
+        }
+
+        return new MailDeliveryResult
+        {
+            IsSuccess = false
+        };
+    }
+
     private void ValidateConfiguration()
     {
         if (string.IsNullOrWhiteSpace(_mailOptions.ApiKey)
@@ -122,6 +173,46 @@ public class Service : IService
                             <p>Xin chào {encodedRecipientName},</p>
                             <p>{encodedBody}</p>
                             <p>Nếu cần trao đổi thêm, bạn có thể phản hồi trực tiếp email này.</p>
+                            <p>Trân trọng,<br>Đội ngũ VNZ</p>
+                        </td>
+                    </tr>
+                    <tr>
+                        <td style="padding:16px 24px;background:#f4f0fa;color:#667085;font-size:12px;">VNZ Technology</td>
+                    </tr>
+                </table>
+            </body>
+            </html>
+        """;
+    }
+
+    private static string BuildInterviewInvitationHtml(string fullName, DateTimeOffset interviewAt)
+    {
+        var encodedFullName = WebUtility.HtmlEncode(fullName);
+        var encodedLocation = WebUtility.HtmlEncode(InterviewLocation);
+        var formattedInterviewAt = interviewAt.ToOffset(VietnamOffset)
+            .ToString("dd/MM/yyyy HH:mm", System.Globalization.CultureInfo.InvariantCulture);
+
+        return $"""
+            <!DOCTYPE html>
+            <html lang="vi">
+            <head>
+                <meta charset="UTF-8">
+                <meta name="viewport" content="width=device-width, initial-scale=1.0">
+                <title>Thư mời phỏng vấn tại VNZ</title>
+            </head>
+            <body style="margin:0;padding:24px;background:#f4f0fa;font-family:Arial,Helvetica,sans-serif;color:#243447;line-height:1.6;">
+                <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width:640px;margin:0 auto;background:#ffffff;border-collapse:collapse;">
+                    <tr>
+                        <td style="padding:24px;background:#f36b21;color:#ffffff;font-size:24px;font-weight:700;">VNZ Technology</td>
+                    </tr>
+                    <tr>
+                        <td style="padding:32px 24px;">
+                            <p>Chào {encodedFullName},</p>
+                            <p>Chúc mừng bạn đã vượt qua vòng xét duyệt CV. VNZ trân trọng mời bạn tham gia buổi phỏng vấn.</p>
+                            <p><strong>Thời gian:</strong> {formattedInterviewAt} (GMT+7)</p>
+                            <p><strong>Địa điểm:</strong> {encodedLocation}</p>
+                            <p><a href="{InterviewLocationMapUrl}" style="display:inline-block;padding:12px 18px;background:#f36b21;color:#ffffff;text-decoration:none;border-radius:4px;">Xem chỉ đường trên Google Maps</a></p>
+                            <p>Vui lòng có mặt đúng giờ.</p>
                             <p>Trân trọng,<br>Đội ngũ VNZ</p>
                         </td>
                     </tr>
