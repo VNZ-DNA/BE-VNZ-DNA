@@ -2,6 +2,15 @@ namespace VNZ.Service.TeamMembers;
 
 public static class Response
 {
+    public class PagedTeamMemberListResponse
+    {
+        public required List<TeamMemberResponse> Items { get; set; }
+        public int Page { get; set; }
+        public int PageSize { get; set; }
+        public int Total { get; set; }
+        public int TotalPages { get; set; }
+    }
+
     public class TeamMemberResponse
     {
         public Guid Id { get; set; }

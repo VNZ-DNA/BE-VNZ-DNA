@@ -245,12 +245,14 @@ public class GlobalExceptionHandlerMiddleware : IMiddleware
     {
         return code switch
         {
-            "MEMBER_VALIDATION_ERROR" => HttpStatusCode.BadRequest,
+            "MEMBER_VALIDATION_ERROR" or
+            "MEMBER_QUERY_INVALID" => HttpStatusCode.BadRequest,
             "MEMBER_ORDER_INVALID" => HttpStatusCode.BadRequest,
             "MEMBER_ORDER_CONFLICT" => HttpStatusCode.Conflict,
             "MEMBER_ORDER_UPDATE_FAILED" => HttpStatusCode.InternalServerError,
             "MEMBER_EMAIL_EXISTS" => HttpStatusCode.Conflict,
-            "MEMBER_CREATE_FAILED" => HttpStatusCode.InternalServerError,
+            "MEMBER_CREATE_FAILED" or
+            "MEMBER_LIST_READ_FAILED" => HttpStatusCode.InternalServerError,
             _ => HttpStatusCode.InternalServerError
         };
     }
