@@ -214,6 +214,7 @@ public class GlobalExceptionHandlerMiddleware : IMiddleware
             "PRODUCT_CONTENT_INVALID" => HttpStatusCode.BadRequest,
             "PRODUCT_NOT_FOUND" => HttpStatusCode.NotFound,
             "PRODUCT_ORDER_CONFLICT" or
+            "PRODUCT_PUBLISHED_CANNOT_EDIT" or
             "PRODUCT_IN_PROGRESS_CANNOT_PUBLISH" or
             "PRODUCT_DELETE_FORBIDDEN" => HttpStatusCode.Conflict,
             "PRODUCT_LIST_READ_FAILED" or
