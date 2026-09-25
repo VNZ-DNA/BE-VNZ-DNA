@@ -19,9 +19,10 @@ public sealed class TeamMembersController : ControllerBase
     }
 
     [HttpGet]
-    public async Task<IActionResult> GetMemberList()
+    public async Task<IActionResult> GetMemberList(
+        [FromQuery] TeamMemberService.Request.GetTeamMemberListRequest request)
     {
-        var data = await _teamMemberService.GetMemberListAsync();
+        var data = await _teamMemberService.GetMemberListAsync(request);
         return Ok(ResponseBuilder.SuccessResponse(data, "Lấy danh sách thành viên thành công.", HttpContext.TraceIdentifier));
     }
 

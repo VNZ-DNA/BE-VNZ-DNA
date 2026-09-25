@@ -61,4 +61,12 @@ public class Response
         public DateTimeOffset CreatedAt { get; set; }
         public DateTimeOffset? UpdatedAt { get; set; }
     }
+
+    public class OrderableProductResponse
+    {
+        public Guid Id { get; set; }
+        public required string Name { get; set; }
+        public string? LogoUrl { get; set; }
+        public int? DisplayOrder { get; set; }
+    }
 }

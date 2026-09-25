@@ -19,7 +19,7 @@ public class Request
         public string? ProductUrl { get; set; }
         public ProductContentRequest? Content { get; set; }
         public ProductStatus Status { get; set; }
-        public bool IsPublished { get; set; }
+        public bool? IsPublished { get; set; }
     }
 
     public class ProductContentRequest
@@ -45,6 +45,7 @@ public class Request
     public class GetProductListRequest
     {
         public string? Search { get; set; }
+        public string? Status { get; set; }
         public int Page { get; set; } = 1;
         public int PageSize { get; set; } = 20;
     }
