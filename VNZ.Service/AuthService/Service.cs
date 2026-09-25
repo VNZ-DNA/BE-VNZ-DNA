@@ -271,11 +271,14 @@ public class Service : IService
 
         await _dbContext.SaveChangesAsync();
 
-        await _mailService.SendMail(new MailService.MailContent
+        await _mailService.SendAsync(new MailService.MailContent
         {
             To = request.Email,
+            ToName = user.FullName,
             Subject = "VNZ DNA - Quên mật khẩu",
-            Body = BuildVerificationEmailBody(user.FullName, resetCode)
+            Body = BuildVerificationEmailBody(user.FullName, resetCode),
+            IdempotencyKey = $"forgot-password-{user.Id}-{resetCode}",
+            IsHtmlBody = true
         });
 
         return "Vui lòng kiểm tra email để nhận mã đặt lại mật khẩu.";
