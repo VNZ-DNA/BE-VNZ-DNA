@@ -161,23 +161,49 @@ public class Service : IService
             <head>
                 <meta charset="UTF-8">
                 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-                <title>Phản hồi từ VNZ</title>
+                <title>VNZ Technology | Phản hồi liên hệ</title>
             </head>
-            <body style="margin:0;padding:24px;background:#f4f0fa;font-family:Arial,Helvetica,sans-serif;color:#243447;line-height:1.6;">
-                <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width:640px;margin:0 auto;background:#ffffff;border-collapse:collapse;">
+            <body style="margin:0;padding:32px 12px;background:#eef2f6;font-family:Arial,Helvetica,sans-serif;color:#243447;font-size:14px;line-height:1.85;">
+                <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width:600px;margin:0 auto;background:#ffffff;border-collapse:separate;border-spacing:0;border-radius:6px;">
                     <tr>
-                        <td style="padding:24px;background:#f36b21;color:#ffffff;font-size:24px;font-weight:700;">VNZ Technology</td>
-                    </tr>
-                    <tr>
-                        <td style="padding:32px 24px;">
-                            <p>Xin chào {encodedRecipientName},</p>
-                            <p>{encodedBody}</p>
-                            <p>Nếu cần trao đổi thêm, bạn có thể phản hồi trực tiếp email này.</p>
-                            <p>Trân trọng,<br>Đội ngũ VNZ</p>
+                        <td align="center" style="padding:36px 40px 24px;">
+                            <img src="{VnzLogoUrl}" width="200" alt="VNZ Technology" style="display:block;width:200px;max-width:100%;height:auto;border:0;">
                         </td>
                     </tr>
                     <tr>
-                        <td style="padding:16px 24px;background:#f4f0fa;color:#667085;font-size:12px;">VNZ Technology</td>
+                        <td style="padding:0 40px;">
+                            <div style="height:1px;background:#dbe2ea;"></div>
+                        </td>
+                    </tr>
+                    <tr>
+                        <td style="padding:28px 40px 36px;">
+                            <p style="margin:0 0 8px;color:#e85d18;font-size:11px;font-weight:700;letter-spacing:1.2px;">PHẢN HỒI TỪ VNZ TECHNOLOGY</p>
+                            <h1 style="margin:0 0 22px;color:#243447;font-size:23px;font-weight:700;line-height:1.4;">Cảm ơn Anh/Chị đã kết nối với VNZ</h1>
+
+                            <p style="margin:0 0 16px;">Thân chào {encodedRecipientName},</p>
+                            <p style="margin:0 0 22px;">VNZ Technology trân trọng cảm ơn Anh/Chị đã dành thời gian liên hệ và chia sẻ nhu cầu. Chúng tôi đã xem xét nội dung trao đổi và gửi phản hồi đến Anh/Chị bên dưới.</p>
+
+                            <p style="margin:0 0 10px;font-weight:700;color:#243447;">Trao đổi cùng đội ngũ VNZ</p>
+                            <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="border-collapse:collapse;background:#f3f6f9;">
+                                <tr>
+                                    <td style="padding:18px 20px;border-left:3px solid #f36b21;color:#334155;line-height:1.8;">{encodedBody}</td>
+                                </tr>
+                            </table>
+
+                            <p style="margin:22px 0 16px;">Chúng tôi mong muốn được tiếp tục lắng nghe, trao đổi để hiểu rõ hơn mục tiêu của Anh/Chị và cùng tìm ra hướng hợp tác phù hợp. Anh/Chị có thể trả lời trực tiếp email này nếu muốn bổ sung thông tin hoặc hẹn một buổi trao đổi.</p>
+                            <p style="margin:0;">Trân trọng,<br><strong style="color:#243447;">Đội ngũ VNZ Technology</strong></p>
+                        </td>
+                    </tr>
+                    <tr>
+                        <td style="padding:0 40px;">
+                            <div style="height:1px;background:#dbe2ea;"></div>
+                        </td>
+                    </tr>
+                    <tr>
+                        <td align="center" style="padding:18px 24px 22px;background:#f3f6f9;color:#64748b;font-size:12px;line-height:1.6;">
+                            <strong style="color:#334155;">VNZ Technology</strong><br>
+                            Vietnamese Minds <span style="color:#f36b21;">&#8226;</span> Global Solutions
+                        </td>
                     </tr>
                 </table>
             </body>
@@ -217,8 +243,8 @@ public class Service : IService
                     <tr>
                         <td style="padding:26px 40px 38px;">
                             <p style="margin:0 0 18px;">Thân chào bạn,</p>
-                            <p style="margin:0 0 18px;">Cảm ơn bạn đã quan tâm và ứng tuyển chương trình thực tập (OJT) tại <strong>VNZ Technology</strong> thông qua chương trình hợp tác giữa công ty và <strong>Đại học FPT TP.HCM.</strong></p>
-                            <p style="margin:0 0 20px;">Sau khi xem xét hồ sơ, chúng tôi trân trọng mời bạn tham gia buổi phỏng vấn cho vị trí <strong>{encodedPositionTitle}</strong>, kỳ <strong>Fall 2026.</strong></p>
+                            <p style="margin:0 0 18px;">Cảm ơn bạn đã quan tâm và ứng tuyển tại <strong>VNZ Technology.</strong></p>
+                            <p style="margin:0 0 20px;">Sau khi xem xét hồ sơ, chúng tôi trân trọng mời bạn tham gia buổi phỏng vấn cho vị trí <strong>{encodedPositionTitle}.</strong></p>
 
                             <p style="margin:0 0 12px;">Thông tin buổi phỏng vấn:</p>
                             <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="border-collapse:collapse;font-size:14px;line-height:1.6;">
