@@ -252,17 +252,22 @@ public sealed class Service : IService
         }
     }
 
-    public async Task<List<Response.ProductListItemResponse>> GetOrderableProductsAsync()
+    public async Task<List<Response.ProductOrderItemResponse>> GetOrderableProductsAsync()
     {
         try
         {
-            var products = await _dbContext.Products
+            return await _dbContext.Products
                 .AsNoTracking()
                 .Where(product => product.IsPublished)
                 .OrderBy(product => product.DisplayOrder)
+                .Select(product => new Response.ProductOrderItemResponse
+                {
+                    Id = product.Id,
+                    Name = product.Name,
+                    LogoUrl = product.LogoUrl,
+                    DisplayOrder = product.DisplayOrder!.Value
+                })
                 .ToListAsync();
-
-            return products.Select(ToListItemResponse).ToList();
         }
         catch (Exception exception) when (exception is not ProductException &&
                                           exception is not OperationCanceledException)
@@ -274,7 +279,7 @@ public sealed class Service : IService
         }
     }
 
-    public async Task<List<Response.ProductListItemResponse>> ReorderProductsAsync(
+    public async Task<List<Response.ProductOrderItemResponse>> ReorderProductsAsync(
         Request.ReorderProductsRequest request)
     {
         ArgumentNullException.ThrowIfNull(request);
@@ -334,7 +339,7 @@ public sealed class Service : IService
             await transaction.CommitAsync();
 
             return orderedProductIds
-                .Select(id => ToListItemResponse(productsById[id]))
+                .Select(id => ToProductOrderItemResponse(productsById[id]))
                 .ToList();
         }
         catch (Exception exception) when (
@@ -535,6 +540,17 @@ public sealed class Service : IService
             DisplayOrder = product.DisplayOrder,
             CreatedAt = product.CreatedAt,
             UpdatedAt = product.UpdatedAt
+        };
+    }
+
+    private static Response.ProductOrderItemResponse ToProductOrderItemResponse(Product product)
+    {
+        return new Response.ProductOrderItemResponse
+        {
+            Id = product.Id,
+            Name = product.Name,
+            LogoUrl = product.LogoUrl,
+            DisplayOrder = product.DisplayOrder!.Value
         };
     }
 
