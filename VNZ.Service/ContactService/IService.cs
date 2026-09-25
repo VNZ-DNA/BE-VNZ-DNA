@@ -6,4 +6,8 @@ public interface IService
         Request.GetContactListRequest request);
 
     Task<Response.ContactDetailResponse> GetContactDetailAsync(Guid id);
+
+    Task<Response.SendContactReplyResponse> SendReplyAsync(
+        Guid id,
+        Request.SendContactReplyRequest request);
 }

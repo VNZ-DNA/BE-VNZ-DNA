@@ -9,4 +9,10 @@ public class Request
         public int Page { get; set; } = 1;
         public int PageSize { get; set; } = 20;
     }
+
+    public class SendContactReplyRequest
+    {
+        public string? Subject { get; set; }
+        public string? Body { get; set; }
+    }
 }

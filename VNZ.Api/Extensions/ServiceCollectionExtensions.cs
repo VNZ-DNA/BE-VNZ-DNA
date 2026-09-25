@@ -40,7 +40,10 @@ public static class ServiceCollectionExtensions
         services.AddScoped<VNZ.Service.ProductService.IService, VNZ.Service.ProductService.Service>();
         services.AddScoped<VNZ.Service.JobApplicationService.IService, VNZ.Service.JobApplicationService.Service>();
         services.AddScoped<VNZ.Service.TeamMembers.IService, VNZ.Service.TeamMembers.Service>();
-        services.AddScoped<MailService.IService, MailService.Service>();
+        services.AddHttpClient<MailService.IService, MailService.Service>(client =>
+        {
+            client.Timeout = TimeSpan.FromSeconds(15);
+        });
 
         services.AddDatabase(configuration);
         services.AddJwtAuthentication(configuration);

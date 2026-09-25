@@ -1,6 +1,5 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
-using VNZ.Service.Exceptions;
 using VNZ.Service.Models;
 using ContactService = VNZ.Service.ContactService;
 
@@ -30,22 +29,30 @@ public class ContactsController : ControllerBase
             HttpContext.TraceIdentifier));
     }
 
-    [HttpGet("{id}")]
-    public async Task<IActionResult> GetContactDetail(string id)
+    [HttpGet("{id:guid}")]
+    public async Task<IActionResult> GetContactDetail(Guid id)
     {
-        if (!Guid.TryParse(id, out var contactId))
-        {
-            throw new ContactException(
-                "CONTACT_ID_INVALID",
-                "Mã liên hệ không hợp lệ.",
-                "id");
-        }
-
-        var data = await _contactService.GetContactDetailAsync(contactId);
+        var data = await _contactService.GetContactDetailAsync(id);
 
         return Ok(ResponseBuilder.SuccessResponse(
             data,
             "Lấy chi tiết liên hệ thành công.",
             HttpContext.TraceIdentifier));
+    }
+
+    [HttpPost("{id:guid}/reply")]
+    public async Task<IActionResult> SendReply(
+        Guid id,
+        [FromBody] ContactService.Request.SendContactReplyRequest? request)
+    {
+        var replyRequest = request ?? new ContactService.Request.SendContactReplyRequest();
+        var data = await _contactService.SendReplyAsync(id, replyRequest);
+
+        var response = ResponseBuilder.SuccessResponse(
+            data,
+            "Gửi email phản hồi thành công.",
+            HttpContext.TraceIdentifier);
+
+        return Ok(response);
     }
 }

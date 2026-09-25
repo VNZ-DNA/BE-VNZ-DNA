@@ -1,18 +1,28 @@
 using System.ComponentModel.DataAnnotations;
+using System.Security.Claims;
+using Microsoft.AspNetCore.Http;
 using Microsoft.EntityFrameworkCore;
 using VNZ.Repository;
 using VNZ.Repository.Entity.Enum;
 using VNZ.Service.Exceptions;
+using MailService = VNZ.Service.MailService;
 
 namespace VNZ.Service.ContactService;
 
 public class Service : IService
 {
     private readonly AppDbContext _dbContext;
+    private readonly MailService.IService _mailService;
+    private readonly IHttpContextAccessor _httpContextAccessor;
 
-    public Service(AppDbContext dbContext)
+    public Service(
+        AppDbContext dbContext,
+        MailService.IService mailService,
+        IHttpContextAccessor httpContextAccessor)
     {
         _dbContext = dbContext;
+        _mailService = mailService;
+        _httpContextAccessor = httpContextAccessor;
     }
 
     public async Task<Response.ContactListResponse> GetContactListAsync(
@@ -185,6 +195,108 @@ public class Service : IService
             ContactStatus = GetDisplayName(contact.ContactStatus),
             CanSendEmail = contact.ContactStatus == ContactStatus.NotContacted
         };
+    }
+
+    public async Task<Response.SendContactReplyResponse> SendReplyAsync(
+        Guid id,
+        Request.SendContactReplyRequest request)
+    {
+        var contactedBy = GetAdminId();
+
+        var (subject, body) = ValidateReplyRequest(request);
+
+        await using var transaction = await _dbContext.Database.BeginTransactionAsync();
+
+        // PostgreSQL khóa dòng Contact này đến khi transaction commit hoặc rollback.
+        // Request phản hồi đồng thời phải chờ, sau đó sẽ thấy ContactStatus đã được cập nhật.
+        var contact = await _dbContext.ContactInquiries
+            .FromSqlInterpolated($"""SELECT * FROM "Contact_Inquiry" WHERE "Id" = {id} FOR UPDATE""")
+            .SingleOrDefaultAsync();
+
+        if (contact is null)
+        {
+            throw new ContactException(
+                "CONTACT_NOT_FOUND",
+                "Không tìm thấy yêu cầu liên hệ.",
+                "id");
+        }
+
+        if (contact.ContactStatus == ContactStatus.Contacted)
+        {
+            throw new ContactException(
+                "CONTACT_ALREADY_CONTACTED",
+                "Yêu cầu liên hệ này đã được phản hồi.");
+        }
+
+        await _mailService.SendAsync(new MailService.MailContent
+        {
+            To = contact.Email,
+            ToName = contact.FullName,
+            Subject = subject,
+            Body = body,
+            IdempotencyKey = $"contact-reply-{contact.Id}",
+            IsHtmlBody = false
+        });
+
+        contact.ContactStatus = ContactStatus.Contacted;
+        contact.ContactedBy = contactedBy;
+
+        await _dbContext.SaveChangesAsync();
+        await transaction.CommitAsync();
+
+        return new Response.SendContactReplyResponse
+        {
+            Id = contact.Id,
+            ContactStatus = GetDisplayName(contact.ContactStatus),
+            ContactedBy = contactedBy
+        };
+    }
+
+    private static (string Subject, string Body) ValidateReplyRequest(
+        Request.SendContactReplyRequest? request)
+    {
+        var fields = new List<string>();
+        var subject = request?.Subject?.Trim();
+        var body = request?.Body?.Trim();
+
+        if (string.IsNullOrWhiteSpace(subject)
+            || subject.Contains('\r')
+            || subject.Contains('\n'))
+        {
+            fields.Add("subject");
+        }
+
+        if (string.IsNullOrWhiteSpace(body))
+        {
+            fields.Add("body");
+        }
+
+        if (fields.Count > 0)
+        {
+            throw new ContactException(
+                "CONTACT_REPLY_VALIDATION_ERROR",
+                "Tiêu đề và nội dung email không hợp lệ.",
+                fields.ToArray());
+        }
+
+        return (subject!, body!);
+    }
+
+    private Guid GetAdminId()
+    {
+        var adminId = _httpContextAccessor.HttpContext?
+            .User
+            .FindFirst(ClaimTypes.NameIdentifier)?
+            .Value;
+
+        if (!Guid.TryParse(adminId, out var contactedBy))
+        {
+            throw new AuthException(
+                "AUTH_UNAUTHENTICATED",
+                "Yêu cầu đăng nhập để tiếp tục.");
+        }
+
+        return contactedBy;
     }
 
     private static string GetDisplayName<TEnum>(TEnum value)

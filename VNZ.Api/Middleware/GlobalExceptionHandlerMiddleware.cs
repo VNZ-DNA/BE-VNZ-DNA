@@ -45,6 +45,11 @@ public class GlobalExceptionHandlerMiddleware : IMiddleware
             DbException when IsContactListRequest(context) => HttpStatusCode.InternalServerError,
             DbException when IsContactDetailRequest(context) => HttpStatusCode.InternalServerError,
             DbUpdateException when IsContactDetailRequest(context) => HttpStatusCode.InternalServerError,
+            DbException when IsContactReplyRequest(context) => HttpStatusCode.InternalServerError,
+            DbUpdateException when IsContactReplyRequest(context) => HttpStatusCode.InternalServerError,
+            HttpRequestException when IsContactReplyRequest(context) => HttpStatusCode.InternalServerError,
+            TaskCanceledException when IsContactReplyRequest(context) => HttpStatusCode.InternalServerError,
+            InvalidOperationException when IsContactReplyRequest(context) => HttpStatusCode.InternalServerError,
             DbUpdateException when IsCreateMemberRequest(context) || IsCreateJobPostRequest(context) =>
                 HttpStatusCode.InternalServerError,
             NotFoundException => HttpStatusCode.NotFound,
@@ -79,6 +84,16 @@ public class GlobalExceptionHandlerMiddleware : IMiddleware
                 ("CONTACT_DETAIL_READ_FAILED", "Không thể đọc chi tiết liên hệ."),
             DbUpdateException when IsContactDetailRequest(context) =>
                 ("CONTACT_DETAIL_READ_FAILED", "Không thể đọc chi tiết liên hệ."),
+            DbException when IsContactReplyRequest(context) =>
+                ("CONTACT_REPLY_READ_FAILED", "Không thể đọc yêu cầu liên hệ để gửi phản hồi."),
+            DbUpdateException when IsContactReplyRequest(context) =>
+                ("CONTACT_REPLY_UPDATE_FAILED", "Không thể cập nhật trạng thái liên hệ."),
+            HttpRequestException when IsContactReplyRequest(context) =>
+                ("CONTACT_EMAIL_SEND_FAILED", "Không thể gửi email phản hồi."),
+            TaskCanceledException when IsContactReplyRequest(context) =>
+                ("CONTACT_EMAIL_SEND_FAILED", "Không thể gửi email phản hồi."),
+            InvalidOperationException when IsContactReplyRequest(context) =>
+                ("CONTACT_EMAIL_SEND_FAILED", "Không thể gửi email phản hồi."),
             DbUpdateException when IsCreateMemberRequest(context) =>
                 ("MEMBER_CREATE_FAILED", "Không thể tạo thành viên."),
             DbUpdateException when IsCreateJobPostRequest(context) =>
@@ -129,7 +144,8 @@ public class GlobalExceptionHandlerMiddleware : IMiddleware
             "AUTH_INVALID_REQUEST" => HttpStatusCode.BadRequest,
             "AUTH_INVALID_CREDENTIALS" or
             "AUTH_ACCOUNT_INACTIVE" or
-            "AUTH_INVALID_REFRESH_TOKEN" => HttpStatusCode.Unauthorized,
+            "AUTH_INVALID_REFRESH_TOKEN" or
+            "AUTH_UNAUTHENTICATED" => HttpStatusCode.Unauthorized,
             _ => HttpStatusCode.InternalServerError
         };
     }
@@ -219,10 +235,14 @@ public class GlobalExceptionHandlerMiddleware : IMiddleware
         return code switch
         {
             "CONTACT_QUERY_INVALID" or
-            "CONTACT_ID_INVALID" => HttpStatusCode.BadRequest,
+            "CONTACT_REPLY_VALIDATION_ERROR" => HttpStatusCode.BadRequest,
             "CONTACT_NOT_FOUND" => HttpStatusCode.NotFound,
-            "CONTACT_LIST_READ_FAILED" => HttpStatusCode.InternalServerError,
-            "CONTACT_DETAIL_READ_FAILED" => HttpStatusCode.InternalServerError,
+            "CONTACT_ALREADY_CONTACTED" => HttpStatusCode.Conflict,
+            "CONTACT_LIST_READ_FAILED" or
+            "CONTACT_DETAIL_READ_FAILED" or
+            "CONTACT_REPLY_READ_FAILED" or
+            "CONTACT_EMAIL_SEND_FAILED" or
+            "CONTACT_REPLY_UPDATE_FAILED" => HttpStatusCode.InternalServerError,
             _ => HttpStatusCode.InternalServerError
         };
     }
@@ -262,6 +282,28 @@ public class GlobalExceptionHandlerMiddleware : IMiddleware
         }
 
         var id = path[routePrefix.Length..];
+        return Guid.TryParse(id, out _);
+    }
+
+    private static bool IsContactReplyRequest(HttpContext context)
+    {
+        const string routePrefix = "/api/v1/admin/contacts/";
+        const string routeSuffix = "/reply";
+
+        if (!HttpMethods.IsPost(context.Request.Method))
+        {
+            return false;
+        }
+
+        var path = context.Request.Path.Value;
+        if (path is null
+            || !path.StartsWith(routePrefix, StringComparison.OrdinalIgnoreCase)
+            || !path.EndsWith(routeSuffix, StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        var id = path[routePrefix.Length..^routeSuffix.Length];
         return Guid.TryParse(id, out _);
     }
 
