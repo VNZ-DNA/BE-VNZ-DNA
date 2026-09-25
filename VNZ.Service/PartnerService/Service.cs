@@ -138,6 +138,28 @@ public sealed class Service : IService
         }
     }
 
+    public async Task<List<Response.PartnerListItemResponse>> GetOrderablePartnersAsync()
+    {
+        try
+        {
+            var partners = await _dbContext.Partners
+                .AsNoTracking()
+                .Where(partner => partner.IsPublished)
+                .OrderBy(partner => partner.DisplayOrder)
+                .ToListAsync();
+
+            return partners.Select(ToPartnerResponse).ToList();
+        }
+        catch (Exception exception) when (exception is not PartnerException &&
+                                          exception is not OperationCanceledException)
+        {
+            throw new PartnerException(
+                "PARTNER_LIST_READ_FAILED",
+                "Không thể đọc danh sách Partner để sắp xếp.",
+                exception);
+        }
+    }
+
     public async Task<List<Response.PartnerListItemResponse>> ReorderPartnersAsync(
         Request.ReorderPartnersRequest request)
     {
