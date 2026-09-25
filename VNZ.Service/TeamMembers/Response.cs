@@ -11,6 +11,15 @@ public static class Response
         public int TotalPages { get; set; }
     }
 
+    public class OrderableTeamMemberResponse
+    {
+        public Guid Id { get; set; }
+        public required string FullName { get; set; }
+        public string? Position { get; set; }
+        public string? AvatarUrl { get; set; }
+        public int DisplayOrder { get; set; }
+    }
+
     public class TeamMemberResponse
     {
         public Guid Id { get; set; }
