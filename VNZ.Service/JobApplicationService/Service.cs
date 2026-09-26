@@ -371,7 +371,7 @@ public sealed class Service : IService
             PortfolioUrl = application.PortfolioUrl,
             CoverLetter = application.CoverLetter,
             JobPostSnapshot = application.JobPostSnapshot,
-            Status = application.Status.ToString(),
+            Status = GetDisplayName(application.Status),
             ReviewAt = application.ReviewAt,
             ReviewedBy = application.ReviewedBy,
             InterviewAt = application.InterViewAt,
