@@ -26,6 +26,19 @@ public class Response
         public required string Title { get; set; }
         public string? Summary { get; set; }
         public DateTimeOffset PublishAt { get; set; }
+        public int ReadingTimeMinutes { get; set; }
+        public required List<NewsCategoryResponse> Categories { get; set; }
+    }
+
+    public class PublicNewsDetailResponse
+    {
+        public Guid Id { get; set; }
+        public required string Title { get; set; }
+        public string? Summary { get; set; }
+        public string? Content { get; set; }
+        public string? ImageUrl { get; set; }
+        public DateTimeOffset PublishAt { get; set; }
+        public int ReadingTimeMinutes { get; set; }
         public required List<NewsCategoryResponse> Categories { get; set; }
     }
 
