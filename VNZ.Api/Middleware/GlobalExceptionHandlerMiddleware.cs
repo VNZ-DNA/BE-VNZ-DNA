@@ -179,8 +179,9 @@ public class GlobalExceptionHandlerMiddleware : IMiddleware
             "DEPARTMENT_NOT_FOUND" => HttpStatusCode.NotFound,
             "JOB_POST_CLOSED" or
             "JOB_POST_EXPIRED" => HttpStatusCode.Conflict,
-            "JOB_POST_CREATE_FAILED" => HttpStatusCode.InternalServerError,
-            "JOB_POST_UPDATE_FAILED" => HttpStatusCode.InternalServerError,
+            "JOB_POST_CREATE_FAILED" or
+            "JOB_POST_UPDATE_FAILED" or
+            "PUBLIC_JOB_POST_LIST_READ_FAILED" => HttpStatusCode.InternalServerError,
             _ => HttpStatusCode.InternalServerError
         };
     }
