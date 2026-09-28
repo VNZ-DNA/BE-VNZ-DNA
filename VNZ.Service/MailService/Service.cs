@@ -131,6 +131,63 @@ public class Service : IService
         };
     }
 
+    public async Task<MailDeliveryResult> SendRejectionEmailAsync(RejectionEmailMailContent content)
+    {
+        try
+        {
+            await SendAsync(new MailContent
+            {
+                To = content.To,
+                ToName = content.ToName,
+                Subject = "Thông báo kết quả ứng tuyển tại VNZ Technology",
+                Body = BuildRejectionEmailHtml(content.ToName, content.PositionTitle),
+                IdempotencyKey = content.IdempotencyKey,
+                IsHtmlBody = true
+            });
+
+            return new MailDeliveryResult
+            {
+                IsSuccess = true
+            };
+        }
+        catch (HttpRequestException exception)
+        {
+            _logger.LogWarning(
+                exception,
+                "Rejection email delivery failed. ApplicationId: {ApplicationId}",
+                content.ApplicationId);
+
+            return new MailDeliveryResult
+            {
+                IsSuccess = false
+            };
+        }
+        catch (TaskCanceledException exception)
+        {
+            _logger.LogWarning(
+                exception,
+                "Rejection email delivery timed out. ApplicationId: {ApplicationId}",
+                content.ApplicationId);
+
+            return new MailDeliveryResult
+            {
+                IsSuccess = false
+            };
+        }
+        catch (InvalidOperationException exception)
+        {
+            _logger.LogError(
+                exception,
+                "Mail configuration is invalid for rejection email. ApplicationId: {ApplicationId}",
+                content.ApplicationId);
+
+            return new MailDeliveryResult
+            {
+                IsSuccess = false
+            };
+        }
+    }
+
     private void ValidateConfiguration()
     {
         if (string.IsNullOrWhiteSpace(_mailOptions.ApiKey)
@@ -198,6 +255,64 @@ public class Service : IService
                         <td style="padding:0 40px;">
                             <div style="height:1px;background:#dbe2ea;"></div>
                         </td>
+                    </tr>
+                    <tr>
+                        <td align="center" style="padding:18px 24px 22px;background:#f3f6f9;color:#64748b;font-size:12px;line-height:1.6;">
+                            <strong style="color:#334155;">VNZ Technology</strong><br>
+                            Vietnamese Minds <span style="color:#f36b21;">&#8226;</span> Global Solutions
+                        </td>
+                    </tr>
+                </table>
+            </body>
+            </html>
+        """;
+    }
+
+    private static string BuildRejectionEmailHtml(string recipientName, string positionTitle)
+    {
+        var encodedRecipientName = WebUtility.HtmlEncode(recipientName);
+        var encodedPositionTitle = WebUtility.HtmlEncode(positionTitle);
+
+        return $"""
+            <!DOCTYPE html>
+            <html lang="vi">
+            <head>
+                <meta charset="UTF-8">
+                <meta name="viewport" content="width=device-width, initial-scale=1.0">
+                <title>Thông báo kết quả ứng tuyển tại VNZ Technology</title>
+            </head>
+            <body style="margin:0;padding:32px 12px;background:#eef2f6;font-family:Arial,Helvetica,sans-serif;color:#243447;font-size:14px;line-height:1.85;">
+                <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width:600px;margin:0 auto;background:#ffffff;border-collapse:separate;border-spacing:0;border-radius:6px;">
+                    <tr>
+                        <td align="center" style="padding:36px 40px 24px;">
+                            <img src="{VnzLogoUrl}" width="200" alt="VNZ Technology" style="display:block;width:200px;max-width:100%;height:auto;border:0;">
+                        </td>
+                    </tr>
+                    <tr>
+                        <td style="padding:0 40px;"><div style="height:1px;background:#dbe2ea;"></div></td>
+                    </tr>
+                    <tr>
+                        <td style="padding:28px 40px 36px;">
+                            <p style="margin:0 0 8px;color:#e85d18;font-size:11px;font-weight:700;letter-spacing:1.2px;">THÔNG BÁO TỪ VNZ TECHNOLOGY</p>
+                            <h1 style="margin:0 0 22px;color:#243447;font-size:23px;font-weight:700;line-height:1.4;">Kết quả ứng tuyển</h1>
+
+                            <p style="margin:0 0 16px;">Thân chào {encodedRecipientName},</p>
+                            <p style="margin:0 0 18px;">Cảm ơn bạn đã quan tâm và gửi hồ sơ ứng tuyển vị trí <strong>{encodedPositionTitle}</strong> tại <strong>VNZ Technology.</strong></p>
+
+                            <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="border-collapse:collapse;background:#f3f6f9;">
+                                <tr>
+                                    <td style="padding:18px 20px;border-left:3px solid #f36b21;color:#334155;line-height:1.8;">
+                                        Sau khi xem xét hồ sơ, chúng tôi rất tiếc chưa thể tiếp tục đồng hành cùng bạn trong vòng tuyển chọn lần này. Quyết định này không làm giảm giá trị những nỗ lực và kinh nghiệm bạn đã chia sẻ.
+                                    </td>
+                                </tr>
+                            </table>
+
+                            <p style="margin:22px 0 16px;">Chúc bạn luôn thành công trên hành trình sắp tới. Chúng tôi hy vọng sẽ có dịp được kết nối với bạn trong những cơ hội phù hợp hơn trong tương lai.</p>
+                            <p style="margin:0;">Trân trọng,<br><strong style="color:#243447;">VNZ Technology</strong></p>
+                        </td>
+                    </tr>
+                    <tr>
+                        <td style="padding:0 40px;"><div style="height:1px;background:#dbe2ea;"></div></td>
                     </tr>
                     <tr>
                         <td align="center" style="padding:18px 24px 22px;background:#f3f6f9;color:#64748b;font-size:12px;line-height:1.6;">

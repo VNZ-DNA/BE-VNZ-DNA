@@ -40,6 +40,7 @@ public class GlobalExceptionHandlerMiddleware : IMiddleware
             TeamMemberException teamMemberStatusException => GetTeamMemberStatusCode(teamMemberStatusException.Code),
             ContactException contactStatusException => GetContactStatusCode(contactStatusException.Code),
             JobApplicationException jobApplicationStatusException => GetJobApplicationStatusCode(jobApplicationStatusException.Code),
+            MediaException mediaStatusException => GetMediaStatusCode(mediaStatusException.Code),
             DbException when IsCreateNewsRequest(context) => HttpStatusCode.InternalServerError,
             DbException when IsUpdateNewsRequest(context) => HttpStatusCode.InternalServerError,
             DbException when IsNewsDetailRequest(context) => HttpStatusCode.InternalServerError,
@@ -74,6 +75,7 @@ public class GlobalExceptionHandlerMiddleware : IMiddleware
             TeamMemberException teamMemberPayloadException => (teamMemberPayloadException.Code, teamMemberPayloadException.Message),
             ContactException contactPayloadException => (contactPayloadException.Code, contactPayloadException.Message),
             JobApplicationException jobApplicationPayloadException => (jobApplicationPayloadException.Code, jobApplicationPayloadException.Message),
+            MediaException mediaPayloadException => (mediaPayloadException.Code, mediaPayloadException.Message),
             DbException when IsCreateNewsRequest(context) =>
                 ("NEWS_ARTICLE_CREATE_FAILED", "Không thể tạo bài viết."),
             DbException when IsUpdateNewsRequest(context) =>
@@ -134,6 +136,8 @@ public class GlobalExceptionHandlerMiddleware : IMiddleware
                                         ? contactException.Fields
                                         : exception is JobApplicationException jobApplicationException
                                             ? jobApplicationException.Fields
+                                        : exception is MediaException mediaException
+                                            ? mediaException.Fields
                                         : Array.Empty<string>()
             },
             message: message,
@@ -279,10 +283,29 @@ public class GlobalExceptionHandlerMiddleware : IMiddleware
     {
         return code switch
         {
+            "JOB_APPLICATION_REJECTION_REQUEST_INVALID" => HttpStatusCode.BadRequest,
+            "JOB_APPLICATION_NOT_FOUND" => HttpStatusCode.NotFound,
+            "INVALID_APPLICATION_STATUS" => HttpStatusCode.Conflict,
+            "JOB_APPLICATION_REJECTION_EMAIL_FAILED" or
+            "JOB_APPLICATION_REJECTION_PERSIST_FAILED" => HttpStatusCode.InternalServerError,
             "JOB_APPLICATION_INTERVIEW_REQUEST_INVALID" or
             "JOB_APPLICATION_INTERVIEW_TIME_INVALID" => HttpStatusCode.BadRequest,
             "JOB_APPLICATION_INTERVIEW_BATCH_INVALID" => HttpStatusCode.Conflict,
             "JOB_APPLICATION_INTERVIEW_PERSIST_FAILED" => HttpStatusCode.InternalServerError,
+            _ => HttpStatusCode.InternalServerError
+        };
+    }
+
+    private static HttpStatusCode GetMediaStatusCode(string code)
+    {
+        return code switch
+        {
+            "MEDIA_FILE_REQUIRED" or
+            "MEDIA_FILE_TYPE_UNSUPPORTED" or
+            "MEDIA_FILE_TOO_LARGE" or
+            "MEDIA_PURPOSE_UNSUPPORTED" => HttpStatusCode.BadRequest,
+            "MEDIA_CONFIGURATION_INVALID" or
+            "MEDIA_UPLOAD_FAILED" => HttpStatusCode.InternalServerError,
             _ => HttpStatusCode.InternalServerError
         };
     }

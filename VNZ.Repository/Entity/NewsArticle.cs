@@ -8,6 +8,7 @@ public class NewsArticle : BaseEntity
     public string Title { get; set; } = null!;
     public string? Summary { get; set; }
     public string? Content { get; set; }
+    public string? ImageUrl { get; set; }
     public NewsStatus Status { get; set; }
     public bool Published { get; set; }
     public Guid CreatedBy { get; set; }

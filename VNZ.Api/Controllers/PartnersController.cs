@@ -19,8 +19,9 @@ public sealed class PartnersController : ControllerBase
     }
 
     [HttpPost]
+    [Consumes("multipart/form-data")]
     public async Task<IActionResult> CreatePartner(
-        [FromBody] PartnerService.Request.CreatePartnerRequest request)
+        [FromForm] PartnerService.Request.CreatePartnerRequest request)
     {
         var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
 
@@ -72,9 +73,10 @@ public sealed class PartnersController : ControllerBase
     }
 
     [HttpPut("{id:guid}")]
+    [Consumes("multipart/form-data")]
     public async Task<IActionResult> UpdatePartner(
         Guid id,
-        [FromBody] PartnerService.Request.UpdatePartnerRequest request)
+        [FromForm] PartnerService.Request.UpdatePartnerRequest request)
     {
         var data = await _partnerService.UpdatePartnerAsync(id, request);
 

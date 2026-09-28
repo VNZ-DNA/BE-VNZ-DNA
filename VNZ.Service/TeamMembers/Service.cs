@@ -6,6 +6,7 @@ using VNZ.Repository;
 using VNZ.Repository.Entity;
 using VNZ.Repository.Entity.Enum;
 using VNZ.Service.Exceptions;
+using MediaService = VNZ.Service.Utils.MediaService;
 
 namespace VNZ.Service.TeamMembers;
 
@@ -14,10 +15,14 @@ public sealed class Service : IService
     private const string DefaultMemberPassword = "Vnz@123456";
 
     private readonly AppDbContext _dbContext;
+    private readonly MediaService.IService _mediaService;
 
-    public Service(AppDbContext dbContext)
+    public Service(
+        AppDbContext dbContext,
+        MediaService.IService mediaService)
     {
         _dbContext = dbContext;
+        _mediaService = mediaService;
     }
 
     public async Task<Response.PagedTeamMemberListResponse> GetMemberListAsync(
@@ -314,6 +319,20 @@ public sealed class Service : IService
                 "email");
         }
 
+        var avatarUrl = NormalizeOptional(request.AvatarUrl);
+
+        if (request.Avatar is not null)
+        {
+            var uploadResult = await _mediaService.UploadImageAsync(
+                new MediaService.Request.UploadImageRequest
+                {
+                    File = request.Avatar,
+                    Purpose = "TeamMemberAvatar"
+                });
+
+            avatarUrl = uploadResult.Url;
+        }
+
         var now = DateTimeOffset.UtcNow;
         var member = new User
         {
@@ -324,7 +343,7 @@ public sealed class Service : IService
             PasswordHash = BCrypt.Net.BCrypt.HashPassword(DefaultMemberPassword),
             Position = position,
             JobLevel = parsedJobLevel,
-            AvatarUrl = NormalizeOptional(request.AvatarUrl),
+            AvatarUrl = avatarUrl,
             AnimationUrl = NormalizeOptional(request.AnimationUrl),
             AudioUrl = NormalizeOptional(request.AudioUrl),
             Hometown = NormalizeOptional(request.Hometown),
@@ -438,7 +457,24 @@ public sealed class Service : IService
             throw new ArgumentException("Trạng thái làm việc không hợp lệ.");
         }
 
-        var avatarUrl = NormalizeOptional(request.AvatarUrl);
+        var avatarUrl = member.AvatarUrl;
+
+        if (request.Avatar is not null)
+        {
+            var uploadResult = await _mediaService.UploadImageAsync(
+                new MediaService.Request.UploadImageRequest
+                {
+                    File = request.Avatar,
+                    Purpose = "TeamMemberAvatar"
+                });
+
+            avatarUrl = uploadResult.Url;
+        }
+        else if (request.AvatarUrl is not null)
+        {
+            avatarUrl = NormalizeOptional(request.AvatarUrl);
+        }
+
         var animationUrl = NormalizeOptional(request.AnimationUrl);
         var audioUrl = NormalizeOptional(request.AudioUrl);
         var hometown = NormalizeOptional(request.Hometown);
