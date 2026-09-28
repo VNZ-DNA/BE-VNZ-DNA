@@ -623,6 +623,112 @@ public sealed class Service : IService
         };
     }
 
+    public async Task<Response.PagedPublicNewsListResponse> GetPublicNewsListAsync(
+        Request.GetPublicNewsListRequest request)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+
+        // 1. Validate phân trang public theo convention chung của các API list.
+        if (request.Page < 1 || request.PageSize < 1 || request.PageSize > 100)
+        {
+            var fields = new List<string>();
+
+            if (request.Page < 1)
+            {
+                fields.Add("page");
+            }
+
+            if (request.PageSize < 1 || request.PageSize > 100)
+            {
+                fields.Add("pageSize");
+            }
+
+            throw new NewsException(
+                "NEWS_PUBLIC_LIST_VALIDATION_FAILED",
+                "Tham số phân trang không hợp lệ.",
+                fields.ToArray());
+        }
+
+        // 2. Chỉ lấy bài có trạng thái và dữ liệu đủ điều kiện public.
+        var query = _dbContext.NewsArticles
+            .AsNoTracking()
+            .Where(article =>
+                article.Status == NewsStatus.Published &&
+                article.Published &&
+                article.PublishAt != null);
+
+        var totalItems = await query.CountAsync();
+
+        // 3. Lấy trang hiện tại với thứ tự publish mới nhất trước.
+        var articleRows = await query
+            .OrderByDescending(article => article.PublishAt)
+            .ThenByDescending(article => article.Id)
+            .Skip((request.Page - 1) * request.PageSize)
+            .Take(request.PageSize)
+            .Select(article => new
+            {
+                article.Id,
+                article.Title,
+                article.Summary,
+                article.PublishAt
+            })
+            .ToListAsync();
+
+        var articleIds = articleRows
+            .Select(article => article.Id)
+            .ToList();
+
+        var categoryRows = await _dbContext.NewsArticleCategories
+            .AsNoTracking()
+            .Where(link => articleIds.Contains(link.NewsArticleId))
+            .Select(link => new
+            {
+                ArticleId = link.NewsArticleId,
+                CategoryId = link.NewsCategoryId,
+                CategoryName = link.NewsCategory.Name
+            })
+            .ToListAsync();
+
+        var categoriesByArticleId = categoryRows
+            .GroupBy(category => category.ArticleId)
+            .ToDictionary(
+                group => group.Key,
+                group => group
+                    .OrderBy(category => category.CategoryName)
+                    .ThenBy(category => category.CategoryId)
+                    .Select(category => new Response.NewsCategoryResponse
+                    {
+                        Id = category.CategoryId,
+                        Name = category.CategoryName
+                    })
+                    .ToList());
+
+        // 4. Summary legacy được sanitize khi đọc để FE chỉ nhận HTML an toàn.
+        var items = articleRows
+            .Select(article => new Response.PublicNewsListItemResponse
+            {
+                Id = article.Id,
+                Title = article.Title,
+                Summary = _richTextService.Sanitize(article.Summary, allowLinks: true),
+                PublishAt = article.PublishAt!.Value,
+                Categories = GetCategories(categoriesByArticleId, article.Id)
+            })
+            .ToList();
+
+        var totalPages = totalItems == 0
+            ? 0
+            : (int)Math.Ceiling(totalItems / (double)request.PageSize);
+
+        return new Response.PagedPublicNewsListResponse
+        {
+            Items = items,
+            Page = request.Page,
+            PageSize = request.PageSize,
+            TotalItems = totalItems,
+            TotalPages = totalPages
+        };
+    }
+
     public async Task<Response.NewsDetailResponse> GetNewsDetailAsync(Guid id)
     {
         // 1. Đọc bài viết cùng tác giả và toàn bộ danh mục đang được gắn.
