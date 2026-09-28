@@ -12,6 +12,7 @@ namespace VNZ.Service.NewsService;
 public sealed class Service : IService
 {
     private const int MinimumPublishedContentLength = 300;
+    private const int WordsPerMinute = 200;
     private static readonly TimeSpan VietnamUtcOffset = TimeSpan.FromHours(7);
 
     private readonly AppDbContext _dbContext;
@@ -155,6 +156,7 @@ public sealed class Service : IService
             Summary = summary,
             Content = content,
             ImageUrl = imageUrl,
+            ReadingTimeMinutes = CalculateReadingTimeMinutes(content),
             Status = status,
             Published = status == NewsStatus.Published,
             CreatedBy = createdBy,
@@ -384,6 +386,7 @@ public sealed class Service : IService
         article.Summary = summary;
         article.Content = content;
         article.ImageUrl = imageUrl;
+        article.ReadingTimeMinutes = CalculateReadingTimeMinutes(content);
         article.Status = targetStatus;
         article.Published = targetStatus == NewsStatus.Published;
         article.PublishAt = publishAt;
@@ -460,6 +463,16 @@ public sealed class Service : IService
         }
 
         return false;
+    }
+
+    private int CalculateReadingTimeMinutes(string? content)
+    {
+        var plainText = _richTextService.ToPlainText(content ?? string.Empty);
+        var wordCount = plainText
+            .Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries)
+            .Length;
+
+        return Math.Max(1, (int)Math.Ceiling(wordCount / (double)WordsPerMinute));
     }
 
     public async Task<Response.PagedNewsListResponse> GetNewsListAsync(
@@ -670,7 +683,8 @@ public sealed class Service : IService
                 article.Id,
                 article.Title,
                 article.Summary,
-                article.PublishAt
+                article.PublishAt,
+                article.ReadingTimeMinutes
             })
             .ToListAsync();
 
@@ -711,6 +725,7 @@ public sealed class Service : IService
                 Title = article.Title,
                 Summary = _richTextService.Sanitize(article.Summary, allowLinks: true),
                 PublishAt = article.PublishAt!.Value,
+                ReadingTimeMinutes = article.ReadingTimeMinutes,
                 Categories = GetCategories(categoriesByArticleId, article.Id)
             })
             .ToList();
@@ -767,6 +782,7 @@ public sealed class Service : IService
             Content = _richTextService.Sanitize(article.Content, allowLinks: true),
             ImageUrl = article.ImageUrl,
             PublishAt = article.PublishAt!.Value,
+            ReadingTimeMinutes = article.ReadingTimeMinutes,
             Categories = article.NewsArticleCategories
                 .OrderBy(link => link.NewsCategory.Name)
                 .ThenBy(link => link.NewsCategory.Id)
