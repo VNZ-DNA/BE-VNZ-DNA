@@ -295,6 +295,54 @@ public sealed class Service : IService
         }
     }
 
+    public async Task<Response.PublicProductListResponse> GetPublicProductListAsync()
+    {
+        var products = await _dbContext.Products
+            .AsNoTracking()
+            .Where(product =>
+                product.Status == ProductStatus.Completed &&
+                product.IsPublished &&
+                product.DisplayOrder.HasValue)
+            .OrderBy(product => product.DisplayOrder)
+            .ThenBy(product => product.Id)
+            .ToListAsync();
+
+        var items = products
+            .Select(product => new Response.PublicProductListItemResponse
+            {
+                LogoUrl = product.LogoUrl,
+                Content = product.Content is null
+                    ? null
+                    : new Response.PublicProductContentResponse
+                    {
+                        Blocks = product.Content.Blocks
+                            .OrderBy(block => block.Order)
+                            .Select(block => new Response.PublicContentBlockResponse
+                            {
+                                Type = block.Type,
+                                Order = block.Order,
+                                Text = block.Text,
+                                Items = block.Items is null
+                                    ? null
+                                    : block.Items
+                                        .Select(item => new Response.PublicFeatureItemResponse
+                                        {
+                                            Title = item.Title
+                                        })
+                                        .ToList()
+                            })
+                            .ToList()
+                    },
+                ProductUrl = product.ProductUrl
+            })
+            .ToList();
+
+        return new Response.PublicProductListResponse
+        {
+            Items = items
+        };
+    }
+
     public async Task<List<Response.ProductOrderItemResponse>> GetOrderableProductsAsync()
     {
         try
