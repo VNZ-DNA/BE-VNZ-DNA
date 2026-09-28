@@ -23,7 +23,18 @@ public class GlobalExceptionHandlerMiddleware : IMiddleware
         }
         catch (Exception exception)
         {
-            _logger.LogError(exception, "Unhandled exception. TraceId: {TraceId}", context.TraceIdentifier);
+            if (IsPublicContactCreateRequest(context))
+            {
+                _logger.LogError(
+                    "Public contact create failed. TraceId: {TraceId}, ExceptionType: {ExceptionType}",
+                    context.TraceIdentifier,
+                    exception.GetType().Name);
+            }
+            else
+            {
+                _logger.LogError(exception, "Unhandled exception. TraceId: {TraceId}", context.TraceIdentifier);
+            }
+
             await HandleExceptionAsync(context, exception);
         }
     }
@@ -49,6 +60,11 @@ public class GlobalExceptionHandlerMiddleware : IMiddleware
             Exception when IsPublicNewsListRequest(context) => HttpStatusCode.InternalServerError,
             DbException when IsPublicNewsDetailRequest(context) => HttpStatusCode.InternalServerError,
             Exception when IsPublicNewsDetailRequest(context) => HttpStatusCode.InternalServerError,
+            BadHttpRequestException { StatusCode: StatusCodes.Status413PayloadTooLarge }
+                when IsPublicContactCreateRequest(context) => HttpStatusCode.RequestEntityTooLarge,
+            DbUpdateException when IsPublicContactCreateRequest(context) => HttpStatusCode.InternalServerError,
+            DbException when IsPublicContactCreateRequest(context) => HttpStatusCode.InternalServerError,
+            Exception when IsPublicContactCreateRequest(context) => HttpStatusCode.InternalServerError,
             DbException when IsContactListRequest(context) => HttpStatusCode.InternalServerError,
             DbException when IsContactDetailRequest(context) => HttpStatusCode.InternalServerError,
             DbUpdateException when IsContactDetailRequest(context) => HttpStatusCode.InternalServerError,
@@ -96,6 +112,15 @@ public class GlobalExceptionHandlerMiddleware : IMiddleware
                 ("NEWS_PUBLIC_ARTICLE_FAILED", "Không thể đọc chi tiết tin tức."),
             Exception when IsPublicNewsDetailRequest(context) =>
                 ("NEWS_PUBLIC_ARTICLE_FAILED", "Không thể đọc chi tiết tin tức."),
+            BadHttpRequestException { StatusCode: StatusCodes.Status413PayloadTooLarge }
+                when IsPublicContactCreateRequest(context) =>
+                ("CONTACT_REQUEST_TOO_LARGE", "Dung lượng yêu cầu vượt giới hạn của hệ thống."),
+            DbUpdateException when IsPublicContactCreateRequest(context) =>
+                ("CONTACT_CREATE_FAILED", "Không thể tiếp nhận yêu cầu liên hệ lúc này. Vui lòng thử lại sau."),
+            DbException when IsPublicContactCreateRequest(context) =>
+                ("CONTACT_CREATE_FAILED", "Không thể tiếp nhận yêu cầu liên hệ lúc này. Vui lòng thử lại sau."),
+            Exception when IsPublicContactCreateRequest(context) =>
+                ("CONTACT_CREATE_FAILED", "Không thể tiếp nhận yêu cầu liên hệ lúc này. Vui lòng thử lại sau."),
             DbException when IsContactListRequest(context) =>
                 ("CONTACT_LIST_READ_FAILED", "Không thể đọc danh sách liên hệ."),
             DbException when IsContactDetailRequest(context) =>
@@ -288,14 +313,16 @@ public class GlobalExceptionHandlerMiddleware : IMiddleware
         return code switch
         {
             "CONTACT_QUERY_INVALID" or
-            "CONTACT_REPLY_VALIDATION_ERROR" => HttpStatusCode.BadRequest,
+            "CONTACT_REPLY_VALIDATION_ERROR" or
+            "CONTACT_CREATE_VALIDATION_FAILED" => HttpStatusCode.BadRequest,
             "CONTACT_NOT_FOUND" => HttpStatusCode.NotFound,
             "CONTACT_ALREADY_CONTACTED" => HttpStatusCode.Conflict,
             "CONTACT_LIST_READ_FAILED" or
             "CONTACT_DETAIL_READ_FAILED" or
             "CONTACT_REPLY_READ_FAILED" or
             "CONTACT_EMAIL_SEND_FAILED" or
-            "CONTACT_REPLY_UPDATE_FAILED" => HttpStatusCode.InternalServerError,
+            "CONTACT_REPLY_UPDATE_FAILED" or
+            "CONTACT_CREATE_FAILED" => HttpStatusCode.InternalServerError,
             _ => HttpStatusCode.InternalServerError
         };
     }
@@ -373,6 +400,12 @@ public class GlobalExceptionHandlerMiddleware : IMiddleware
     {
         return HttpMethods.IsGet(context.Request.Method) &&
             context.Request.Path.Equals("/api/v1/admin/contacts", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool IsPublicContactCreateRequest(HttpContext context)
+    {
+        return HttpMethods.IsPost(context.Request.Method) &&
+            context.Request.Path.Equals("/api/v1/public/contacts", StringComparison.OrdinalIgnoreCase);
     }
 
     private static bool IsContactDetailRequest(HttpContext context)

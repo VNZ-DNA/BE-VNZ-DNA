@@ -1,3 +1,5 @@
+using VNZ.Repository.Entity.Enum;
+
 namespace VNZ.Service.ContactService;
 
 public class Request
@@ -14,5 +16,19 @@ public class Request
     {
         public string? Subject { get; set; }
         public string? Body { get; set; }
+    }
+
+    public class CreateContactInquiryRequest
+    {
+        public ContactInquiryTopic? InquiryTopic { get; set; }
+        public string? FullName { get; set; }
+        public string? Email { get; set; }
+        public string? Phone { get; set; }
+        public string? CompanyName { get; set; }
+        public ContactBudgetRange? BudgetRange { get; set; }
+        public ContactExpectedStart? ExpectedStart { get; set; }
+        public string? Message { get; set; }
+        public ContactSource? Source { get; set; }
+        public bool? ConsentToDataProcessing { get; set; }
     }
 }

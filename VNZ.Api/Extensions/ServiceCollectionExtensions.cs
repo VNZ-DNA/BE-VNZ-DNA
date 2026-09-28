@@ -9,6 +9,7 @@ using System.Text;
 using System.Text.Json.Serialization;
 
 using VNZ.Api.BackgroundJob;
+using VNZ.Api.Filters;
 
 using VNZ.Api.Middleware;
 using VNZ.Repository;
@@ -48,6 +49,7 @@ public static class ServiceCollectionExtensions
         services.AddEndpointsApiExplorer();
         services.AddHttpContextAccessor();
         services.AddTransient<GlobalExceptionHandlerMiddleware>();
+        services.AddScoped<PublicContactApiResultFilter>();
         services.AddHostedService<JobPostExpirationBackgroundService>();
         services.AddScoped<VNZ.Service.AuthService.IService, VNZ.Service.AuthService.Service>();
         services.AddScoped<VNZ.Service.DashboardService.IService, VNZ.Service.DashboardService.Service>();
@@ -72,6 +74,7 @@ public static class ServiceCollectionExtensions
         services.AddJwtAuthentication(configuration);
         services.AddSwaggerDocumentation();
         services.AddCorsPolicy();
+        services.AddContactInquiryRateLimit();
 
         return services;
     }
@@ -227,7 +230,8 @@ public static class ServiceCollectionExtensions
                 policy
                     .AllowAnyOrigin()
                     .AllowAnyHeader()
-                    .AllowAnyMethod();
+                    .AllowAnyMethod()
+                    .WithExposedHeaders("Retry-After");
             });
         });
 

@@ -10,4 +10,7 @@ public interface IService
     Task<Response.SendContactReplyResponse> SendReplyAsync(
         Guid id,
         Request.SendContactReplyRequest request);
+
+    Task<Response.CreateContactInquiryResponse> CreateContactInquiryAsync(
+        Request.CreateContactInquiryRequest request);
 }
