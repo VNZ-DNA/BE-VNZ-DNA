@@ -13,6 +13,8 @@ public interface IService
 
     Task<Response.JobPostDetailResponse> GetJobPostDetailAsync(Guid id);
 
+    Task<Response.PublicJobPostDetailResponse> GetPublicJobPostDetailAsync(Guid id);
+
     Task<Response.UpdateJobPostResponse> UpdateJobPostAsync(
         Guid id,
         Request.UpdateJobPostRequest request);
