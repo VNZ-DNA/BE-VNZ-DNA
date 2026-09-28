@@ -15,6 +15,7 @@ public class Response
     {
         public Guid Id { get; set; }
         public required string Title { get; set; }
+        public string? ImageUrl { get; set; }
         public required string AuthorName { get; set; }
         public DateTimeOffset CreatedAt { get; set; }
         public DateTimeOffset? PublishAt { get; set; }
@@ -28,6 +29,7 @@ public class Response
         public required string Title { get; set; }
         public string? Summary { get; set; }
         public string? Content { get; set; }
+        public string? ImageUrl { get; set; }
         public required string AuthorName { get; set; }
         public DateTimeOffset CreatedAt { get; set; }
         public DateOnly? UpdatedAt { get; set; }
@@ -43,6 +45,7 @@ public class Response
         public required string Title { get; set; }
         public string? Summary { get; set; }
         public string? Content { get; set; }
+        public string? ImageUrl { get; set; }
         public required string AuthorName { get; set; }
         public DateTimeOffset CreatedAt { get; set; }
         public DateOnly? UpdatedAt { get; set; }
@@ -57,6 +60,7 @@ public class Response
         public required string Title { get; set; }
         public string? Summary { get; set; }
         public string? Content { get; set; }
+        public string? ImageUrl { get; set; }
         public required string AuthorName { get; set; }
         public DateTimeOffset CreatedAt { get; set; }
         public DateOnly? UpdatedAt { get; set; }

@@ -19,8 +19,9 @@ public sealed class ProductsController : ControllerBase
     }
 
     [HttpPost]
+    [Consumes("multipart/form-data")]
     public async Task<IActionResult> CreateProduct(
-        [FromBody] ProductService.Request.CreateProductRequest request)
+        [FromForm] ProductService.Request.CreateProductRequest request)
     {
         var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
 
@@ -61,7 +62,8 @@ public sealed class ProductsController : ControllerBase
     }
 
     [HttpPut("{id:guid}")]
-    public async Task<IActionResult> UpdateProduct(Guid id, [FromBody] ProductService.Request.UpdateProductRequest request)
+    [Consumes("multipart/form-data")]
+    public async Task<IActionResult> UpdateProduct(Guid id, [FromForm] ProductService.Request.UpdateProductRequest request)
     {
         var data = await _productService.UpdateProductAsync(id, request);
 

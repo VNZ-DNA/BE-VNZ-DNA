@@ -35,36 +35,43 @@ public sealed class Service : IService
         ArgumentNullException.ThrowIfNull(request);
 
         var decision = request.Decision?.Trim().ToLowerInvariant();
-        JobApplicationStatus nextStatus;
 
-        if (decision == "accepted")
+        if (decision != "accepted" && decision != "rejected")
         {
-            nextStatus = JobApplicationStatus.Accepted;
-        }
-        else if (decision == "rejected")
-        {
-            nextStatus = JobApplicationStatus.Rejected;
-        }
-        else
-        {
-            throw new ArgumentException("Decision chỉ nhận Accepted hoặc Rejected.", nameof(request.Decision));
+            throw new JobApplicationException(
+                "JOB_APPLICATION_REJECTION_REQUEST_INVALID",
+                "Decision chỉ nhận Accepted hoặc Rejected.",
+                "decision");
         }
 
-        await using var transaction = await _dbContext.Database.BeginTransactionAsync(System.Data.IsolationLevel.Serializable);
-        var application = await _dbContext.JobApplications.SingleOrDefaultAsync(item => item.Id == id);
+        if (decision == "rejected")
+        {
+            return await RejectDirectlyAsync(id, adminUserId);
+        }
+
+        await using var transaction = await _dbContext.Database
+            .BeginTransactionAsync(System.Data.IsolationLevel.Serializable);
+
+        var application = await _dbContext.JobApplications
+            .SingleOrDefaultAsync(item => item.Id == id);
 
         if (application is null)
         {
-            throw new NotFoundException("Không tìm thấy hồ sơ ứng viên.");
+            throw new JobApplicationException(
+                "JOB_APPLICATION_NOT_FOUND",
+                "Không tìm thấy hồ sơ ứng viên.",
+                "id");
         }
 
         if (application.Status != JobApplicationStatus.Pending)
         {
-            throw new ConflictException("Hồ sơ ứng viên không còn ở trạng thái Chờ duyệt.");
+            throw new JobApplicationException(
+                "INVALID_APPLICATION_STATUS",
+                "Hồ sơ ứng viên không còn ở trạng thái Chờ duyệt.");
         }
 
         var now = DateTimeOffset.UtcNow;
-        application.Status = nextStatus;
+        application.Status = JobApplicationStatus.Accepted;
         application.ReviewedBy = adminUserId;
         application.ReviewAt = now;
         application.UpdateAt = now;
@@ -88,19 +95,97 @@ public sealed class Service : IService
         };
     }
 
+    private async Task<Response.ReviewJobApplicationResponse> RejectDirectlyAsync(
+        Guid id,
+        Guid adminUserId)
+    {
+        var application = await _dbContext.JobApplications
+            .Include(item => item.JobPost)
+            .SingleOrDefaultAsync(item => item.Id == id);
+
+        if (application is null)
+        {
+            throw new JobApplicationException(
+                "JOB_APPLICATION_NOT_FOUND",
+                "Không tìm thấy hồ sơ ứng viên.",
+                "id");
+        }
+
+        if (application.Status != JobApplicationStatus.Pending)
+        {
+            throw new JobApplicationException(
+                "INVALID_APPLICATION_STATUS",
+                "Hồ sơ ứng viên không còn ở trạng thái Chờ duyệt.");
+        }
+
+        var positionTitle = application.JobPostSnapshot?.Title ?? application.JobPost.Title;
+        var deliveryResult = await _mailService.SendRejectionEmailAsync(
+            new MailService.RejectionEmailMailContent
+            {
+                ApplicationId = application.Id,
+                To = application.Email,
+                ToName = application.FullName,
+                PositionTitle = positionTitle,
+                IdempotencyKey = $"rejection-mail-{application.Id}"
+            });
+
+        if (!deliveryResult.IsSuccess)
+        {
+            // Mail thất bại thì chưa đụng vào audit hoặc Status; hồ sơ vẫn Pending.
+            throw new JobApplicationException(
+                "JOB_APPLICATION_REJECTION_EMAIL_FAILED",
+                "Không thể gửi email từ chối hồ sơ ứng viên.");
+        }
+
+        var now = DateTimeOffset.UtcNow;
+        application.Status = JobApplicationStatus.Rejected;
+        application.ReviewedBy = adminUserId;
+        application.ReviewAt = now;
+        application.UpdateAt = now;
+
+        try
+        {
+            // Đây là failure window của luồng gửi trực tiếp: provider đã nhận mail
+            // nhưng DB có thể lỗi, khi đó hồ sơ vẫn Pending dù ứng viên đã nhận mail.
+            await _dbContext.SaveChangesAsync();
+        }
+        catch (DbUpdateException exception)
+        {
+            throw new JobApplicationException(
+                "JOB_APPLICATION_REJECTION_PERSIST_FAILED",
+                "Email đã gửi nhưng không thể cập nhật hồ sơ ứng viên.",
+                exception);
+        }
+
+        var reviewerName = await _dbContext.Users
+            .AsNoTracking()
+            .Where(user => user.Id == adminUserId)
+            .Select(user => user.FullName)
+            .SingleOrDefaultAsync();
+
+        return new Response.ReviewJobApplicationResponse
+        {
+            Id = application.Id,
+            Status = GetDisplayName(application.Status),
+            ReviewedByName = reviewerName,
+            ReviewAt = application.ReviewAt,
+            CvUrl = application.CvUrl
+        };
+    }
+
     public async Task<Response.JobApplicationListResponse> GetJobApplicationListAsync(Request.GetJobApplicationListRequest request)
     {
         ArgumentNullException.ThrowIfNull(request);
 
         if (request.Page < 1 || request.PageSize < 1 || request.PageSize > 100)
         {
-            throw new ArgumentException("Thông tin phân trang không hợp lệ.");
+            throw new ArgumentException("ThÃ´ng tin phÃ¢n trang khÃ´ng há»£p lá»‡.");
         }
 
         var search = request.Search?.Trim();
         if (search is { Length: > 300 })
         {
-            throw new ArgumentException("Từ khóa tìm kiếm không được vượt quá 300 ký tự.");
+            throw new ArgumentException("Tá»« khÃ³a tÃ¬m kiáº¿m khÃ´ng Ä‘Æ°á»£c vÆ°á»£t quÃ¡ 300 kÃ½ tá»±.");
         }
 
         JobApplicationStatus? statusFilter = null;
@@ -110,7 +195,7 @@ public sealed class Service : IService
             if (!Enum.TryParse<JobApplicationStatus>(request.Status.Trim(), ignoreCase: false, out var parsedStatus) ||
                 !Enum.IsDefined(parsedStatus))
             {
-                throw new ArgumentException("Trạng thái lọc không hợp lệ.");
+                throw new ArgumentException("Tráº¡ng thÃ¡i lá»c khÃ´ng há»£p lá»‡.");
             }
 
             statusFilter = parsedStatus;
@@ -192,7 +277,7 @@ public sealed class Service : IService
         {
             throw new JobApplicationException(
                 "JOB_APPLICATION_INTERVIEW_TIME_INVALID",
-                "Lịch phỏng vấn phải lớn hơn thời điểm hiện tại.",
+                "Lá»‹ch phá»ng váº¥n pháº£i lá»›n hÆ¡n thá»i Ä‘iá»ƒm hiá»‡n táº¡i.",
                 nameof(request.InterviewDate),
                 nameof(request.InterviewTime));
         }
@@ -207,12 +292,12 @@ public sealed class Service : IService
         {
             throw new JobApplicationException(
                 "JOB_APPLICATION_INTERVIEW_BATCH_INVALID",
-                "Tất cả hồ sơ được chọn phải đang ở trạng thái Đã duyệt.",
+                "Táº¥t cáº£ há»“ sÆ¡ Ä‘Æ°á»£c chá»n pháº£i Ä‘ang á»Ÿ tráº¡ng thÃ¡i ÄÃ£ duyá»‡t.",
                 nameof(request.ApplicationIds));
         }
 
-        // Query database không đảm bảo giữ thứ tự applicationIds từ request.
-        // Dictionary giúp lấy nhanh application theo ID, nhưng vẫn xử lý theo đúng thứ tự Admin đã chọn.
+        // Query database khÃ´ng Ä‘áº£m báº£o giá»¯ thá»© tá»± applicationIds tá»« request.
+        // Dictionary giÃºp láº¥y nhanh application theo ID, nhÆ°ng váº«n xá»­ lÃ½ theo Ä‘Ãºng thá»© tá»± Admin Ä‘Ã£ chá»n.
         var applicationsById = applications.ToDictionary(application => application.Id);
         var results = new List<Response.InterviewInvitationResultResponse>(applicationIds.Count);
 
@@ -250,7 +335,7 @@ public sealed class Service : IService
                 _logger.LogError(exception, "Interview invitation was sent but could not be persisted. ApplicationId: {ApplicationId}", application.Id);
                 throw new JobApplicationException(
                     "JOB_APPLICATION_INTERVIEW_PERSIST_FAILED",
-                    "Email đã được gửi nhưng không thể cập nhật hồ sơ ứng viên.",
+                    "Email Ä‘Ã£ Ä‘Æ°á»£c gá»­i nhÆ°ng khÃ´ng thá»ƒ cáº­p nháº­t há»“ sÆ¡ á»©ng viÃªn.",
                     exception);
             }
 
@@ -290,7 +375,7 @@ public sealed class Service : IService
         {
             throw new JobApplicationException(
                 "JOB_APPLICATION_INTERVIEW_REQUEST_INVALID",
-                "Danh sách hồ sơ ứng viên không hợp lệ.",
+                "Danh sÃ¡ch há»“ sÆ¡ á»©ng viÃªn khÃ´ng há»£p lá»‡.",
                 "applicationIds");
         }
 
@@ -298,7 +383,7 @@ public sealed class Service : IService
         {
             throw new JobApplicationException(
                 "JOB_APPLICATION_INTERVIEW_REQUEST_INVALID",
-                "Danh sách hồ sơ ứng viên không được chứa phần tử trùng lặp.",
+                "Danh sÃ¡ch há»“ sÆ¡ á»©ng viÃªn khÃ´ng Ä‘Æ°á»£c chá»©a pháº§n tá»­ trÃ¹ng láº·p.",
                 "applicationIds");
         }
 
@@ -322,7 +407,7 @@ public sealed class Service : IService
         {
             throw new JobApplicationException(
                 "JOB_APPLICATION_INTERVIEW_REQUEST_INVALID",
-                "Ngày hoặc giờ phỏng vấn không đúng định dạng.",
+                "NgÃ y hoáº·c giá» phá»ng váº¥n khÃ´ng Ä‘Ãºng Ä‘á»‹nh dáº¡ng.",
                 "interviewDate",
                 "interviewTime");
         }
@@ -350,7 +435,7 @@ public sealed class Service : IService
 
         if (application is null)
         {
-            throw new NotFoundException("Không tìm thấy hồ sơ ứng viên.");
+            throw new NotFoundException("KhÃ´ng tÃ¬m tháº¥y há»“ sÆ¡ á»©ng viÃªn.");
         }
 
         return new Response.JobApplicationDetailResponse
@@ -380,3 +465,5 @@ public sealed class Service : IService
         };
     }
 }
+
+

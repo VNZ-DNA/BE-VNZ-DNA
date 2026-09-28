@@ -4,16 +4,21 @@ using Microsoft.EntityFrameworkCore;
 using VNZ.Repository;
 using VNZ.Repository.Entity;
 using VNZ.Service.Exceptions;
+using MediaService = VNZ.Service.Utils.MediaService;
 
 namespace VNZ.Service.PartnerService;
 
 public sealed class Service : IService
 {
     private readonly AppDbContext _dbContext;
+    private readonly MediaService.IService _mediaService;
 
-    public Service(AppDbContext dbContext)
+    public Service(
+        AppDbContext dbContext,
+        MediaService.IService mediaService)
     {
         _dbContext = dbContext;
+        _mediaService = mediaService;
     }
 
     public async Task<Response.PartnerListItemResponse> CreatePartnerAsync(Request.CreatePartnerRequest request, Guid createdBy)
@@ -30,13 +35,27 @@ public sealed class Service : IService
                 "name");
         }
 
+        var logoUrl = request.LogoUrl;
+
+        if (request.Logo is not null)
+        {
+            var uploadResult = await _mediaService.UploadImageAsync(
+                new MediaService.Request.UploadImageRequest
+                {
+                    File = request.Logo,
+                    Purpose = "PartnerLogo"
+                });
+
+            logoUrl = uploadResult.Url;
+        }
+
         var now = DateTimeOffset.UtcNow;
         var partner = new Partner
         {
             Id = Guid.NewGuid(),
             CreatedBy = createdBy,
             Name = name,
-            LogoUrl = request.LogoUrl,
+            LogoUrl = logoUrl,
             WebsiteUrl = request.WebsiteUrl,
             Description = request.Description,
             IsPublished = false,
@@ -274,8 +293,11 @@ public sealed class Service : IService
                     "Không tìm thấy Partner.");
             }
 
+            var isLogoChanged = request.Logo is not null ||
+                (request.LogoUrl is not null && partner.LogoUrl != request.LogoUrl);
+
             var isInformationChanged = partner.Name != name ||
-                partner.LogoUrl != request.LogoUrl ||
+                isLogoChanged ||
                 partner.WebsiteUrl != request.WebsiteUrl ||
                 partner.Description != request.Description;
 
@@ -314,8 +336,26 @@ public sealed class Service : IService
             }
             else if (!partner.IsPublished)
             {
+                var logoUrl = partner.LogoUrl;
+
+                if (request.Logo is not null)
+                {
+                    var uploadResult = await _mediaService.UploadImageAsync(
+                        new MediaService.Request.UploadImageRequest
+                        {
+                            File = request.Logo,
+                            Purpose = "PartnerLogo"
+                        });
+
+                    logoUrl = uploadResult.Url;
+                }
+                else if (request.LogoUrl is not null)
+                {
+                    logoUrl = request.LogoUrl;
+                }
+
                 partner.Name = name;
-                partner.LogoUrl = request.LogoUrl;
+                partner.LogoUrl = logoUrl;
                 partner.WebsiteUrl = request.WebsiteUrl;
                 partner.Description = request.Description;
                 partner.IsPublished = request.IsPublished.Value;

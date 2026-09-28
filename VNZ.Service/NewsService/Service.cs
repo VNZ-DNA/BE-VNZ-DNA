@@ -4,6 +4,8 @@ using VNZ.Repository;
 using VNZ.Repository.Entity;
 using VNZ.Repository.Entity.Enum;
 using VNZ.Service.Exceptions;
+using MediaService = VNZ.Service.Utils.MediaService;
+using RichTextService = VNZ.Service.Utils.RichTextService;
 
 namespace VNZ.Service.NewsService;
 
@@ -13,10 +15,17 @@ public sealed class Service : IService
     private static readonly TimeSpan VietnamUtcOffset = TimeSpan.FromHours(7);
 
     private readonly AppDbContext _dbContext;
+    private readonly MediaService.IService _mediaService;
+    private readonly RichTextService.IService _richTextService;
 
-    public Service(AppDbContext dbContext)
+    public Service(
+        AppDbContext dbContext,
+        MediaService.IService mediaService,
+        RichTextService.IService richTextService)
     {
         _dbContext = dbContext;
+        _mediaService = mediaService;
+        _richTextService = richTextService;
     }
 
     public async Task<Response.CreateNewsResponse> CreateNewsAsync(
@@ -42,8 +51,8 @@ public sealed class Service : IService
 
         // 2. Validate dữ liệu bắt buộc theo trạng thái đích.
         var title = request.Title?.Trim();
-        var summary = request.Summary?.Trim();
-        var content = request.Content?.Trim();
+        var summary = _richTextService.Sanitize(request.Summary?.Trim(), allowLinks: true);
+        var content = _richTextService.Sanitize(request.Content?.Trim(), allowLinks: true);
         var requiredFields = new List<string>();
 
         if (string.IsNullOrWhiteSpace(title))
@@ -123,6 +132,20 @@ public sealed class Service : IService
                 "categoryIds");
         }
 
+        string? imageUrl = null;
+
+        if (request.Image is not null)
+        {
+            var uploadResult = await _mediaService.UploadImageAsync(
+                new MediaService.Request.UploadImageRequest
+                {
+                    File = request.Image,
+                    Purpose = "NewsImage"
+                });
+
+            imageUrl = uploadResult.Url;
+        }
+
         // 4. Lưu bài viết và category links trong cùng một transaction.
         var nowUtc = DateTimeOffset.UtcNow;
         var article = new NewsArticle
@@ -131,6 +154,7 @@ public sealed class Service : IService
             Title = title!,
             Summary = summary,
             Content = content,
+            ImageUrl = imageUrl,
             Status = status,
             Published = status == NewsStatus.Published,
             CreatedBy = createdBy,
@@ -172,6 +196,7 @@ public sealed class Service : IService
             Title = article.Title,
             Summary = article.Summary,
             Content = article.Content,
+            ImageUrl = article.ImageUrl,
             AuthorName = creator.FullName,
             CreatedAt = article.CreatedAt,
             UpdatedAt = null,
@@ -252,8 +277,8 @@ public sealed class Service : IService
 
         // 3. Validate nội dung theo trạng thái đích.
         var title = request.Title?.Trim();
-        var summary = request.Summary?.Trim();
-        var content = request.Content?.Trim();
+        var summary = _richTextService.Sanitize(request.Summary?.Trim(), allowLinks: true);
+        var content = _richTextService.Sanitize(request.Content?.Trim(), allowLinks: true);
         var requiredFields = new List<string>();
 
         if (string.IsNullOrWhiteSpace(title))
@@ -328,6 +353,20 @@ public sealed class Service : IService
                 "categoryIds");
         }
 
+        var imageUrl = article.ImageUrl;
+
+        if (request.Image is not null)
+        {
+            var uploadResult = await _mediaService.UploadImageAsync(
+                new MediaService.Request.UploadImageRequest
+                {
+                    File = request.Image,
+                    Purpose = "NewsImage"
+                });
+
+            imageUrl = uploadResult.Url;
+        }
+
         // 4. Áp dụng trạng thái và thời gian xuất bản theo transition hợp lệ.
         var nowUtc = DateTimeOffset.UtcNow;
         var publishAt = article.PublishAt;
@@ -344,6 +383,7 @@ public sealed class Service : IService
         article.Title = title!;
         article.Summary = summary;
         article.Content = content;
+        article.ImageUrl = imageUrl;
         article.Status = targetStatus;
         article.Published = targetStatus == NewsStatus.Published;
         article.PublishAt = publishAt;
@@ -383,6 +423,7 @@ public sealed class Service : IService
             Title = article.Title,
             Summary = article.Summary,
             Content = article.Content,
+            ImageUrl = article.ImageUrl,
             AuthorName = article.Creator.FullName,
             CreatedAt = article.CreatedAt,
             UpdatedAt = ConvertUpdatedAtToVietnamDate(article.UpdatedAt),
@@ -398,11 +439,12 @@ public sealed class Service : IService
         };
     }
 
-    private static bool HasMinimumPublishedContentLength(string content)
+    private bool HasMinimumPublishedContentLength(string content)
     {
+        var plainText = _richTextService.ToPlainText(content);
         var nonWhitespaceCharacterCount = 0;
 
-        foreach (var character in content)
+        foreach (var character in plainText)
         {
             if (char.IsWhiteSpace(character))
             {
@@ -518,6 +560,7 @@ public sealed class Service : IService
             {
                 article.Id,
                 article.Title,
+                article.ImageUrl,
                 AuthorName = article.Creator!.FullName,
                 article.CreatedAt,
                 article.PublishAt,
@@ -559,6 +602,7 @@ public sealed class Service : IService
             {
                 Id = article.Id,
                 Title = article.Title,
+                ImageUrl = article.ImageUrl,
                 AuthorName = article.AuthorName,
                 CreatedAt = article.CreatedAt,
                 PublishAt = article.PublishAt,
@@ -625,6 +669,7 @@ public sealed class Service : IService
             Title = article.Title,
             Summary = article.Summary,
             Content = article.Content,
+            ImageUrl = article.ImageUrl,
             AuthorName = article.Creator.FullName,
             CreatedAt = article.CreatedAt,
             UpdatedAt = ConvertUpdatedAtToVietnamDate(article.UpdatedAt),

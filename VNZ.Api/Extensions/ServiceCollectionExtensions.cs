@@ -59,6 +59,10 @@ public static class ServiceCollectionExtensions
         services.AddScoped<VNZ.Service.PartnerService.IService, VNZ.Service.PartnerService.Service>();
         services.AddScoped<VNZ.Service.JobApplicationService.IService, VNZ.Service.JobApplicationService.Service>();
         services.AddScoped<VNZ.Service.TeamMembers.IService, VNZ.Service.TeamMembers.Service>();
+        services.Configure<VNZ.Service.Utils.CloudinaryService.CloudinaryOptions>(
+            configuration.GetSection(nameof(VNZ.Service.Utils.CloudinaryService.CloudinaryOptions)));
+        services.AddScoped<VNZ.Service.Utils.MediaService.IService, VNZ.Service.Utils.CloudinaryService.Service>();
+        services.AddScoped<VNZ.Service.Utils.RichTextService.IService, VNZ.Service.Utils.RichTextService.Service>();
         services.AddHttpClient<MailService.IService, MailService.Service>(client =>
         {
             client.Timeout = TimeSpan.FromSeconds(15);
