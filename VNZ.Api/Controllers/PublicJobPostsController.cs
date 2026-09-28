@@ -26,7 +26,9 @@ public sealed class PublicJobPostsController : ControllerBase
     {
         var data = await _jobPostService.GetPublicJobPostDetailAsync(id);
 
-        return Ok(ResponseBuilder.SuccessResponse(data, "Lấy chi tiết vị trí tuyển dụng thành công.", HttpContext.TraceIdentifier));
+        return Ok(ResponseBuilder.SuccessResponse(data, "Lấy chi tiết vị trí tuyển dụng thành công.",
+            HttpContext.TraceIdentifier));
+    }
 
     [HttpGet]
     public async Task<IActionResult> GetPublicJobPostList()
