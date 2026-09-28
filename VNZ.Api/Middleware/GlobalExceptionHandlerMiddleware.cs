@@ -45,6 +45,8 @@ public class GlobalExceptionHandlerMiddleware : IMiddleware
             DbException when IsUpdateNewsRequest(context) => HttpStatusCode.InternalServerError,
             DbException when IsNewsDetailRequest(context) => HttpStatusCode.InternalServerError,
             DbException when IsNewsListRequest(context) => HttpStatusCode.InternalServerError,
+            DbException when IsPublicNewsListRequest(context) => HttpStatusCode.InternalServerError,
+            Exception when IsPublicNewsListRequest(context) => HttpStatusCode.InternalServerError,
             DbException when IsContactListRequest(context) => HttpStatusCode.InternalServerError,
             DbException when IsContactDetailRequest(context) => HttpStatusCode.InternalServerError,
             DbUpdateException when IsContactDetailRequest(context) => HttpStatusCode.InternalServerError,
@@ -84,6 +86,10 @@ public class GlobalExceptionHandlerMiddleware : IMiddleware
                 ("NEWS_DETAIL_READ_FAILED", "Không thể đọc chi tiết bài viết."),
             DbException when IsNewsListRequest(context) =>
                 ("NEWS_LIST_READ_FAILED", "Không thể đọc danh sách bài viết."),
+            DbException when IsPublicNewsListRequest(context) =>
+                ("NEWS_PUBLIC_LIST_FAILED", "Không thể đọc danh sách tin tức."),
+            Exception when IsPublicNewsListRequest(context) =>
+                ("NEWS_PUBLIC_LIST_FAILED", "Không thể đọc danh sách tin tức."),
             DbException when IsContactListRequest(context) =>
                 ("CONTACT_LIST_READ_FAILED", "Không thể đọc danh sách liên hệ."),
             DbException when IsContactDetailRequest(context) =>
@@ -190,6 +196,7 @@ public class GlobalExceptionHandlerMiddleware : IMiddleware
         return code switch
         {
             "NEWS_QUERY_INVALID" or
+            "NEWS_PUBLIC_LIST_VALIDATION_FAILED" or
             "NEWS_ARTICLE_ID_INVALID" or
             "NEWS_VALIDATION_ERROR" or
             "NEWS_CONTENT_TOO_SHORT" or
@@ -200,6 +207,7 @@ public class GlobalExceptionHandlerMiddleware : IMiddleware
             "NEWS_ARTICLE_CLOSED" or
             "NEWS_STATUS_TRANSITION_INVALID" => HttpStatusCode.Conflict,
             "NEWS_LIST_READ_FAILED" or
+            "NEWS_PUBLIC_LIST_FAILED" or
             "NEWS_DETAIL_READ_FAILED" or
             "NEWS_ARTICLE_CREATE_FAILED" or
             "NEWS_ARTICLE_UPDATE_FAILED" => HttpStatusCode.InternalServerError,
@@ -320,6 +328,12 @@ public class GlobalExceptionHandlerMiddleware : IMiddleware
     {
         return HttpMethods.IsGet(context.Request.Method) &&
             context.Request.Path.Equals("/api/v1/admin/news", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool IsPublicNewsListRequest(HttpContext context)
+    {
+        return HttpMethods.IsGet(context.Request.Method) &&
+            context.Request.Path.Equals("/api/v1/public/news", StringComparison.OrdinalIgnoreCase);
     }
 
     private static bool IsContactListRequest(HttpContext context)

@@ -59,6 +59,9 @@ public class AppDbContext : DbContext
             entity.Property(x => x.Status).HasConversion<string>().IsRequired();
             entity.HasIndex(x => x.Status);
             entity.HasIndex(x => x.CreatedAt);
+            entity.HasIndex(x => new { x.PublishAt, x.Id })
+                .HasDatabaseName("IX_News_Article_Public_PublishAt_Id")
+                .HasFilter("\"Status\" = 'Published' AND \"Published\" = TRUE AND \"PublishAt\" IS NOT NULL");
             entity.HasOne(x => x.Creator)
                 .WithMany(x => x.NewsArticles)
                 .HasForeignKey(x => x.CreatedBy)

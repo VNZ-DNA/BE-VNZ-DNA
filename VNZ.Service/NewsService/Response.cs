@@ -11,6 +11,24 @@ public class Response
         public int TotalPages { get; set; }
     }
 
+    public class PagedPublicNewsListResponse
+    {
+        public required List<PublicNewsListItemResponse> Items { get; set; }
+        public int Page { get; set; }
+        public int PageSize { get; set; }
+        public int TotalItems { get; set; }
+        public int TotalPages { get; set; }
+    }
+
+    public class PublicNewsListItemResponse
+    {
+        public Guid Id { get; set; }
+        public required string Title { get; set; }
+        public string? Summary { get; set; }
+        public DateTimeOffset PublishAt { get; set; }
+        public required List<NewsCategoryResponse> Categories { get; set; }
+    }
+
     public class NewsListItemResponse
     {
         public Guid Id { get; set; }
