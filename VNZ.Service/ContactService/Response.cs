@@ -46,4 +46,10 @@ public class Response
         public string ContactStatus { get; set; } = string.Empty;
         public Guid ContactedBy { get; set; }
     }
+
+    public class CreateContactInquiryResponse
+    {
+        public Guid Id { get; set; }
+        public DateTimeOffset CreatedAt { get; set; }
+    }
 }
