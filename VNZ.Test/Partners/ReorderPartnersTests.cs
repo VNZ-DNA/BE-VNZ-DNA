@@ -66,7 +66,9 @@ public class ReorderPartnersTests
         dbContext.Partners.AddRange(firstPartner, secondPartner, unpublishedPartner);
         await dbContext.SaveChangesAsync();
 
-        var service = new PartnerService(dbContext);
+        var service = new PartnerService(
+            dbContext,
+            new VNZ.Test.TestMediaService());
 
         var response = await service.ReorderPartnersAsync(
             new Request.ReorderPartnersRequest

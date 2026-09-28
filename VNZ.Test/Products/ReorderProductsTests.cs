@@ -54,7 +54,10 @@ public class ReorderProductsTests
         dbContext.Products.AddRange(firstProduct, secondProduct, unpublishedProduct);
         await dbContext.SaveChangesAsync();
 
-        var service = new ProductService(dbContext);
+        var service = new ProductService(
+            dbContext,
+            new VNZ.Test.TestMediaService(),
+            new VNZ.Service.Utils.RichTextService.Service());
 
         var response = await service.ReorderProductsAsync(
             new Request.ReorderProductsRequest

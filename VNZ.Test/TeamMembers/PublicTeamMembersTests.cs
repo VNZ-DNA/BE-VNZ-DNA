@@ -60,7 +60,9 @@ public class PublicTeamMembersTests
                 Guid.NewGuid()));
         await dbContext.SaveChangesAsync();
 
-        var service = new TeamMemberService(dbContext);
+        var service = new TeamMemberService(
+            dbContext,
+            new VNZ.Test.TestMediaService());
 
         var response = await service.GetFeaturedMembersAsync();
 
@@ -75,7 +77,7 @@ public class PublicTeamMembersTests
     }
 
     [Fact]
-    public async Task GetPublicMemberByIdAsync_ReturnsWorkingUnpublishedMemberWithoutSensitiveFields()
+    public async Task GetPublicMemberByIdAsync_ReturnsWorkingPublishedMemberWithoutSensitiveFields()
     {
         var options = new DbContextOptionsBuilder<AppDbContext>()
             .UseInMemoryDatabase(Guid.NewGuid().ToString())
@@ -98,13 +100,15 @@ public class PublicTeamMembersTests
             JoinedDate = joinedDate,
             IsActive = true,
             EmploymentStatus = EmploymentStatus.Working,
-            IsPublished = false,
+            IsPublished = true,
             DisplayOrder = null,
             CreateAt = DateTimeOffset.UtcNow
         });
         await dbContext.SaveChangesAsync();
 
-        var service = new TeamMemberService(dbContext);
+        var service = new TeamMemberService(
+            dbContext,
+            new VNZ.Test.TestMediaService());
 
         var response = await service.GetPublicMemberByIdAsync(memberId);
 
@@ -156,7 +160,9 @@ public class PublicTeamMembersTests
                 Guid.NewGuid()));
         await dbContext.SaveChangesAsync();
 
-        var service = new TeamMemberService(dbContext);
+        var service = new TeamMemberService(
+            dbContext,
+            new VNZ.Test.TestMediaService());
 
         await Assert.ThrowsAsync<NotFoundException>(() => service.GetPublicMemberByIdAsync(resignedId));
         await Assert.ThrowsAsync<NotFoundException>(() => service.GetPublicMemberByIdAsync(adminId));

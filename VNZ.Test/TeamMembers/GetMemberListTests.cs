@@ -72,7 +72,9 @@ public class GetMemberListTests
 
         await dbContext.SaveChangesAsync();
 
-        var service = new TeamMemberService(dbContext);
+        var service = new TeamMemberService(
+            dbContext,
+            new VNZ.Test.TestMediaService());
 
         var response = await service.GetMemberListAsync(new Request.GetTeamMemberListRequest());
 

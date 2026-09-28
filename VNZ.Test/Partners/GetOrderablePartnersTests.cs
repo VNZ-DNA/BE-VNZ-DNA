@@ -63,7 +63,9 @@ public class GetOrderablePartnersTests
         dbContext.Partners.AddRange(secondPartner, unpublishedPartner, firstPartner);
         await dbContext.SaveChangesAsync();
 
-        var service = new PartnerService(dbContext);
+        var service = new PartnerService(
+            dbContext,
+            new VNZ.Test.TestMediaService());
 
         var response = await service.GetOrderablePartnersAsync();
 

@@ -83,7 +83,10 @@ public class GetProductListTests
         dbContext.Products.AddRange(publishedFirst, publishedSecond, unpublishedNewest, unpublishedOlder);
         await dbContext.SaveChangesAsync();
 
-        var service = new ProductService(dbContext);
+        var service = new ProductService(
+            dbContext,
+            new VNZ.Test.TestMediaService(),
+            new VNZ.Service.Utils.RichTextService.Service());
 
         var response = await service.GetProductListAsync(new Request.GetProductListRequest());
 
