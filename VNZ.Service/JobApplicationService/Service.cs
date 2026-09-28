@@ -35,42 +35,127 @@ public sealed class Service : IService
         ArgumentNullException.ThrowIfNull(request);
 
         var decision = request.Decision?.Trim().ToLowerInvariant();
-        JobApplicationStatus nextStatus;
 
-        if (decision == "accepted")
+        if (decision != "accepted" && decision != "rejected")
         {
-            nextStatus = JobApplicationStatus.Accepted;
-        }
-        else if (decision == "rejected")
-        {
-            nextStatus = JobApplicationStatus.Rejected;
-        }
-        else
-        {
-            throw new ArgumentException("Decision chỉ nhận Accepted hoặc Rejected.", nameof(request.Decision));
+            throw new JobApplicationException(
+                "JOB_APPLICATION_REJECTION_REQUEST_INVALID",
+                "Decision chỉ nhận Accepted hoặc Rejected.",
+                "decision");
         }
 
-        await using var transaction = await _dbContext.Database.BeginTransactionAsync(System.Data.IsolationLevel.Serializable);
-        var application = await _dbContext.JobApplications.SingleOrDefaultAsync(item => item.Id == id);
+        if (decision == "rejected")
+        {
+            return await RejectDirectlyAsync(id, adminUserId);
+        }
+
+        await using var transaction = await _dbContext.Database
+            .BeginTransactionAsync(System.Data.IsolationLevel.Serializable);
+
+        var application = await _dbContext.JobApplications
+            .SingleOrDefaultAsync(item => item.Id == id);
 
         if (application is null)
         {
-            throw new NotFoundException("Không tìm thấy hồ sơ ứng viên.");
+            throw new JobApplicationException(
+                "JOB_APPLICATION_NOT_FOUND",
+                "Không tìm thấy hồ sơ ứng viên.",
+                "id");
         }
 
         if (application.Status != JobApplicationStatus.Pending)
         {
-            throw new ConflictException("Hồ sơ ứng viên không còn ở trạng thái Chờ duyệt.");
+            throw new JobApplicationException(
+                "INVALID_APPLICATION_STATUS",
+                "Hồ sơ ứng viên không còn ở trạng thái Chờ duyệt.");
         }
 
         var now = DateTimeOffset.UtcNow;
-        application.Status = nextStatus;
+        application.Status = JobApplicationStatus.Accepted;
         application.ReviewedBy = adminUserId;
         application.ReviewAt = now;
         application.UpdateAt = now;
 
         await _dbContext.SaveChangesAsync();
         await transaction.CommitAsync();
+
+        var reviewerName = await _dbContext.Users
+            .AsNoTracking()
+            .Where(user => user.Id == adminUserId)
+            .Select(user => user.FullName)
+            .SingleOrDefaultAsync();
+
+        return new Response.ReviewJobApplicationResponse
+        {
+            Id = application.Id,
+            Status = GetDisplayName(application.Status),
+            ReviewedByName = reviewerName,
+            ReviewAt = application.ReviewAt,
+            CvUrl = application.CvUrl
+        };
+    }
+
+    private async Task<Response.ReviewJobApplicationResponse> RejectDirectlyAsync(
+        Guid id,
+        Guid adminUserId)
+    {
+        var application = await _dbContext.JobApplications
+            .Include(item => item.JobPost)
+            .SingleOrDefaultAsync(item => item.Id == id);
+
+        if (application is null)
+        {
+            throw new JobApplicationException(
+                "JOB_APPLICATION_NOT_FOUND",
+                "Không tìm thấy hồ sơ ứng viên.",
+                "id");
+        }
+
+        if (application.Status != JobApplicationStatus.Pending)
+        {
+            throw new JobApplicationException(
+                "INVALID_APPLICATION_STATUS",
+                "Hồ sơ ứng viên không còn ở trạng thái Chờ duyệt.");
+        }
+
+        var positionTitle = application.JobPostSnapshot?.Title ?? application.JobPost.Title;
+        var deliveryResult = await _mailService.SendRejectionEmailAsync(
+            new MailService.RejectionEmailMailContent
+            {
+                ApplicationId = application.Id,
+                To = application.Email,
+                ToName = application.FullName,
+                PositionTitle = positionTitle,
+                IdempotencyKey = $"rejection-mail-{application.Id}"
+            });
+
+        if (!deliveryResult.IsSuccess)
+        {
+            // Mail thất bại thì chưa đụng vào audit hoặc Status; hồ sơ vẫn Pending.
+            throw new JobApplicationException(
+                "JOB_APPLICATION_REJECTION_EMAIL_FAILED",
+                "Không thể gửi email từ chối hồ sơ ứng viên.");
+        }
+
+        var now = DateTimeOffset.UtcNow;
+        application.Status = JobApplicationStatus.Rejected;
+        application.ReviewedBy = adminUserId;
+        application.ReviewAt = now;
+        application.UpdateAt = now;
+
+        try
+        {
+            // Đây là failure window của luồng gửi trực tiếp: provider đã nhận mail
+            // nhưng DB có thể lỗi, khi đó hồ sơ vẫn Pending dù ứng viên đã nhận mail.
+            await _dbContext.SaveChangesAsync();
+        }
+        catch (DbUpdateException exception)
+        {
+            throw new JobApplicationException(
+                "JOB_APPLICATION_REJECTION_PERSIST_FAILED",
+                "Email đã gửi nhưng không thể cập nhật hồ sơ ứng viên.",
+                exception);
+        }
 
         var reviewerName = await _dbContext.Users
             .AsNoTracking()
@@ -380,3 +465,4 @@ public sealed class Service : IService
         };
     }
 }
+

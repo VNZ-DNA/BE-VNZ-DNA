@@ -1,3 +1,5 @@
+using Microsoft.AspNetCore.Http;
+
 namespace VNZ.Service.PartnerService;
 
 public class Request
@@ -5,6 +7,7 @@ public class Request
     public class CreatePartnerRequest
     {
         public string Name { get; set; } = string.Empty;
+        public IFormFile? Logo { get; set; }
         public string? LogoUrl { get; set; }
         public string? WebsiteUrl { get; set; }
         public string? Description { get; set; }
@@ -13,6 +16,7 @@ public class Request
     public class UpdatePartnerRequest
     {
         public string Name { get; set; } = string.Empty;
+        public IFormFile? Logo { get; set; }
         public string? LogoUrl { get; set; }
         public string? WebsiteUrl { get; set; }
         public string? Description { get; set; }

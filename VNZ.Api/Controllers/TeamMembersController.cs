@@ -48,7 +48,8 @@ public sealed class TeamMembersController : ControllerBase
     }
 
     [HttpPost]
-    public async Task<IActionResult> CreateMember([FromBody] TeamMemberService.Request.CreateTeamMemberRequest request)
+    [Consumes("multipart/form-data")]
+    public async Task<IActionResult> CreateMember([FromForm] TeamMemberService.Request.CreateTeamMemberRequest request)
     {
         var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
         if (!Guid.TryParse(userId, out var createdBy))
@@ -63,7 +64,8 @@ public sealed class TeamMembersController : ControllerBase
     }
 
     [HttpPut("{id:guid}")]
-    public async Task<IActionResult> UpdateMember(Guid id, [FromBody] TeamMemberService.Request.UpdateTeamMemberRequest request)
+    [Consumes("multipart/form-data")]
+    public async Task<IActionResult> UpdateMember(Guid id, [FromForm] TeamMemberService.Request.UpdateTeamMemberRequest request)
     {
         var data = await _teamMemberService.UpdateMemberAsync(id, request);
         return Ok(ResponseBuilder.SuccessResponse(data, "Cập nhật thành viên thành công.", HttpContext.TraceIdentifier));

@@ -4,6 +4,7 @@ public interface IService
 {
     Task SendAsync(MailContent content);
     Task<MailDeliveryResult> SendInterviewInvitationAsync(InterviewInvitationMailContent content);
+    Task<MailDeliveryResult> SendRejectionEmailAsync(RejectionEmailMailContent content);
 }
 
 public class MailContent
@@ -23,6 +24,15 @@ public class InterviewInvitationMailContent
     public string ToName { get; set; } = string.Empty;
     public string PositionTitle { get; set; } = string.Empty;
     public DateTimeOffset InterviewAt { get; set; }
+    public string IdempotencyKey { get; set; } = string.Empty;
+}
+
+public class RejectionEmailMailContent
+{
+    public Guid ApplicationId { get; set; }
+    public string To { get; set; } = string.Empty;
+    public string ToName { get; set; } = string.Empty;
+    public string PositionTitle { get; set; } = string.Empty;
     public string IdempotencyKey { get; set; } = string.Empty;
 }
 
