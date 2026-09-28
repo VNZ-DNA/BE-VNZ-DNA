@@ -25,6 +25,54 @@ public sealed class Service : IService
         _mediaService = mediaService;
     }
 
+    public async Task<List<Response.PublicTeamMemberResponse>> GetFeaturedMembersAsync()
+    {
+        return await _dbContext.Users
+            .AsNoTracking()
+            .Where(member => member.RoleId == null &&
+                             member.EmploymentStatus == EmploymentStatus.Working &&
+                             member.IsPublished)
+            .OrderBy(member => member.DisplayOrder == null)
+            .ThenBy(member => member.DisplayOrder)
+            .ThenByDescending(member => member.CreateAt)
+            .ThenByDescending(member => member.Id)
+            .Select(member => new Response.PublicTeamMemberResponse
+            {
+                Id = member.Id,
+                FullName = member.FullName,
+                Position = member.Position,
+                AvatarUrl = member.AvatarUrl
+            })
+            .ToListAsync();
+    }
+
+    public async Task<Response.PublicTeamMemberDetailResponse> GetPublicMemberByIdAsync(Guid id)
+    {
+        var member = await _dbContext.Users
+            .AsNoTracking()
+            .Where(member => member.Id == id &&
+                             member.RoleId == null &&
+                             member.EmploymentStatus == EmploymentStatus.Working &&
+                             member.IsPublished)
+            .Select(member => new Response.PublicTeamMemberDetailResponse
+            {
+                Id = member.Id,
+                FullName = member.FullName,
+                Position = member.Position,
+                AvatarUrl = member.AvatarUrl,
+                Hometown = member.Hometown,
+                Hobbies = member.Hobbies,
+                JoinedDate = member.JoinedDate,
+                PersonalQuote = member.PersonalQuote
+            })
+            .SingleOrDefaultAsync();
+
+        if (member is null)
+            throw new NotFoundException("Không tìm thấy thành viên.");
+
+        return member;
+    }
+
     public async Task<Response.PagedTeamMemberListResponse> GetMemberListAsync(
         Request.GetTeamMemberListRequest request)
     {
@@ -94,7 +142,8 @@ public sealed class Service : IService
                              member.IsPublished &&
                              member.DisplayOrder != null)
             .OrderBy(member => member.DisplayOrder)
-            .ThenBy(member => member.Id)
+            .ThenByDescending(member => member.CreateAt)
+            .ThenByDescending(member => member.Id)
             .ToListAsync();
 
         return orderableMembers
@@ -187,7 +236,8 @@ public sealed class Service : IService
                                  member.IsPublished &&
                                  member.DisplayOrder != null)
                 .OrderBy(member => member.DisplayOrder)
-                .ThenBy(member => member.Id)
+                .ThenByDescending(member => member.CreateAt)
+                .ThenByDescending(member => member.Id)
                 .ToListAsync();
 
             var currentIds = orderableMembers.Select(member => member.Id).ToHashSet();
@@ -387,7 +437,8 @@ public sealed class Service : IService
                             x.EmploymentStatus == EmploymentStatus.Working &&
                             x.Id != member.Id)
                 .OrderBy(x => x.DisplayOrder)
-                .ThenBy(x => x.Id)
+                .ThenByDescending(x => x.CreateAt)
+                .ThenByDescending(x => x.Id)
                 .ToListAsync();
 
             var now = DateTimeOffset.UtcNow;
@@ -521,7 +572,8 @@ public sealed class Service : IService
                                 x.EmploymentStatus == EmploymentStatus.Working &&
                                 x.Id != member.Id)
                     .OrderBy(x => x.DisplayOrder)
-                    .ThenBy(x => x.Id)
+                    .ThenByDescending(x => x.CreateAt)
+                    .ThenByDescending(x => x.Id)
                     .ToListAsync();
 
                 var now = DateTimeOffset.UtcNow;
@@ -540,11 +592,13 @@ public sealed class Service : IService
 
                 member.DisplayOrder = publishedMembers.Count + 1;
             }
-            else
-            {
-                member.DisplayOrder = null;
-            }
         }
+
+        if (!member.IsPublished)
+        {
+            member.DisplayOrder = null;
+        }
+
         member.UpdatedAt = DateTimeOffset.UtcNow;
 
         await _dbContext.SaveChangesAsync();
@@ -554,7 +608,7 @@ public sealed class Service : IService
 
     private async Task<User> FindMemberAsync(Guid id)
     {
-        var member = await _dbContext.Users.SingleOrDefaultAsync(x => x.Id == id);
+        var member = await _dbContext.Users.SingleOrDefaultAsync(x => x.Id == id && x.RoleId == null);
         if (member is null)
             throw new NotFoundException("Không tìm thấy thành viên.");
 
