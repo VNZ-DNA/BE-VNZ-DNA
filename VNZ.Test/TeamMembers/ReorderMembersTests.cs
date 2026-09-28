@@ -50,7 +50,9 @@ public class ReorderMembersTests
         dbContext.Users.AddRange(firstMember, secondMember);
         await dbContext.SaveChangesAsync();
 
-        var service = new TeamMemberService(dbContext);
+        var service = new TeamMemberService(
+            dbContext,
+            new VNZ.Test.TestMediaService());
 
         var response = await service.ReorderMembersAsync(
             new Request.ReorderTeamMembersRequest

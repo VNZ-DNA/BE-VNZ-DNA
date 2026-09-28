@@ -30,7 +30,9 @@ public class CreatePartnerTests
         dbContext.Users.Add(admin);
         await dbContext.SaveChangesAsync();
 
-        var service = new PartnerService(dbContext);
+        var service = new PartnerService(
+            dbContext,
+            new VNZ.Test.TestMediaService());
 
         var response = await service.CreatePartnerAsync(
             new Request.CreatePartnerRequest

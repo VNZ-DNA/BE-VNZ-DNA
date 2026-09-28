@@ -82,7 +82,10 @@ public class GetProductDetailTests
         });
         await dbContext.SaveChangesAsync();
 
-        var service = new ProductService(dbContext);
+        var service = new ProductService(
+            dbContext,
+            new VNZ.Test.TestMediaService(),
+            new VNZ.Service.Utils.RichTextService.Service());
 
         var response = await service.GetProductDetailAsync(productId);
 
