@@ -19,6 +19,7 @@ public class JobApplication : BaseEntity
     public string? CvUrl { get; set; }
     public string? PortfolioUrl { get; set; }
     public string? CoverLetter { get; set; }
+    public bool ConsentToDataProcessing { get; set; }
     public JobPostSnapshot? JobPostSnapshot { get; set; }
     public JobApplicationStatus Status { get; set; }
     public DateTimeOffset? ReviewAt { get; set; }
