@@ -47,6 +47,8 @@ public class GlobalExceptionHandlerMiddleware : IMiddleware
             DbException when IsNewsListRequest(context) => HttpStatusCode.InternalServerError,
             DbException when IsPublicNewsListRequest(context) => HttpStatusCode.InternalServerError,
             Exception when IsPublicNewsListRequest(context) => HttpStatusCode.InternalServerError,
+            DbException when IsPublicNewsDetailRequest(context) => HttpStatusCode.InternalServerError,
+            Exception when IsPublicNewsDetailRequest(context) => HttpStatusCode.InternalServerError,
             DbException when IsContactListRequest(context) => HttpStatusCode.InternalServerError,
             DbException when IsContactDetailRequest(context) => HttpStatusCode.InternalServerError,
             DbUpdateException when IsContactDetailRequest(context) => HttpStatusCode.InternalServerError,
@@ -90,6 +92,10 @@ public class GlobalExceptionHandlerMiddleware : IMiddleware
                 ("NEWS_PUBLIC_LIST_FAILED", "Không thể đọc danh sách tin tức."),
             Exception when IsPublicNewsListRequest(context) =>
                 ("NEWS_PUBLIC_LIST_FAILED", "Không thể đọc danh sách tin tức."),
+            DbException when IsPublicNewsDetailRequest(context) =>
+                ("NEWS_PUBLIC_ARTICLE_FAILED", "Không thể đọc chi tiết tin tức."),
+            Exception when IsPublicNewsDetailRequest(context) =>
+                ("NEWS_PUBLIC_ARTICLE_FAILED", "Không thể đọc chi tiết tin tức."),
             DbException when IsContactListRequest(context) =>
                 ("CONTACT_LIST_READ_FAILED", "Không thể đọc danh sách liên hệ."),
             DbException when IsContactDetailRequest(context) =>
@@ -201,17 +207,20 @@ public class GlobalExceptionHandlerMiddleware : IMiddleware
         {
             "NEWS_QUERY_INVALID" or
             "NEWS_PUBLIC_LIST_VALIDATION_FAILED" or
+            "NEWS_PUBLIC_ARTICLE_ID_INVALID" or
             "NEWS_ARTICLE_ID_INVALID" or
             "NEWS_VALIDATION_ERROR" or
             "NEWS_CONTENT_TOO_SHORT" or
             "NEWS_STATUS_INVALID" or
             "NEWS_CATEGORY_REQUIRED" or
             "NEWS_CATEGORY_INVALID" => HttpStatusCode.BadRequest,
-            "NEWS_ARTICLE_NOT_FOUND" => HttpStatusCode.NotFound,
+            "NEWS_ARTICLE_NOT_FOUND" or
+            "NEWS_PUBLIC_ARTICLE_NOT_FOUND" => HttpStatusCode.NotFound,
             "NEWS_ARTICLE_CLOSED" or
             "NEWS_STATUS_TRANSITION_INVALID" => HttpStatusCode.Conflict,
             "NEWS_LIST_READ_FAILED" or
             "NEWS_PUBLIC_LIST_FAILED" or
+            "NEWS_PUBLIC_ARTICLE_FAILED" or
             "NEWS_DETAIL_READ_FAILED" or
             "NEWS_ARTICLE_CREATE_FAILED" or
             "NEWS_ARTICLE_UPDATE_FAILED" => HttpStatusCode.InternalServerError,
@@ -338,6 +347,26 @@ public class GlobalExceptionHandlerMiddleware : IMiddleware
     {
         return HttpMethods.IsGet(context.Request.Method) &&
             context.Request.Path.Equals("/api/v1/public/news", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool IsPublicNewsDetailRequest(HttpContext context)
+    {
+        const string routePrefix = "/api/v1/public/news/";
+
+        if (!HttpMethods.IsGet(context.Request.Method))
+        {
+            return false;
+        }
+
+        var path = context.Request.Path.Value;
+
+        if (path is null || !path.StartsWith(routePrefix, StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        var id = path[routePrefix.Length..];
+        return !string.IsNullOrWhiteSpace(id) && !id.Contains('/');
     }
 
     private static bool IsContactListRequest(HttpContext context)

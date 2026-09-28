@@ -56,6 +56,7 @@ public class AppDbContext : DbContext
             entity.ToTable("News_Article");
             entity.HasKey(x => x.Id);
             entity.Property(x => x.Title).HasMaxLength(300).IsRequired();
+            entity.Property(x => x.ReadingTimeMinutes).HasDefaultValue(1);
             entity.Property(x => x.Status).HasConversion<string>().IsRequired();
             entity.HasIndex(x => x.Status);
             entity.HasIndex(x => x.CreatedAt);

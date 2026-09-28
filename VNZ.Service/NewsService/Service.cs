@@ -12,6 +12,7 @@ namespace VNZ.Service.NewsService;
 public sealed class Service : IService
 {
     private const int MinimumPublishedContentLength = 300;
+    private const int WordsPerMinute = 200;
     private static readonly TimeSpan VietnamUtcOffset = TimeSpan.FromHours(7);
 
     private readonly AppDbContext _dbContext;
@@ -155,6 +156,7 @@ public sealed class Service : IService
             Summary = summary,
             Content = content,
             ImageUrl = imageUrl,
+            ReadingTimeMinutes = CalculateReadingTimeMinutes(content),
             Status = status,
             Published = status == NewsStatus.Published,
             CreatedBy = createdBy,
@@ -384,6 +386,7 @@ public sealed class Service : IService
         article.Summary = summary;
         article.Content = content;
         article.ImageUrl = imageUrl;
+        article.ReadingTimeMinutes = CalculateReadingTimeMinutes(content);
         article.Status = targetStatus;
         article.Published = targetStatus == NewsStatus.Published;
         article.PublishAt = publishAt;
@@ -460,6 +463,16 @@ public sealed class Service : IService
         }
 
         return false;
+    }
+
+    private int CalculateReadingTimeMinutes(string? content)
+    {
+        var plainText = _richTextService.ToPlainText(content ?? string.Empty);
+        var wordCount = plainText
+            .Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries)
+            .Length;
+
+        return Math.Max(1, (int)Math.Ceiling(wordCount / (double)WordsPerMinute));
     }
 
     public async Task<Response.PagedNewsListResponse> GetNewsListAsync(
@@ -670,7 +683,8 @@ public sealed class Service : IService
                 article.Id,
                 article.Title,
                 article.Summary,
-                article.PublishAt
+                article.PublishAt,
+                article.ReadingTimeMinutes
             })
             .ToListAsync();
 
@@ -711,6 +725,7 @@ public sealed class Service : IService
                 Title = article.Title,
                 Summary = _richTextService.Sanitize(article.Summary, allowLinks: true),
                 PublishAt = article.PublishAt!.Value,
+                ReadingTimeMinutes = article.ReadingTimeMinutes,
                 Categories = GetCategories(categoriesByArticleId, article.Id)
             })
             .ToList();
@@ -726,6 +741,57 @@ public sealed class Service : IService
             PageSize = request.PageSize,
             TotalItems = totalItems,
             TotalPages = totalPages
+        };
+    }
+
+    public async Task<Response.PublicNewsDetailResponse> GetPublicNewsDetailAsync(string id)
+    {
+        // 1. Validate UUID tại Service để Controller chỉ chịu trách nhiệm nhận route.
+        if (!Guid.TryParse(id, out var newsArticleId))
+        {
+            throw new NewsException(
+                "NEWS_PUBLIC_ARTICLE_ID_INVALID",
+                "Mã bài viết không hợp lệ.",
+                "id");
+        }
+
+        // 2. Chỉ đọc bài có đầy đủ điều kiện hiển thị public cùng toàn bộ danh mục.
+        var article = await _dbContext.NewsArticles
+            .AsNoTracking()
+            .Include(item => item.NewsArticleCategories)
+            .ThenInclude(item => item.NewsCategory)
+            .SingleOrDefaultAsync(item =>
+                item.Id == newsArticleId &&
+                item.Status == NewsStatus.Published &&
+                item.Published &&
+                item.PublishAt != null);
+
+        if (article is null)
+        {
+            throw new NewsException(
+                "NEWS_PUBLIC_ARTICLE_NOT_FOUND",
+                "Không tìm thấy bài viết công khai.");
+        }
+
+        // 3. Nội dung legacy được sanitize khi đọc để FE chỉ nhận HTML an toàn.
+        return new Response.PublicNewsDetailResponse
+        {
+            Id = article.Id,
+            Title = article.Title,
+            Summary = _richTextService.Sanitize(article.Summary, allowLinks: true),
+            Content = _richTextService.Sanitize(article.Content, allowLinks: true),
+            ImageUrl = article.ImageUrl,
+            PublishAt = article.PublishAt!.Value,
+            ReadingTimeMinutes = article.ReadingTimeMinutes,
+            Categories = article.NewsArticleCategories
+                .OrderBy(link => link.NewsCategory.Name)
+                .ThenBy(link => link.NewsCategory.Id)
+                .Select(link => new Response.NewsCategoryResponse
+                {
+                    Id = link.NewsCategory.Id,
+                    Name = link.NewsCategory.Name
+                })
+                .ToList()
         };
     }
 
