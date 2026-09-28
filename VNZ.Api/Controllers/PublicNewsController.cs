@@ -28,4 +28,15 @@ public sealed class PublicNewsController : ControllerBase
             "Lấy danh sách tin tức thành công.",
             HttpContext.TraceIdentifier));
     }
+
+    [HttpGet("{id}")]
+    public async Task<IActionResult> GetPublicNewsDetail(string id)
+    {
+        var data = await _newsService.GetPublicNewsDetailAsync(id);
+
+        return Ok(ResponseBuilder.SuccessResponse(
+            data,
+            "Lấy chi tiết tin tức thành công.",
+            HttpContext.TraceIdentifier));
+    }
 }

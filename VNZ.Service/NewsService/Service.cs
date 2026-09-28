@@ -729,6 +729,56 @@ public sealed class Service : IService
         };
     }
 
+    public async Task<Response.PublicNewsDetailResponse> GetPublicNewsDetailAsync(string id)
+    {
+        // 1. Validate UUID tại Service để Controller chỉ chịu trách nhiệm nhận route.
+        if (!Guid.TryParse(id, out var newsArticleId))
+        {
+            throw new NewsException(
+                "NEWS_PUBLIC_ARTICLE_ID_INVALID",
+                "Mã bài viết không hợp lệ.",
+                "id");
+        }
+
+        // 2. Chỉ đọc bài có đầy đủ điều kiện hiển thị public cùng toàn bộ danh mục.
+        var article = await _dbContext.NewsArticles
+            .AsNoTracking()
+            .Include(item => item.NewsArticleCategories)
+            .ThenInclude(item => item.NewsCategory)
+            .SingleOrDefaultAsync(item =>
+                item.Id == newsArticleId &&
+                item.Status == NewsStatus.Published &&
+                item.Published &&
+                item.PublishAt != null);
+
+        if (article is null)
+        {
+            throw new NewsException(
+                "NEWS_PUBLIC_ARTICLE_NOT_FOUND",
+                "Không tìm thấy bài viết công khai.");
+        }
+
+        // 3. Nội dung legacy được sanitize khi đọc để FE chỉ nhận HTML an toàn.
+        return new Response.PublicNewsDetailResponse
+        {
+            Id = article.Id,
+            Title = article.Title,
+            Summary = _richTextService.Sanitize(article.Summary, allowLinks: true),
+            Content = _richTextService.Sanitize(article.Content, allowLinks: true),
+            ImageUrl = article.ImageUrl,
+            PublishAt = article.PublishAt!.Value,
+            Categories = article.NewsArticleCategories
+                .OrderBy(link => link.NewsCategory.Name)
+                .ThenBy(link => link.NewsCategory.Id)
+                .Select(link => new Response.NewsCategoryResponse
+                {
+                    Id = link.NewsCategory.Id,
+                    Name = link.NewsCategory.Name
+                })
+                .ToList()
+        };
+    }
+
     public async Task<Response.NewsDetailResponse> GetNewsDetailAsync(Guid id)
     {
         // 1. Đọc bài viết cùng tác giả và toàn bộ danh mục đang được gắn.
