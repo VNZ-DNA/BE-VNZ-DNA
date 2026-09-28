@@ -179,13 +179,13 @@ public sealed class Service : IService
 
         if (request.Page < 1 || request.PageSize < 1 || request.PageSize > 100)
         {
-            throw new ArgumentException("ThÃ´ng tin phÃ¢n trang khÃ´ng há»£p lá»‡.");
+            throw new ArgumentException("Thông tin phân trang không hợp lệ.");
         }
 
         var search = request.Search?.Trim();
         if (search is { Length: > 300 })
         {
-            throw new ArgumentException("Tá»« khÃ³a tÃ¬m kiáº¿m khÃ´ng Ä‘Æ°á»£c vÆ°á»£t quÃ¡ 300 kÃ½ tá»±.");
+            throw new ArgumentException("Từ khóa tìm kiếm không được vượt quá 300 ký tự.");
         }
 
         JobApplicationStatus? statusFilter = null;
@@ -195,7 +195,7 @@ public sealed class Service : IService
             if (!Enum.TryParse<JobApplicationStatus>(request.Status.Trim(), ignoreCase: false, out var parsedStatus) ||
                 !Enum.IsDefined(parsedStatus))
             {
-                throw new ArgumentException("Tráº¡ng thÃ¡i lá»c khÃ´ng há»£p lá»‡.");
+                throw new ArgumentException("Trạng thái lọc không hợp lệ.");
             }
 
             statusFilter = parsedStatus;
@@ -277,7 +277,7 @@ public sealed class Service : IService
         {
             throw new JobApplicationException(
                 "JOB_APPLICATION_INTERVIEW_TIME_INVALID",
-                "Lá»‹ch phá»ng váº¥n pháº£i lá»›n hÆ¡n thá»i Ä‘iá»ƒm hiá»‡n táº¡i.",
+                "Lịch phỏng vấn phải lớn hơn thời điểm hiện tại.",
                 nameof(request.InterviewDate),
                 nameof(request.InterviewTime));
         }
@@ -292,12 +292,12 @@ public sealed class Service : IService
         {
             throw new JobApplicationException(
                 "JOB_APPLICATION_INTERVIEW_BATCH_INVALID",
-                "Táº¥t cáº£ há»“ sÆ¡ Ä‘Æ°á»£c chá»n pháº£i Ä‘ang á»Ÿ tráº¡ng thÃ¡i ÄÃ£ duyá»‡t.",
+                "Tất cả hồ sơ được chọn phải đang ở trạng thái Đã duyệt.",
                 nameof(request.ApplicationIds));
         }
 
-        // Query database khÃ´ng Ä‘áº£m báº£o giá»¯ thá»© tá»± applicationIds tá»« request.
-        // Dictionary giÃºp láº¥y nhanh application theo ID, nhÆ°ng váº«n xá»­ lÃ½ theo Ä‘Ãºng thá»© tá»± Admin Ä‘Ã£ chá»n.
+        // Query database không đảm bảo giữ thứ tự applicationIds từ request.
+        // Dictionary giúp lấy nhanh application theo ID, nhưng vẫn xử lý theo đúng thứ tự Admin đã chọn.
         var applicationsById = applications.ToDictionary(application => application.Id);
         var results = new List<Response.InterviewInvitationResultResponse>(applicationIds.Count);
 
@@ -335,7 +335,7 @@ public sealed class Service : IService
                 _logger.LogError(exception, "Interview invitation was sent but could not be persisted. ApplicationId: {ApplicationId}", application.Id);
                 throw new JobApplicationException(
                     "JOB_APPLICATION_INTERVIEW_PERSIST_FAILED",
-                    "Email Ä‘Ã£ Ä‘Æ°á»£c gá»­i nhÆ°ng khÃ´ng thá»ƒ cáº­p nháº­t há»“ sÆ¡ á»©ng viÃªn.",
+                    "Email đã được gửi nhưng không thể cập nhật hồ sơ ứng viên.",
                     exception);
             }
 
@@ -375,7 +375,7 @@ public sealed class Service : IService
         {
             throw new JobApplicationException(
                 "JOB_APPLICATION_INTERVIEW_REQUEST_INVALID",
-                "Danh sÃ¡ch há»“ sÆ¡ á»©ng viÃªn khÃ´ng há»£p lá»‡.",
+                "Danh sách hồ sơ ứng viên không hợp lệ.",
                 "applicationIds");
         }
 
@@ -383,7 +383,7 @@ public sealed class Service : IService
         {
             throw new JobApplicationException(
                 "JOB_APPLICATION_INTERVIEW_REQUEST_INVALID",
-                "Danh sÃ¡ch há»“ sÆ¡ á»©ng viÃªn khÃ´ng Ä‘Æ°á»£c chá»©a pháº§n tá»­ trÃ¹ng láº·p.",
+                "Danh sách hồ sơ ứng viên không được chứa phần tử trùng lặp.",
                 "applicationIds");
         }
 
@@ -407,7 +407,7 @@ public sealed class Service : IService
         {
             throw new JobApplicationException(
                 "JOB_APPLICATION_INTERVIEW_REQUEST_INVALID",
-                "NgÃ y hoáº·c giá» phá»ng váº¥n khÃ´ng Ä‘Ãºng Ä‘á»‹nh dáº¡ng.",
+                "Ngày hoặc giờ phỏng vấn không đúng định dạng.",
                 "interviewDate",
                 "interviewTime");
         }
@@ -435,7 +435,7 @@ public sealed class Service : IService
 
         if (application is null)
         {
-            throw new NotFoundException("KhÃ´ng tÃ¬m tháº¥y há»“ sÆ¡ á»©ng viÃªn.");
+            throw new NotFoundException("Không tìm thấy hồ sơ ứng viên.");
         }
 
         return new Response.JobApplicationDetailResponse
@@ -465,5 +465,4 @@ public sealed class Service : IService
         };
     }
 }
-
 

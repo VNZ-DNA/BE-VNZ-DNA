@@ -25,7 +25,7 @@ public sealed class JobApplicationController : ControllerBase
 
         return Ok(ResponseBuilder.SuccessResponse(
             data,
-            "Láº¥y danh sÃ¡ch há»“ sÆ¡ á»©ng viÃªn thÃ nh cÃ´ng.",
+            "Lấy danh sách hồ sơ ứng viên thành công.",
             HttpContext.TraceIdentifier));
     }
 
@@ -36,7 +36,7 @@ public sealed class JobApplicationController : ControllerBase
 
         return Ok(ResponseBuilder.SuccessResponse(
             data,
-            "Láº¥y chi tiáº¿t há»“ sÆ¡ á»©ng viÃªn thÃ nh cÃ´ng.",
+            "Lấy chi tiết hồ sơ ứng viên thành công.",
             HttpContext.TraceIdentifier));
     }
 
@@ -74,9 +74,8 @@ public sealed class JobApplicationController : ControllerBase
 
         return Ok(ResponseBuilder.SuccessResponse(
             data,
-            "ÄÃ£ xá»­ lÃ½ gá»­i email má»i phá»ng váº¥n.",
+            "Đã xử lý gửi email mời phỏng vấn.",
             HttpContext.TraceIdentifier));
     }
 }
-
 
