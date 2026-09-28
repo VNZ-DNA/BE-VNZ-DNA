@@ -338,15 +338,21 @@ public class GlobalExceptionHandlerMiddleware : IMiddleware
     {
         return code switch
         {
-            "JOB_APPLICATION_REJECTION_REQUEST_INVALID" => HttpStatusCode.BadRequest,
+            "JOB_APPLICATION_REJECTION_REQUEST_INVALID" or
+            "JOB_APPLICATION_INTERVIEW_REQUEST_INVALID" or
+            "JOB_APPLICATION_INTERVIEW_TIME_INVALID" or
+            "JOB_APPLICATION_VALIDATION_FAILED" or
+            "JOB_APPLICATION_CONSENT_REQUIRED" or
+            "JOB_APPLICATION_CV_URL_INVALID" => HttpStatusCode.BadRequest,
             "JOB_APPLICATION_NOT_FOUND" => HttpStatusCode.NotFound,
+            "JOB_POST_NOT_FOUND" => HttpStatusCode.NotFound,
             "INVALID_APPLICATION_STATUS" => HttpStatusCode.Conflict,
+            "JOB_APPLICATION_INTERVIEW_BATCH_INVALID" or
+            "JOB_POST_NOT_AVAILABLE" => HttpStatusCode.Conflict,
             "JOB_APPLICATION_REJECTION_EMAIL_FAILED" or
             "JOB_APPLICATION_REJECTION_PERSIST_FAILED" => HttpStatusCode.InternalServerError,
-            "JOB_APPLICATION_INTERVIEW_REQUEST_INVALID" or
-            "JOB_APPLICATION_INTERVIEW_TIME_INVALID" => HttpStatusCode.BadRequest,
-            "JOB_APPLICATION_INTERVIEW_BATCH_INVALID" => HttpStatusCode.Conflict,
-            "JOB_APPLICATION_INTERVIEW_PERSIST_FAILED" => HttpStatusCode.InternalServerError,
+            "JOB_APPLICATION_INTERVIEW_PERSIST_FAILED" or
+            "JOB_APPLICATION_CREATE_FAILED" => HttpStatusCode.InternalServerError,
             _ => HttpStatusCode.InternalServerError
         };
     }
@@ -361,20 +367,6 @@ public class GlobalExceptionHandlerMiddleware : IMiddleware
             "MEDIA_PURPOSE_UNSUPPORTED" => HttpStatusCode.BadRequest,
             "MEDIA_CONFIGURATION_INVALID" or
             "MEDIA_UPLOAD_FAILED" => HttpStatusCode.InternalServerError,
-            _ => HttpStatusCode.InternalServerError
-        };
-    }
-
-    private static HttpStatusCode GetJobApplicationStatusCode(string code)
-    {
-        return code switch
-        {
-            "JOB_APPLICATION_VALIDATION_FAILED" or
-            "JOB_APPLICATION_CONSENT_REQUIRED" or
-            "JOB_APPLICATION_CV_URL_INVALID" => HttpStatusCode.BadRequest,
-            "JOB_POST_NOT_FOUND" => HttpStatusCode.NotFound,
-            "JOB_POST_NOT_AVAILABLE" => HttpStatusCode.Conflict,
-            "JOB_APPLICATION_CREATE_FAILED" => HttpStatusCode.InternalServerError,
             _ => HttpStatusCode.InternalServerError
         };
     }
