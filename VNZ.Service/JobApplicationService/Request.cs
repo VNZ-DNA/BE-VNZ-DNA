@@ -32,4 +32,11 @@ public static class Request
     {
         public string? Decision { get; set; }
     }
+
+    public class SendInterviewInvitationsRequest
+    {
+        public List<Guid>? ApplicationIds { get; set; }
+        public string? InterviewDate { get; set; }
+        public string? InterviewTime { get; set; }
+    }
 }

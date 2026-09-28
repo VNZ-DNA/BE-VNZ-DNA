@@ -23,7 +23,18 @@ public class GlobalExceptionHandlerMiddleware : IMiddleware
         }
         catch (Exception exception)
         {
-            _logger.LogError(exception, "Unhandled exception. TraceId: {TraceId}", context.TraceIdentifier);
+            if (IsPublicContactCreateRequest(context))
+            {
+                _logger.LogError(
+                    "Public contact create failed. TraceId: {TraceId}, ExceptionType: {ExceptionType}",
+                    context.TraceIdentifier,
+                    exception.GetType().Name);
+            }
+            else
+            {
+                _logger.LogError(exception, "Unhandled exception. TraceId: {TraceId}", context.TraceIdentifier);
+            }
+
             await HandleExceptionAsync(context, exception);
         }
     }
@@ -36,13 +47,26 @@ public class GlobalExceptionHandlerMiddleware : IMiddleware
             JobPostException jobPostStatusException => GetJobPostStatusCode(jobPostStatusException.Code),
             NewsException newsStatusException => GetNewsStatusCode(newsStatusException.Code),
             ProductException productStatusException => GetProductStatusCode(productStatusException.Code),
+            PartnerException partnerStatusException => GetPartnerStatusCode(partnerStatusException.Code),
             TeamMemberException teamMemberStatusException => GetTeamMemberStatusCode(teamMemberStatusException.Code),
             ContactException contactStatusException => GetContactStatusCode(contactStatusException.Code),
             JobApplicationException jobApplicationStatusException => GetJobApplicationStatusCode(jobApplicationStatusException.Code),
+
+
+            MediaException mediaStatusException => GetMediaStatusCode(mediaStatusException.Code),
             DbException when IsCreateNewsRequest(context) => HttpStatusCode.InternalServerError,
             DbException when IsUpdateNewsRequest(context) => HttpStatusCode.InternalServerError,
             DbException when IsNewsDetailRequest(context) => HttpStatusCode.InternalServerError,
             DbException when IsNewsListRequest(context) => HttpStatusCode.InternalServerError,
+            DbException when IsPublicNewsListRequest(context) => HttpStatusCode.InternalServerError,
+            Exception when IsPublicNewsListRequest(context) => HttpStatusCode.InternalServerError,
+            DbException when IsPublicNewsDetailRequest(context) => HttpStatusCode.InternalServerError,
+            Exception when IsPublicNewsDetailRequest(context) => HttpStatusCode.InternalServerError,
+            BadHttpRequestException { StatusCode: StatusCodes.Status413PayloadTooLarge }
+                when IsPublicContactCreateRequest(context) => HttpStatusCode.RequestEntityTooLarge,
+            DbUpdateException when IsPublicContactCreateRequest(context) => HttpStatusCode.InternalServerError,
+            DbException when IsPublicContactCreateRequest(context) => HttpStatusCode.InternalServerError,
+            Exception when IsPublicContactCreateRequest(context) => HttpStatusCode.InternalServerError,
             DbException when IsContactListRequest(context) => HttpStatusCode.InternalServerError,
             DbException when IsContactDetailRequest(context) => HttpStatusCode.InternalServerError,
             DbUpdateException when IsContactDetailRequest(context) => HttpStatusCode.InternalServerError,
@@ -69,9 +93,13 @@ public class GlobalExceptionHandlerMiddleware : IMiddleware
             JobPostException jobPostPayloadException => (jobPostPayloadException.Code, jobPostPayloadException.Message),
             NewsException newsPayloadException => (newsPayloadException.Code, newsPayloadException.Message),
             ProductException productPayloadException => (productPayloadException.Code, productPayloadException.Message),
+            PartnerException partnerPayloadException => (partnerPayloadException.Code, partnerPayloadException.Message),
             TeamMemberException teamMemberPayloadException => (teamMemberPayloadException.Code, teamMemberPayloadException.Message),
             ContactException contactPayloadException => (contactPayloadException.Code, contactPayloadException.Message),
             JobApplicationException jobApplicationPayloadException => (jobApplicationPayloadException.Code, jobApplicationPayloadException.Message),
+
+
+            MediaException mediaPayloadException => (mediaPayloadException.Code, mediaPayloadException.Message),
             DbException when IsCreateNewsRequest(context) =>
                 ("NEWS_ARTICLE_CREATE_FAILED", "Không thể tạo bài viết."),
             DbException when IsUpdateNewsRequest(context) =>
@@ -80,6 +108,23 @@ public class GlobalExceptionHandlerMiddleware : IMiddleware
                 ("NEWS_DETAIL_READ_FAILED", "Không thể đọc chi tiết bài viết."),
             DbException when IsNewsListRequest(context) =>
                 ("NEWS_LIST_READ_FAILED", "Không thể đọc danh sách bài viết."),
+            DbException when IsPublicNewsListRequest(context) =>
+                ("NEWS_PUBLIC_LIST_FAILED", "Không thể đọc danh sách tin tức."),
+            Exception when IsPublicNewsListRequest(context) =>
+                ("NEWS_PUBLIC_LIST_FAILED", "Không thể đọc danh sách tin tức."),
+            DbException when IsPublicNewsDetailRequest(context) =>
+                ("NEWS_PUBLIC_ARTICLE_FAILED", "Không thể đọc chi tiết tin tức."),
+            Exception when IsPublicNewsDetailRequest(context) =>
+                ("NEWS_PUBLIC_ARTICLE_FAILED", "Không thể đọc chi tiết tin tức."),
+            BadHttpRequestException { StatusCode: StatusCodes.Status413PayloadTooLarge }
+                when IsPublicContactCreateRequest(context) =>
+                ("CONTACT_REQUEST_TOO_LARGE", "Dung lượng yêu cầu vượt giới hạn của hệ thống."),
+            DbUpdateException when IsPublicContactCreateRequest(context) =>
+                ("CONTACT_CREATE_FAILED", "Không thể tiếp nhận yêu cầu liên hệ lúc này. Vui lòng thử lại sau."),
+            DbException when IsPublicContactCreateRequest(context) =>
+                ("CONTACT_CREATE_FAILED", "Không thể tiếp nhận yêu cầu liên hệ lúc này. Vui lòng thử lại sau."),
+            Exception when IsPublicContactCreateRequest(context) =>
+                ("CONTACT_CREATE_FAILED", "Không thể tiếp nhận yêu cầu liên hệ lúc này. Vui lòng thử lại sau."),
             DbException when IsContactListRequest(context) =>
                 ("CONTACT_LIST_READ_FAILED", "Không thể đọc danh sách liên hệ."),
             DbException when IsContactDetailRequest(context) =>
@@ -124,12 +169,19 @@ public class GlobalExceptionHandlerMiddleware : IMiddleware
                                 ? newsException.Fields
                                 : exception is ProductException productException
                                     ? productException.Fields
+                                : exception is PartnerException partnerException
+                                    ? partnerException.Fields
                                 : exception is TeamMemberException teamMemberException
                                     ? teamMemberException.Fields
                                     : exception is ContactException contactException
                                         ? contactException.Fields
                                         : exception is JobApplicationException jobApplicationException
                                             ? jobApplicationException.Fields
+
+
+                                        : exception is MediaException mediaException
+                                            ? mediaException.Fields
+
                                         : Array.Empty<string>()
             },
             message: message,
@@ -171,8 +223,12 @@ public class GlobalExceptionHandlerMiddleware : IMiddleware
             "DEPARTMENT_NOT_FOUND" => HttpStatusCode.NotFound,
             "JOB_POST_CLOSED" or
             "JOB_POST_EXPIRED" => HttpStatusCode.Conflict,
+            
+            "PUBLIC_JOB_POST_NOT_AVAILABLE" => HttpStatusCode.NotFound,
             "JOB_POST_CREATE_FAILED" => HttpStatusCode.InternalServerError,
-            "JOB_POST_UPDATE_FAILED" => HttpStatusCode.InternalServerError,
+            "JOB_POST_UPDATE_FAILED" or
+            "PUBLIC_JOB_POST_DETAIL_READ_FAILED" => HttpStatusCode.InternalServerError,
+            "PUBLIC_JOB_POST_LIST_READ_FAILED" => HttpStatusCode.InternalServerError,
             _ => HttpStatusCode.InternalServerError
         };
     }
@@ -182,16 +238,21 @@ public class GlobalExceptionHandlerMiddleware : IMiddleware
         return code switch
         {
             "NEWS_QUERY_INVALID" or
+            "NEWS_PUBLIC_LIST_VALIDATION_FAILED" or
+            "NEWS_PUBLIC_ARTICLE_ID_INVALID" or
             "NEWS_ARTICLE_ID_INVALID" or
             "NEWS_VALIDATION_ERROR" or
             "NEWS_CONTENT_TOO_SHORT" or
             "NEWS_STATUS_INVALID" or
             "NEWS_CATEGORY_REQUIRED" or
             "NEWS_CATEGORY_INVALID" => HttpStatusCode.BadRequest,
-            "NEWS_ARTICLE_NOT_FOUND" => HttpStatusCode.NotFound,
+            "NEWS_ARTICLE_NOT_FOUND" or
+            "NEWS_PUBLIC_ARTICLE_NOT_FOUND" => HttpStatusCode.NotFound,
             "NEWS_ARTICLE_CLOSED" or
             "NEWS_STATUS_TRANSITION_INVALID" => HttpStatusCode.Conflict,
             "NEWS_LIST_READ_FAILED" or
+            "NEWS_PUBLIC_LIST_FAILED" or
+            "NEWS_PUBLIC_ARTICLE_FAILED" or
             "NEWS_DETAIL_READ_FAILED" or
             "NEWS_ARTICLE_CREATE_FAILED" or
             "NEWS_ARTICLE_UPDATE_FAILED" => HttpStatusCode.InternalServerError,
@@ -210,6 +271,7 @@ public class GlobalExceptionHandlerMiddleware : IMiddleware
             "PRODUCT_CONTENT_INVALID" => HttpStatusCode.BadRequest,
             "PRODUCT_NOT_FOUND" => HttpStatusCode.NotFound,
             "PRODUCT_ORDER_CONFLICT" or
+            "PRODUCT_PUBLISHED_CANNOT_EDIT" or
             "PRODUCT_IN_PROGRESS_CANNOT_PUBLISH" or
             "PRODUCT_DELETE_FORBIDDEN" => HttpStatusCode.Conflict,
             "PRODUCT_LIST_READ_FAILED" or
@@ -220,16 +282,35 @@ public class GlobalExceptionHandlerMiddleware : IMiddleware
         };
     }
 
+    private static HttpStatusCode GetPartnerStatusCode(string code)
+    {
+        return code switch
+        {
+            "PARTNER_LIST_VALIDATION_FAILED" or
+            "PARTNER_VALIDATION_FAILED" or
+            "PARTNER_ORDER_INVALID" => HttpStatusCode.BadRequest,
+            "PARTNER_NOT_FOUND" => HttpStatusCode.NotFound,
+            "PARTNER_PUBLISHED_CANNOT_EDIT" => HttpStatusCode.Conflict,
+            "PARTNER_LIST_READ_FAILED" or
+            "PARTNER_CREATE_FAILED" or
+            "PARTNER_ORDER_UPDATE_FAILED" or
+            "PARTNER_UPDATE_FAILED" => HttpStatusCode.InternalServerError,
+            _ => HttpStatusCode.InternalServerError
+        };
+    }
+
     private static HttpStatusCode GetTeamMemberStatusCode(string code)
     {
         return code switch
         {
-            "MEMBER_VALIDATION_ERROR" => HttpStatusCode.BadRequest,
+            "MEMBER_VALIDATION_ERROR" or
+            "MEMBER_QUERY_INVALID" => HttpStatusCode.BadRequest,
             "MEMBER_ORDER_INVALID" => HttpStatusCode.BadRequest,
             "MEMBER_ORDER_CONFLICT" => HttpStatusCode.Conflict,
             "MEMBER_ORDER_UPDATE_FAILED" => HttpStatusCode.InternalServerError,
             "MEMBER_EMAIL_EXISTS" => HttpStatusCode.Conflict,
-            "MEMBER_CREATE_FAILED" => HttpStatusCode.InternalServerError,
+            "MEMBER_CREATE_FAILED" or
+            "MEMBER_LIST_READ_FAILED" => HttpStatusCode.InternalServerError,
             _ => HttpStatusCode.InternalServerError
         };
     }
@@ -239,14 +320,47 @@ public class GlobalExceptionHandlerMiddleware : IMiddleware
         return code switch
         {
             "CONTACT_QUERY_INVALID" or
-            "CONTACT_REPLY_VALIDATION_ERROR" => HttpStatusCode.BadRequest,
+            "CONTACT_REPLY_VALIDATION_ERROR" or
+            "CONTACT_CREATE_VALIDATION_FAILED" => HttpStatusCode.BadRequest,
             "CONTACT_NOT_FOUND" => HttpStatusCode.NotFound,
             "CONTACT_ALREADY_CONTACTED" => HttpStatusCode.Conflict,
             "CONTACT_LIST_READ_FAILED" or
             "CONTACT_DETAIL_READ_FAILED" or
             "CONTACT_REPLY_READ_FAILED" or
             "CONTACT_EMAIL_SEND_FAILED" or
-            "CONTACT_REPLY_UPDATE_FAILED" => HttpStatusCode.InternalServerError,
+            "CONTACT_REPLY_UPDATE_FAILED" or
+            "CONTACT_CREATE_FAILED" => HttpStatusCode.InternalServerError,
+            _ => HttpStatusCode.InternalServerError
+        };
+    }
+
+    private static HttpStatusCode GetJobApplicationStatusCode(string code)
+    {
+        return code switch
+        {
+            "JOB_APPLICATION_REJECTION_REQUEST_INVALID" => HttpStatusCode.BadRequest,
+            "JOB_APPLICATION_NOT_FOUND" => HttpStatusCode.NotFound,
+            "INVALID_APPLICATION_STATUS" => HttpStatusCode.Conflict,
+            "JOB_APPLICATION_REJECTION_EMAIL_FAILED" or
+            "JOB_APPLICATION_REJECTION_PERSIST_FAILED" => HttpStatusCode.InternalServerError,
+            "JOB_APPLICATION_INTERVIEW_REQUEST_INVALID" or
+            "JOB_APPLICATION_INTERVIEW_TIME_INVALID" => HttpStatusCode.BadRequest,
+            "JOB_APPLICATION_INTERVIEW_BATCH_INVALID" => HttpStatusCode.Conflict,
+            "JOB_APPLICATION_INTERVIEW_PERSIST_FAILED" => HttpStatusCode.InternalServerError,
+            _ => HttpStatusCode.InternalServerError
+        };
+    }
+
+    private static HttpStatusCode GetMediaStatusCode(string code)
+    {
+        return code switch
+        {
+            "MEDIA_FILE_REQUIRED" or
+            "MEDIA_FILE_TYPE_UNSUPPORTED" or
+            "MEDIA_FILE_TOO_LARGE" or
+            "MEDIA_PURPOSE_UNSUPPORTED" => HttpStatusCode.BadRequest,
+            "MEDIA_CONFIGURATION_INVALID" or
+            "MEDIA_UPLOAD_FAILED" => HttpStatusCode.InternalServerError,
             _ => HttpStatusCode.InternalServerError
         };
     }
@@ -277,10 +391,42 @@ public class GlobalExceptionHandlerMiddleware : IMiddleware
             context.Request.Path.Equals("/api/v1/admin/news", StringComparison.OrdinalIgnoreCase);
     }
 
+    private static bool IsPublicNewsListRequest(HttpContext context)
+    {
+        return HttpMethods.IsGet(context.Request.Method) &&
+            context.Request.Path.Equals("/api/v1/public/news", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool IsPublicNewsDetailRequest(HttpContext context)
+    {
+        const string routePrefix = "/api/v1/public/news/";
+
+        if (!HttpMethods.IsGet(context.Request.Method))
+        {
+            return false;
+        }
+
+        var path = context.Request.Path.Value;
+
+        if (path is null || !path.StartsWith(routePrefix, StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        var id = path[routePrefix.Length..];
+        return !string.IsNullOrWhiteSpace(id) && !id.Contains('/');
+    }
+
     private static bool IsContactListRequest(HttpContext context)
     {
         return HttpMethods.IsGet(context.Request.Method) &&
             context.Request.Path.Equals("/api/v1/admin/contacts", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool IsPublicContactCreateRequest(HttpContext context)
+    {
+        return HttpMethods.IsPost(context.Request.Method) &&
+            context.Request.Path.Equals("/api/v1/public/contacts", StringComparison.OrdinalIgnoreCase);
     }
 
     private static bool IsContactDetailRequest(HttpContext context)

@@ -34,7 +34,11 @@ namespace VNZ.Repository.Migrations
                         .HasColumnType("text");
 
                     b.Property<string>("CompanyName")
-                        .HasColumnType("text");
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<bool>("ConsentToDataProcessing")
+                        .HasColumnType("boolean");
 
                     b.Property<string>("ContactStatus")
                         .IsRequired()
@@ -274,11 +278,19 @@ namespace VNZ.Repository.Migrations
                     b.Property<Guid>("CreatedBy")
                         .HasColumnType("uuid");
 
+                    b.Property<string>("ImageUrl")
+                        .HasColumnType("text");
+
                     b.Property<DateTimeOffset?>("PublishAt")
                         .HasColumnType("timestamp with time zone");
 
                     b.Property<bool>("Published")
                         .HasColumnType("boolean");
+
+                    b.Property<int>("ReadingTimeMinutes")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer")
+                        .HasDefaultValue(1);
 
                     b.Property<string>("Status")
                         .IsRequired()
@@ -302,6 +314,10 @@ namespace VNZ.Repository.Migrations
                     b.HasIndex("CreatedBy");
 
                     b.HasIndex("Status");
+
+                    b.HasIndex("PublishAt", "Id")
+                        .HasDatabaseName("IX_News_Article_Public_PublishAt_Id")
+                        .HasFilter("\"Status\" = 'Published' AND \"Published\" = TRUE AND \"PublishAt\" IS NOT NULL");
 
                     b.ToTable("News_Article", (string)null);
                 });

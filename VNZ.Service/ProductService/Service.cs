@@ -6,16 +6,25 @@ using VNZ.Repository.Entity;
 using VNZ.Repository.Entity.Enum;
 using VNZ.Repository.Entity.Json;
 using VNZ.Service.Exceptions;
+using MediaService = VNZ.Service.Utils.MediaService;
+using RichTextService = VNZ.Service.Utils.RichTextService;
 
 namespace VNZ.Service.ProductService;
 
 public sealed class Service : IService
 {
     private readonly AppDbContext _dbContext;
+    private readonly MediaService.IService _mediaService;
+    private readonly RichTextService.IService _richTextService;
 
-    public Service(AppDbContext dbContext)
+    public Service(
+        AppDbContext dbContext,
+        MediaService.IService mediaService,
+        RichTextService.IService richTextService)
     {
         _dbContext = dbContext;
+        _mediaService = mediaService;
+        _richTextService = richTextService;
     }
 
     public async Task<Response.ProductDetailResponse> CreateProductAsync(
@@ -31,15 +40,30 @@ public sealed class Service : IService
             throw new ProductException("PRODUCT_VALIDATION_FAILED", "Tên Product là bắt buộc.", "name");
         }
 
-        ValidateProductContent(request.Content);
+        var content = SanitizeProductContent(request.Content);
+        ValidateProductContent(content);
+
+        var logoUrl = request.LogoUrl;
+
+        if (request.Logo is not null)
+        {
+            var uploadResult = await _mediaService.UploadImageAsync(
+                new MediaService.Request.UploadImageRequest
+                {
+                    File = request.Logo,
+                    Purpose = "ProductLogo"
+                });
+
+            logoUrl = uploadResult.Url;
+        }
 
         var product = new Product
         {
             Id = Guid.NewGuid(),
             Name = name,
-            LogoUrl = request.LogoUrl,
+            LogoUrl = logoUrl,
             ProductUrl = request.ProductUrl,
-            Content = ToProductContent(request.Content),
+            Content = ToProductContent(content),
             Status = ProductStatus.InProgress,
             IsPublished = false,
             DisplayOrder = null,
@@ -86,17 +110,6 @@ public sealed class Service : IService
     {
         ArgumentNullException.ThrowIfNull(request);
 
-        ValidateUpdateRequest(request);
-
-        if (request.IsPublished && request.Status == ProductStatus.InProgress)
-        {
-            throw new ProductException(
-                "PRODUCT_IN_PROGRESS_CANNOT_PUBLISH",
-                "Chỉ sản phẩm đã hoàn thành mới có thể đăng.",
-                "status",
-                "isPublished");
-        }
-
         try
         {
             await using var transaction = await _dbContext.Database
@@ -114,16 +127,19 @@ public sealed class Service : IService
 
             var updatedAt = DateTimeOffset.UtcNow;
 
-            if (!product.IsPublished && request.IsPublished)
+            if (product.IsPublished)
             {
-                var lastDisplayOrder = await _dbContext.Products
-                    .Where(item => item.IsPublished)
-                    .MaxAsync(item => (int?)item.DisplayOrder) ?? 0;
+                if (request.IsPublished != false)
+                {
+                    throw new ProductException(
+                        "PRODUCT_PUBLISHED_CANNOT_EDIT",
+                        "Product đang được đăng. Hãy gỡ đăng trước khi chỉnh sửa.",
+                        "isPublished");
+                }
 
-                product.DisplayOrder = lastDisplayOrder + 1;
-            }
-            else if (product.IsPublished && !request.IsPublished)
-            {
+                // Khi Product đang đăng, PUT chỉ thực hiện gỡ đăng.
+                // Các field khác trong request không được áp dụng cho đến request tiếp theo.
+                product.IsPublished = false;
                 product.DisplayOrder = null;
 
                 var publishedProducts = await _dbContext.Products
@@ -146,14 +162,65 @@ public sealed class Service : IService
                     publishedProduct.DisplayOrder = displayOrder;
                     publishedProduct.UpdatedAt = updatedAt;
                 }
+
+                product.UpdatedAt = updatedAt;
+
+                await _dbContext.SaveChangesAsync();
+                await transaction.CommitAsync();
+
+                return ToDetailResponse(product);
+            }
+
+            var content = SanitizeProductContent(request.Content);
+            ValidateUpdateRequest(request, content);
+            var isPublished = request.IsPublished.GetValueOrDefault();
+
+            var logoUrl = product.LogoUrl;
+
+            if (request.Logo is not null)
+            {
+                var uploadResult = await _mediaService.UploadImageAsync(
+                    new MediaService.Request.UploadImageRequest
+                    {
+                        File = request.Logo,
+                        Purpose = "ProductLogo"
+                    });
+
+                logoUrl = uploadResult.Url;
+            }
+            else if (request.LogoUrl is not null)
+            {
+                logoUrl = request.LogoUrl;
+            }
+
+            if (isPublished && request.Status == ProductStatus.InProgress)
+            {
+                throw new ProductException(
+                    "PRODUCT_IN_PROGRESS_CANNOT_PUBLISH",
+                    "Chỉ sản phẩm đã hoàn thành mới có thể đăng.",
+                    "status",
+                    "isPublished");
+            }
+
+            if (isPublished)
+            {
+                var lastDisplayOrder = await _dbContext.Products
+                    .Where(item => item.IsPublished)
+                    .MaxAsync(item => (int?)item.DisplayOrder) ?? 0;
+
+                product.DisplayOrder = lastDisplayOrder + 1;
+            }
+            else
+            {
+                product.DisplayOrder = null;
             }
 
             product.Name = request.Name.Trim();
-            product.LogoUrl = request.LogoUrl;
+            product.LogoUrl = logoUrl;
             product.ProductUrl = request.ProductUrl;
-            product.Content = ToProductContent(request.Content);
+            product.Content = ToProductContent(content);
             product.Status = request.Status;
-            product.IsPublished = request.IsPublished;
+            product.IsPublished = isPublished;
             product.UpdatedAt = updatedAt;
 
             await _dbContext.SaveChangesAsync();
@@ -177,6 +244,7 @@ public sealed class Service : IService
         ValidateRequest(request);
 
         var search = request.Search?.Trim();
+        var status = ParseProductStatus(request.Status);
 
         try
         {
@@ -191,6 +259,11 @@ public sealed class Service : IService
                     product.Name.ToLower().Contains(normalizedSearch));
             }
 
+            if (status.HasValue)
+            {
+                query = query.Where(product => product.Status == status.Value);
+            }
+
             var total = await query.CountAsync();
 
             var products = await query
@@ -203,7 +276,7 @@ public sealed class Service : IService
                 .ToListAsync();
 
             var items = products
-                .Select(ToListItemResponse)
+                .Select(product => ToListItemResponse(product))
                 .ToList();
 
             return new Response.PagedProductListResponse
@@ -222,7 +295,34 @@ public sealed class Service : IService
         }
     }
 
-    public async Task<List<Response.ProductListItemResponse>> ReorderProductsAsync(
+    public async Task<List<Response.ProductOrderItemResponse>> GetOrderableProductsAsync()
+    {
+        try
+        {
+            return await _dbContext.Products
+                .AsNoTracking()
+                .Where(product => product.IsPublished)
+                .OrderBy(product => product.DisplayOrder)
+                .Select(product => new Response.ProductOrderItemResponse
+                {
+                    Id = product.Id,
+                    Name = product.Name,
+                    LogoUrl = product.LogoUrl,
+                    DisplayOrder = product.DisplayOrder!.Value
+                })
+                .ToListAsync();
+        }
+        catch (Exception exception) when (exception is not ProductException &&
+                                          exception is not OperationCanceledException)
+        {
+            throw new ProductException(
+                "PRODUCT_LIST_READ_FAILED",
+                "Không thể đọc danh sách sản phẩm.",
+                exception);
+        }
+    }
+
+    public async Task<List<Response.ProductOrderItemResponse>> ReorderProductsAsync(
         Request.ReorderProductsRequest request)
     {
         ArgumentNullException.ThrowIfNull(request);
@@ -282,7 +382,7 @@ public sealed class Service : IService
             await transaction.CommitAsync();
 
             return orderedProductIds
-                .Select(id => ToListItemResponse(productsById[id]))
+                .Select(id => ToProductOrderItemResponse(productsById[id]))
                 .ToList();
         }
         catch (Exception exception) when (
@@ -290,7 +390,7 @@ public sealed class Service : IService
         {
             throw new ProductException(
                 "PRODUCT_ORDER_CONFLICT",
-                "Danh sách Product đang đăng đã thay đổi. Vui lòng tải lại và thử lại.",
+                "Thứ tự sản phẩm đã thay đổi. Vui lòng tải lại danh sách.",
                 exception);
         }
         catch (Exception exception) when (exception is DbUpdateException or PostgresException)
@@ -316,30 +416,53 @@ public sealed class Service : IService
             fields.Add("pageSize");
         }
 
+        if (request.Search?.Trim().Length > 200)
+        {
+            fields.Add("search");
+        }
+
+        if (!string.IsNullOrWhiteSpace(request.Status) &&
+            !string.Equals(request.Status.Trim(), nameof(ProductStatus.InProgress), StringComparison.OrdinalIgnoreCase) &&
+            !string.Equals(request.Status.Trim(), nameof(ProductStatus.Completed), StringComparison.OrdinalIgnoreCase))
+        {
+            fields.Add("status");
+        }
+
         if (fields.Count > 0)
         {
             throw new ProductException(
                 "PRODUCT_LIST_QUERY_INVALID",
-                "Thông tin phân trang không hợp lệ.",
+                "Thông tin truy vấn danh sách Product không hợp lệ.",
                 fields.ToArray());
-        }
-
-        if (request.Search?.Trim().Length > 200)
-        {
-            throw new ProductException(
-                "PRODUCT_LIST_QUERY_INVALID",
-                "Từ khóa tìm kiếm không được vượt quá 200 ký tự.",
-                "search");
         }
     }
 
-    private static void ValidateUpdateRequest(Request.UpdateProductRequest request)
+    private static ProductStatus? ParseProductStatus(string? status)
+    {
+        if (string.IsNullOrWhiteSpace(status))
+        {
+            return null;
+        }
+
+        return string.Equals(status.Trim(), nameof(ProductStatus.InProgress), StringComparison.OrdinalIgnoreCase)
+            ? ProductStatus.InProgress
+            : ProductStatus.Completed;
+    }
+
+    private static void ValidateUpdateRequest(
+        Request.UpdateProductRequest request,
+        Request.ProductContentRequest? content)
     {
         var fields = new List<string>();
 
         if (string.IsNullOrWhiteSpace(request.Name) || request.Name.Trim().Length > 200)
         {
             fields.Add("name");
+        }
+
+        if (!request.IsPublished.HasValue)
+        {
+            fields.Add("isPublished");
         }
 
         if (!Enum.IsDefined(request.Status))
@@ -355,7 +478,54 @@ public sealed class Service : IService
                 fields.ToArray());
         }
 
-        ValidateProductContent(request.Content);
+        ValidateProductContent(content);
+    }
+
+    private Request.ProductContentRequest? SanitizeProductContent(
+        Request.ProductContentRequest? content)
+    {
+        if (content is null)
+        {
+            return null;
+        }
+
+        if (content.Blocks is null)
+        {
+            return new Request.ProductContentRequest
+            {
+                Blocks = null!
+            };
+        }
+
+        return new Request.ProductContentRequest
+        {
+            Blocks = content.Blocks
+                .Select(block => new Request.ContentBlockRequest
+                {
+                    Id = block.Id,
+                    Type = block.Type,
+                    Order = block.Order,
+                    Text = block.Type == ContentBlockType.Feature
+                        ? null
+                        : _richTextService.Sanitize(block.Text?.Trim(), allowLinks: true),
+                    Items = block.Items?
+                        .Select(item => new Request.FeatureItemRequest
+                        {
+                            Id = item.Id,
+                            Title = SanitizePlainText(item.Title)
+                        })
+                        .ToList()
+                })
+                .ToList()
+        };
+    }
+
+    private string? SanitizePlainText(string? value)
+    {
+        var sanitized = _richTextService.Sanitize(value?.Trim(), allowLinks: false);
+        return sanitized is null
+            ? null
+            : _richTextService.ToPlainText(sanitized).Trim();
     }
 
     private static void ValidateProductContent(Request.ProductContentRequest? content)
@@ -448,20 +618,35 @@ public sealed class Service : IService
             .FirstOrDefault();
     }
 
-    private static Response.ProductListItemResponse ToListItemResponse(Product product)
+    private Response.ProductListItemResponse ToListItemResponse(Product product)
     {
+        var summary = GetSummary(product.Content);
+
         return new Response.ProductListItemResponse
         {
             Id = product.Id,
             Name = product.Name,
             LogoUrl = product.LogoUrl,
             ProductUrl = product.ProductUrl,
-            Summary = GetSummary(product.Content),
+            Summary = summary is null
+                ? null
+                : _richTextService.ToPlainText(summary).Trim(),
             Status = product.Status,
             IsPublished = product.IsPublished,
             DisplayOrder = product.DisplayOrder,
             CreatedAt = product.CreatedAt,
             UpdatedAt = product.UpdatedAt
+        };
+    }
+
+    private static Response.ProductOrderItemResponse ToProductOrderItemResponse(Product product)
+    {
+        return new Response.ProductOrderItemResponse
+        {
+            Id = product.Id,
+            Name = product.Name,
+            LogoUrl = product.LogoUrl,
+            DisplayOrder = product.DisplayOrder!.Value
         };
     }
 

@@ -20,7 +20,8 @@ public sealed class NewsController : ControllerBase
     }
 
     [HttpPost]
-    public async Task<IActionResult> CreateNews([FromBody] NewsService.Request.CreateNewsRequest request)
+    [Consumes("multipart/form-data")]
+    public async Task<IActionResult> CreateNews([FromForm] NewsService.Request.CreateNewsRequest request)
     {
         var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
 
@@ -40,9 +41,10 @@ public sealed class NewsController : ControllerBase
     }
 
     [HttpPut("{id}")]
+    [Consumes("multipart/form-data")]
     public async Task<IActionResult> UpdateNews(
         string id,
-        [FromBody] NewsService.Request.UpdateNewsRequest request)
+        [FromForm] NewsService.Request.UpdateNewsRequest request)
     {
         var isValidId = Guid.TryParse(id, out var newsId);
 

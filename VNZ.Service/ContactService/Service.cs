@@ -1,5 +1,6 @@
 using System.ComponentModel.DataAnnotations;
 using System.Security.Claims;
+using System.Text.RegularExpressions;
 using Microsoft.AspNetCore.Http;
 using Microsoft.EntityFrameworkCore;
 using VNZ.Repository;
@@ -194,6 +195,148 @@ public class Service : IService
             IsRead = contact.IsRead,
             ContactStatus = GetDisplayName(contact.ContactStatus),
             CanSendEmail = contact.ContactStatus == ContactStatus.NotContacted
+        };
+    }
+
+    public async Task<Response.CreateContactInquiryResponse> CreateContactInquiryAsync(
+        Request.CreateContactInquiryRequest request)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+
+        // 1. Normalize input values before validation and persistence.
+        var fullName = request.FullName?.Trim();
+        var email = request.Email?.Trim().ToLowerInvariant();
+        var phone = request.Phone?.Trim();
+        var companyName = request.CompanyName?.Trim();
+        var message = request.Message?.Trim();
+
+        if (string.IsNullOrWhiteSpace(phone))
+        {
+            phone = null;
+        }
+
+        if (string.IsNullOrWhiteSpace(companyName))
+        {
+            companyName = null;
+        }
+
+        var fields = new List<string>();
+
+        // 2. Validate required values, enums and the fields persisted as text.
+        if (!request.InquiryTopic.HasValue
+            || !Enum.IsDefined(request.InquiryTopic.Value))
+        {
+            fields.Add("inquiryTopic");
+        }
+
+        if (string.IsNullOrWhiteSpace(fullName)
+            || fullName.Length > 200
+            || fullName.Contains('\0'))
+        {
+            fields.Add("fullName");
+        }
+
+        if (string.IsNullOrWhiteSpace(email)
+            || email.Length > 320
+            || email.Contains('\0')
+            || !new EmailAddressAttribute().IsValid(email))
+        {
+            fields.Add("email");
+        }
+
+        if (phone is not null)
+        {
+            if (phone.StartsWith("+84", StringComparison.Ordinal))
+            {
+                phone = $"0{phone[3..]}";
+            }
+            else if (phone.StartsWith("84", StringComparison.Ordinal))
+            {
+                phone = $"0{phone[2..]}";
+            }
+
+            phone = phone
+                .Replace(" ", string.Empty)
+                .Replace(".", string.Empty)
+                .Replace("-", string.Empty)
+                .Replace("(", string.Empty)
+                .Replace(")", string.Empty);
+
+            if (phone.Contains('\0')
+                || !Regex.IsMatch(phone, @"\A(?:0[35789][0-9]{8}|02[0-9]{9})\z"))
+            {
+                fields.Add("phone");
+            }
+        }
+
+        if (companyName is not null
+            && (companyName.Length > 200 || companyName.Contains('\0')))
+        {
+            fields.Add("companyName");
+        }
+
+        if (request.BudgetRange.HasValue
+            && !Enum.IsDefined(request.BudgetRange.Value))
+        {
+            fields.Add("budgetRange");
+        }
+
+        if (request.ExpectedStart.HasValue
+            && !Enum.IsDefined(request.ExpectedStart.Value))
+        {
+            fields.Add("expectedStart");
+        }
+
+        if (string.IsNullOrWhiteSpace(message) || message.Contains('\0'))
+        {
+            fields.Add("message");
+        }
+
+        if (request.Source.HasValue && !Enum.IsDefined(request.Source.Value))
+        {
+            fields.Add("source");
+        }
+
+        if (request.ConsentToDataProcessing != true)
+        {
+            fields.Add("consentToDataProcessing");
+        }
+
+        if (fields.Count > 0)
+        {
+            throw new ContactException(
+                "CONTACT_CREATE_VALIDATION_FAILED",
+                "Thông tin liên hệ không hợp lệ.",
+                fields.Distinct().ToArray());
+        }
+
+        // 3. Set all server-owned values and save one new inquiry.
+        var contact = new VNZ.Repository.Entity.ContactInquiry
+        {
+            Id = Guid.NewGuid(),
+            InquiryTopic = request.InquiryTopic!.Value,
+            FullName = fullName!,
+            Email = email!,
+            Phone = phone,
+            CompanyName = companyName,
+            BudgetRange = request.BudgetRange,
+            ExpectedStart = request.ExpectedStart,
+            Message = message!,
+            Source = request.Source,
+            ConsentToDataProcessing = true,
+            IsRead = false,
+            ContactStatus = ContactStatus.NotContacted,
+            ContactedBy = null,
+            CreatedAt = DateTimeOffset.UtcNow
+        };
+
+        _dbContext.ContactInquiries.Add(contact);
+        await _dbContext.SaveChangesAsync();
+
+        return new Response.CreateContactInquiryResponse
+        {
+            Id = contact.Id,
+            CreatedAt = contact.CreatedAt
         };
     }
 

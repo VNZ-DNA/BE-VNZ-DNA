@@ -302,6 +302,51 @@ public class Service : IService
         };
     }
 
+    public async Task<List<Response.PublicJobPostListItemResponse>> GetPublicJobPostListAsync()
+    {
+        var nowUtc = DateTimeOffset.UtcNow;
+
+        try
+        {
+            var jobPosts = await _dbContext.JobPosts
+                .AsNoTracking()
+                .Include(jobPost => jobPost.Department)
+                .Where(jobPost => jobPost.Status == JobPostStatus.Open &&
+                                  jobPost.ExpiredAt.HasValue &&
+                                  jobPost.ExpiredAt.Value > nowUtc)
+                .OrderBy(jobPost => jobPost.ExpiredAt)
+                .ThenByDescending(jobPost => jobPost.CreatedAt)
+                .ThenByDescending(jobPost => jobPost.Id)
+                .ToListAsync();
+
+            return jobPosts
+                .Select(jobPost => new Response.PublicJobPostListItemResponse
+                {
+                    Id = jobPost.Id,
+                    Title = jobPost.Title,
+                    Department = jobPost.Department?.Name,
+                    EmploymentType = jobPost.EmploymentType.HasValue
+                        ? GetDisplayName(jobPost.EmploymentType.Value)
+                        : null,
+                    JobLevel = jobPost.JobLevel.HasValue
+                        ? GetDisplayName(jobPost.JobLevel.Value)
+                        : null,
+                    NumberOfPositions = jobPost.NumberOfPositions,
+                    Skills = new List<string>(jobPost.Skills),
+                    ShortDescription = jobPost.ShortDescription,
+                    ExpiredDate = ConvertExpiredAtToDate(jobPost.ExpiredAt)!.Value
+                })
+                .ToList();
+        }
+        catch (Exception exception) when (exception is not OperationCanceledException)
+        {
+            throw new JobPostException(
+                "PUBLIC_JOB_POST_LIST_READ_FAILED",
+                "Không thể lấy danh sách vị trí tuyển dụng.",
+                exception);
+        }
+    }
+
     public async Task<Response.JobPostDetailResponse> GetJobPostDetailAsync(Guid id)
     {
         // 1. Đọc JobPost hiện tại cùng dữ liệu hiển thị liên quan.
@@ -348,6 +393,76 @@ public class Service : IService
             Requirements = jobPost.Requirements,
             CanEdit = canEdit
         };
+    }
+
+    public async Task<Response.PublicJobPostDetailResponse> GetPublicJobPostDetailAsync(Guid id)
+    {
+        var nowUtc = DateTimeOffset.UtcNow;
+
+        try
+        {
+            var jobPost = await _dbContext.JobPosts
+                .AsNoTracking()
+                .Where(jobPost => jobPost.Id == id &&
+                                  jobPost.Status == JobPostStatus.Open &&
+                                  jobPost.ExpiredAt.HasValue &&
+                                  jobPost.ExpiredAt.Value > nowUtc)
+                .Select(jobPost => new
+                {
+                    jobPost.Id,
+                    jobPost.Title,
+                    Department = jobPost.Department == null
+                        ? null
+                        : jobPost.Department.Name,
+                    jobPost.EmploymentType,
+                    jobPost.JobLevel,
+                    jobPost.NumberOfPositions,
+                    jobPost.Skills,
+                    jobPost.ShortDescription,
+                    jobPost.Description,
+                    jobPost.Requirements,
+                    jobPost.ExpiredAt
+                })
+                .SingleOrDefaultAsync();
+
+            if (jobPost is null)
+            {
+                throw new JobPostException(
+                    "PUBLIC_JOB_POST_NOT_AVAILABLE",
+                    "Vị trí tuyển dụng không còn mở. Vui lòng xem danh sách vị trí đang tuyển.",
+                    "id");
+            }
+
+            return new Response.PublicJobPostDetailResponse
+            {
+                Id = jobPost.Id,
+                Title = jobPost.Title,
+                Department = jobPost.Department,
+                EmploymentType = jobPost.EmploymentType.HasValue
+                    ? GetDisplayName(jobPost.EmploymentType.Value)
+                    : null,
+                JobLevel = jobPost.JobLevel.HasValue
+                    ? GetDisplayName(jobPost.JobLevel.Value)
+                    : null,
+                NumberOfPositions = jobPost.NumberOfPositions,
+                Skills = new List<string>(jobPost.Skills),
+                ShortDescription = jobPost.ShortDescription,
+                Description = jobPost.Description,
+                Requirements = jobPost.Requirements,
+                ExpiredDate = ConvertExpiredAtToDate(jobPost.ExpiredAt)!.Value
+            };
+        }
+        catch (JobPostException)
+        {
+            throw;
+        }
+        catch (Exception exception) when (exception is not OperationCanceledException)
+        {
+            throw new JobPostException(
+                "PUBLIC_JOB_POST_DETAIL_READ_FAILED",
+                "Không thể lấy chi tiết vị trí tuyển dụng.",
+                exception);
+        }
     }
 
     public async Task<Response.UpdateJobPostResponse> UpdateJobPostAsync(

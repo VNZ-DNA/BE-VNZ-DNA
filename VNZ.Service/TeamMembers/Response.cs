@@ -2,6 +2,44 @@ namespace VNZ.Service.TeamMembers;
 
 public static class Response
 {
+    public class PublicTeamMemberResponse
+    {
+        public Guid Id { get; set; }
+        public required string FullName { get; set; }
+        public string? Position { get; set; }
+        public string? AvatarUrl { get; set; }
+    }
+
+    public class PublicTeamMemberDetailResponse
+    {
+        public Guid Id { get; set; }
+        public required string FullName { get; set; }
+        public string? Position { get; set; }
+        public string? AvatarUrl { get; set; }
+        public string? Hometown { get; set; }
+        public string? Hobbies { get; set; }
+        public DateTimeOffset? JoinedDate { get; set; }
+        public string? PersonalQuote { get; set; }
+    }
+
+    public class PagedTeamMemberListResponse
+    {
+        public required List<TeamMemberResponse> Items { get; set; }
+        public int Page { get; set; }
+        public int PageSize { get; set; }
+        public int Total { get; set; }
+        public int TotalPages { get; set; }
+    }
+
+    public class OrderableTeamMemberResponse
+    {
+        public Guid Id { get; set; }
+        public required string FullName { get; set; }
+        public string? Position { get; set; }
+        public string? AvatarUrl { get; set; }
+        public int DisplayOrder { get; set; }
+    }
+
     public class TeamMemberResponse
     {
         public Guid Id { get; set; }

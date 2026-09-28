@@ -21,6 +21,19 @@ public class Response
         public int TotalPages { get; set; }
     }
 
+    public class PublicJobPostListItemResponse
+    {
+        public Guid Id { get; set; }
+        public required string Title { get; set; }
+        public string? Department { get; set; }
+        public string? EmploymentType { get; set; }
+        public string? JobLevel { get; set; }
+        public int NumberOfPositions { get; set; }
+        public required List<string> Skills { get; set; }
+        public string? ShortDescription { get; set; }
+        public DateOnly ExpiredDate { get; set; }
+    }
+
     public class JobPostListItemResponse
     {
         public Guid Id { get; set; }
@@ -30,6 +43,21 @@ public class Response
         public int NumberOfPositions { get; set; }
         public required string Status { get; set; }
         public int PendingApplicationCount { get; set; }
+    }
+
+    public class PublicJobPostDetailResponse
+    {
+        public Guid Id { get; set; }
+        public required string Title { get; set; }
+        public string? Department { get; set; }
+        public string? EmploymentType { get; set; }
+        public string? JobLevel { get; set; }
+        public int NumberOfPositions { get; set; }
+        public required List<string> Skills { get; set; }
+        public string? ShortDescription { get; set; }
+        public string? Description { get; set; }
+        public string? Requirements { get; set; }
+        public DateOnly ExpiredDate { get; set; }
     }
 
     public class JobPostDetailResponse

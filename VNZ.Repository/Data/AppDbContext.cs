@@ -56,9 +56,13 @@ public class AppDbContext : DbContext
             entity.ToTable("News_Article");
             entity.HasKey(x => x.Id);
             entity.Property(x => x.Title).HasMaxLength(300).IsRequired();
+            entity.Property(x => x.ReadingTimeMinutes).HasDefaultValue(1);
             entity.Property(x => x.Status).HasConversion<string>().IsRequired();
             entity.HasIndex(x => x.Status);
             entity.HasIndex(x => x.CreatedAt);
+            entity.HasIndex(x => new { x.PublishAt, x.Id })
+                .HasDatabaseName("IX_News_Article_Public_PublishAt_Id")
+                .HasFilter("\"Status\" = 'Published' AND \"Published\" = TRUE AND \"PublishAt\" IS NOT NULL");
             entity.HasOne(x => x.Creator)
                 .WithMany(x => x.NewsArticles)
                 .HasForeignKey(x => x.CreatedBy)
@@ -128,9 +132,11 @@ public class AppDbContext : DbContext
             entity.Property(x => x.InquiryTopic).HasConversion<string>().IsRequired();
             entity.Property(x => x.FullName).HasMaxLength(200).IsRequired();
             entity.Property(x => x.Email).HasMaxLength(320).IsRequired();
+            entity.Property(x => x.CompanyName).HasMaxLength(200);
             entity.Property(x => x.BudgetRange).HasConversion<string>();
             entity.Property(x => x.ExpectedStart).HasConversion<string>();
             entity.Property(x => x.Source).HasConversion<string>();
+            entity.Property(x => x.ConsentToDataProcessing).IsRequired();
             entity.Property(x => x.ContactStatus)
                 .HasConversion<string>()
                 .IsRequired()

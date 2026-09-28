@@ -4,19 +4,29 @@ using VNZ.Repository;
 using VNZ.Repository.Entity;
 using VNZ.Repository.Entity.Enum;
 using VNZ.Service.Exceptions;
+using MediaService = VNZ.Service.Utils.MediaService;
+using RichTextService = VNZ.Service.Utils.RichTextService;
 
 namespace VNZ.Service.NewsService;
 
 public sealed class Service : IService
 {
     private const int MinimumPublishedContentLength = 300;
+    private const int WordsPerMinute = 200;
     private static readonly TimeSpan VietnamUtcOffset = TimeSpan.FromHours(7);
 
     private readonly AppDbContext _dbContext;
+    private readonly MediaService.IService _mediaService;
+    private readonly RichTextService.IService _richTextService;
 
-    public Service(AppDbContext dbContext)
+    public Service(
+        AppDbContext dbContext,
+        MediaService.IService mediaService,
+        RichTextService.IService richTextService)
     {
         _dbContext = dbContext;
+        _mediaService = mediaService;
+        _richTextService = richTextService;
     }
 
     public async Task<Response.CreateNewsResponse> CreateNewsAsync(
@@ -42,8 +52,8 @@ public sealed class Service : IService
 
         // 2. Validate dữ liệu bắt buộc theo trạng thái đích.
         var title = request.Title?.Trim();
-        var summary = request.Summary?.Trim();
-        var content = request.Content?.Trim();
+        var summary = _richTextService.Sanitize(request.Summary?.Trim(), allowLinks: true);
+        var content = _richTextService.Sanitize(request.Content?.Trim(), allowLinks: true);
         var requiredFields = new List<string>();
 
         if (string.IsNullOrWhiteSpace(title))
@@ -123,6 +133,20 @@ public sealed class Service : IService
                 "categoryIds");
         }
 
+        string? imageUrl = null;
+
+        if (request.Image is not null)
+        {
+            var uploadResult = await _mediaService.UploadImageAsync(
+                new MediaService.Request.UploadImageRequest
+                {
+                    File = request.Image,
+                    Purpose = "NewsImage"
+                });
+
+            imageUrl = uploadResult.Url;
+        }
+
         // 4. Lưu bài viết và category links trong cùng một transaction.
         var nowUtc = DateTimeOffset.UtcNow;
         var article = new NewsArticle
@@ -131,6 +155,8 @@ public sealed class Service : IService
             Title = title!,
             Summary = summary,
             Content = content,
+            ImageUrl = imageUrl,
+            ReadingTimeMinutes = CalculateReadingTimeMinutes(content),
             Status = status,
             Published = status == NewsStatus.Published,
             CreatedBy = createdBy,
@@ -172,6 +198,7 @@ public sealed class Service : IService
             Title = article.Title,
             Summary = article.Summary,
             Content = article.Content,
+            ImageUrl = article.ImageUrl,
             AuthorName = creator.FullName,
             CreatedAt = article.CreatedAt,
             UpdatedAt = null,
@@ -252,8 +279,8 @@ public sealed class Service : IService
 
         // 3. Validate nội dung theo trạng thái đích.
         var title = request.Title?.Trim();
-        var summary = request.Summary?.Trim();
-        var content = request.Content?.Trim();
+        var summary = _richTextService.Sanitize(request.Summary?.Trim(), allowLinks: true);
+        var content = _richTextService.Sanitize(request.Content?.Trim(), allowLinks: true);
         var requiredFields = new List<string>();
 
         if (string.IsNullOrWhiteSpace(title))
@@ -328,6 +355,20 @@ public sealed class Service : IService
                 "categoryIds");
         }
 
+        var imageUrl = article.ImageUrl;
+
+        if (request.Image is not null)
+        {
+            var uploadResult = await _mediaService.UploadImageAsync(
+                new MediaService.Request.UploadImageRequest
+                {
+                    File = request.Image,
+                    Purpose = "NewsImage"
+                });
+
+            imageUrl = uploadResult.Url;
+        }
+
         // 4. Áp dụng trạng thái và thời gian xuất bản theo transition hợp lệ.
         var nowUtc = DateTimeOffset.UtcNow;
         var publishAt = article.PublishAt;
@@ -344,6 +385,8 @@ public sealed class Service : IService
         article.Title = title!;
         article.Summary = summary;
         article.Content = content;
+        article.ImageUrl = imageUrl;
+        article.ReadingTimeMinutes = CalculateReadingTimeMinutes(content);
         article.Status = targetStatus;
         article.Published = targetStatus == NewsStatus.Published;
         article.PublishAt = publishAt;
@@ -383,6 +426,7 @@ public sealed class Service : IService
             Title = article.Title,
             Summary = article.Summary,
             Content = article.Content,
+            ImageUrl = article.ImageUrl,
             AuthorName = article.Creator.FullName,
             CreatedAt = article.CreatedAt,
             UpdatedAt = ConvertUpdatedAtToVietnamDate(article.UpdatedAt),
@@ -398,11 +442,12 @@ public sealed class Service : IService
         };
     }
 
-    private static bool HasMinimumPublishedContentLength(string content)
+    private bool HasMinimumPublishedContentLength(string content)
     {
+        var plainText = _richTextService.ToPlainText(content);
         var nonWhitespaceCharacterCount = 0;
 
-        foreach (var character in content)
+        foreach (var character in plainText)
         {
             if (char.IsWhiteSpace(character))
             {
@@ -418,6 +463,16 @@ public sealed class Service : IService
         }
 
         return false;
+    }
+
+    private int CalculateReadingTimeMinutes(string? content)
+    {
+        var plainText = _richTextService.ToPlainText(content ?? string.Empty);
+        var wordCount = plainText
+            .Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries)
+            .Length;
+
+        return Math.Max(1, (int)Math.Ceiling(wordCount / (double)WordsPerMinute));
     }
 
     public async Task<Response.PagedNewsListResponse> GetNewsListAsync(
@@ -518,6 +573,7 @@ public sealed class Service : IService
             {
                 article.Id,
                 article.Title,
+                article.ImageUrl,
                 AuthorName = article.Creator!.FullName,
                 article.CreatedAt,
                 article.PublishAt,
@@ -559,6 +615,7 @@ public sealed class Service : IService
             {
                 Id = article.Id,
                 Title = article.Title,
+                ImageUrl = article.ImageUrl,
                 AuthorName = article.AuthorName,
                 CreatedAt = article.CreatedAt,
                 PublishAt = article.PublishAt,
@@ -576,6 +633,165 @@ public sealed class Service : IService
             TotalPages = totalItems == 0
                 ? 0
                 : (int)Math.Ceiling(totalItems / (double)request.PageSize)
+        };
+    }
+
+    public async Task<Response.PagedPublicNewsListResponse> GetPublicNewsListAsync(
+        Request.GetPublicNewsListRequest request)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+
+        // 1. Validate phân trang public theo convention chung của các API list.
+        if (request.Page < 1 || request.PageSize < 1 || request.PageSize > 100)
+        {
+            var fields = new List<string>();
+
+            if (request.Page < 1)
+            {
+                fields.Add("page");
+            }
+
+            if (request.PageSize < 1 || request.PageSize > 100)
+            {
+                fields.Add("pageSize");
+            }
+
+            throw new NewsException(
+                "NEWS_PUBLIC_LIST_VALIDATION_FAILED",
+                "Tham số phân trang không hợp lệ.",
+                fields.ToArray());
+        }
+
+        // 2. Chỉ lấy bài có trạng thái và dữ liệu đủ điều kiện public.
+        var query = _dbContext.NewsArticles
+            .AsNoTracking()
+            .Where(article =>
+                article.Status == NewsStatus.Published &&
+                article.Published &&
+                article.PublishAt != null);
+
+        var totalItems = await query.CountAsync();
+
+        // 3. Lấy trang hiện tại với thứ tự publish mới nhất trước.
+        var articleRows = await query
+            .OrderByDescending(article => article.PublishAt)
+            .ThenByDescending(article => article.Id)
+            .Skip((request.Page - 1) * request.PageSize)
+            .Take(request.PageSize)
+            .Select(article => new
+            {
+                article.Id,
+                article.Title,
+                article.Summary,
+                article.PublishAt,
+                article.ReadingTimeMinutes
+            })
+            .ToListAsync();
+
+        var articleIds = articleRows
+            .Select(article => article.Id)
+            .ToList();
+
+        var categoryRows = await _dbContext.NewsArticleCategories
+            .AsNoTracking()
+            .Where(link => articleIds.Contains(link.NewsArticleId))
+            .Select(link => new
+            {
+                ArticleId = link.NewsArticleId,
+                CategoryId = link.NewsCategoryId,
+                CategoryName = link.NewsCategory.Name
+            })
+            .ToListAsync();
+
+        var categoriesByArticleId = categoryRows
+            .GroupBy(category => category.ArticleId)
+            .ToDictionary(
+                group => group.Key,
+                group => group
+                    .OrderBy(category => category.CategoryName)
+                    .ThenBy(category => category.CategoryId)
+                    .Select(category => new Response.NewsCategoryResponse
+                    {
+                        Id = category.CategoryId,
+                        Name = category.CategoryName
+                    })
+                    .ToList());
+
+        // 4. Summary legacy được sanitize khi đọc để FE chỉ nhận HTML an toàn.
+        var items = articleRows
+            .Select(article => new Response.PublicNewsListItemResponse
+            {
+                Id = article.Id,
+                Title = article.Title,
+                Summary = _richTextService.Sanitize(article.Summary, allowLinks: true),
+                PublishAt = article.PublishAt!.Value,
+                ReadingTimeMinutes = article.ReadingTimeMinutes,
+                Categories = GetCategories(categoriesByArticleId, article.Id)
+            })
+            .ToList();
+
+        var totalPages = totalItems == 0
+            ? 0
+            : (int)Math.Ceiling(totalItems / (double)request.PageSize);
+
+        return new Response.PagedPublicNewsListResponse
+        {
+            Items = items,
+            Page = request.Page,
+            PageSize = request.PageSize,
+            TotalItems = totalItems,
+            TotalPages = totalPages
+        };
+    }
+
+    public async Task<Response.PublicNewsDetailResponse> GetPublicNewsDetailAsync(string id)
+    {
+        // 1. Validate UUID tại Service để Controller chỉ chịu trách nhiệm nhận route.
+        if (!Guid.TryParse(id, out var newsArticleId))
+        {
+            throw new NewsException(
+                "NEWS_PUBLIC_ARTICLE_ID_INVALID",
+                "Mã bài viết không hợp lệ.",
+                "id");
+        }
+
+        // 2. Chỉ đọc bài có đầy đủ điều kiện hiển thị public cùng toàn bộ danh mục.
+        var article = await _dbContext.NewsArticles
+            .AsNoTracking()
+            .Include(item => item.NewsArticleCategories)
+            .ThenInclude(item => item.NewsCategory)
+            .SingleOrDefaultAsync(item =>
+                item.Id == newsArticleId &&
+                item.Status == NewsStatus.Published &&
+                item.Published &&
+                item.PublishAt != null);
+
+        if (article is null)
+        {
+            throw new NewsException(
+                "NEWS_PUBLIC_ARTICLE_NOT_FOUND",
+                "Không tìm thấy bài viết công khai.");
+        }
+
+        // 3. Nội dung legacy được sanitize khi đọc để FE chỉ nhận HTML an toàn.
+        return new Response.PublicNewsDetailResponse
+        {
+            Id = article.Id,
+            Title = article.Title,
+            Summary = _richTextService.Sanitize(article.Summary, allowLinks: true),
+            Content = _richTextService.Sanitize(article.Content, allowLinks: true),
+            ImageUrl = article.ImageUrl,
+            PublishAt = article.PublishAt!.Value,
+            ReadingTimeMinutes = article.ReadingTimeMinutes,
+            Categories = article.NewsArticleCategories
+                .OrderBy(link => link.NewsCategory.Name)
+                .ThenBy(link => link.NewsCategory.Id)
+                .Select(link => new Response.NewsCategoryResponse
+                {
+                    Id = link.NewsCategory.Id,
+                    Name = link.NewsCategory.Name
+                })
+                .ToList()
         };
     }
 
@@ -625,6 +841,7 @@ public sealed class Service : IService
             Title = article.Title,
             Summary = article.Summary,
             Content = article.Content,
+            ImageUrl = article.ImageUrl,
             AuthorName = article.Creator.FullName,
             CreatedAt = article.CreatedAt,
             UpdatedAt = ConvertUpdatedAtToVietnamDate(article.UpdatedAt),

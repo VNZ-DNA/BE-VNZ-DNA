@@ -6,6 +6,7 @@ using VNZ.Repository;
 using VNZ.Repository.Entity;
 using VNZ.Repository.Entity.Enum;
 using VNZ.Service.Exceptions;
+using MediaService = VNZ.Service.Utils.MediaService;
 
 namespace VNZ.Service.TeamMembers;
 
@@ -14,26 +15,191 @@ public sealed class Service : IService
     private const string DefaultMemberPassword = "Vnz@123456";
 
     private readonly AppDbContext _dbContext;
+    private readonly MediaService.IService _mediaService;
 
-    public Service(AppDbContext dbContext)
+    public Service(
+        AppDbContext dbContext,
+        MediaService.IService mediaService)
     {
         _dbContext = dbContext;
+        _mediaService = mediaService;
     }
 
-    public async Task<List<Response.TeamMemberResponse>> GetMemberListAsync()
+    public async Task<List<Response.PublicTeamMemberResponse>> GetFeaturedMembersAsync()
     {
-        var members = await _dbContext.Users
+        return await _dbContext.Users
             .AsNoTracking()
-            .Where(member => member.RoleId == null)
+            .Where(member => member.RoleId == null &&
+                             member.EmploymentStatus == EmploymentStatus.Working &&
+                             member.IsPublished)
             .OrderBy(member => member.DisplayOrder == null)
             .ThenBy(member => member.DisplayOrder)
             .ThenByDescending(member => member.CreateAt)
+            .ThenByDescending(member => member.Id)
+            .Select(member => new Response.PublicTeamMemberResponse
+            {
+                Id = member.Id,
+                FullName = member.FullName,
+                Position = member.Position,
+                AvatarUrl = member.AvatarUrl
+            })
             .ToListAsync();
-
-        return members.Select(ToResponse).ToList();
     }
 
-    public async Task<List<Response.TeamMemberResponse>> ReorderMembersAsync(Request.ReorderTeamMembersRequest request)
+    public async Task<Response.PublicTeamMemberDetailResponse> GetPublicMemberByIdAsync(Guid id)
+    {
+        var member = await _dbContext.Users
+            .AsNoTracking()
+            .Where(member => member.Id == id &&
+                             member.RoleId == null &&
+                             member.EmploymentStatus == EmploymentStatus.Working &&
+                             member.IsPublished)
+            .Select(member => new Response.PublicTeamMemberDetailResponse
+            {
+                Id = member.Id,
+                FullName = member.FullName,
+                Position = member.Position,
+                AvatarUrl = member.AvatarUrl,
+                Hometown = member.Hometown,
+                Hobbies = member.Hobbies,
+                JoinedDate = member.JoinedDate,
+                PersonalQuote = member.PersonalQuote
+            })
+            .SingleOrDefaultAsync();
+
+        if (member is null)
+            throw new NotFoundException("Không tìm thấy thành viên.");
+
+        return member;
+    }
+
+    public async Task<Response.PagedTeamMemberListResponse> GetMemberListAsync(
+        Request.GetTeamMemberListRequest request)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+
+        ValidateListRequest(request);
+
+        var search = request.Search?.Trim();
+        var status = ParseEmploymentStatus(request.Status);
+
+        try
+        {
+            var query = _dbContext.Users
+                .AsNoTracking()
+                .Where(member => member.RoleId == null);
+
+            if (!string.IsNullOrWhiteSpace(search))
+            {
+                var normalizedSearch = search.ToLowerInvariant();
+                query = query.Where(member =>
+                    member.FullName.ToLower().Contains(normalizedSearch) ||
+                    member.Email.ToLower().Contains(normalizedSearch) ||
+                    (member.Position != null && member.Position.ToLower().Contains(normalizedSearch)));
+            }
+
+            if (status.HasValue)
+            {
+                query = query.Where(member => member.EmploymentStatus == status.Value);
+            }
+
+            var total = await query.CountAsync();
+
+            var members = await query
+                .OrderBy(member => member.DisplayOrder == null)
+                .ThenBy(member => member.DisplayOrder)
+                .ThenByDescending(member => member.CreateAt)
+                .ThenByDescending(member => member.Id)
+                .Skip((request.Page - 1) * request.PageSize)
+                .Take(request.PageSize)
+                .ToListAsync();
+
+            return new Response.PagedTeamMemberListResponse
+            {
+                Items = members.Select(ToResponse).ToList(),
+                Page = request.Page,
+                PageSize = request.PageSize,
+                Total = total,
+                TotalPages = total == 0 ? 0 : (int)Math.Ceiling(total / (double)request.PageSize)
+            };
+        }
+        catch (Exception exception) when (exception is not TeamMemberException &&
+                                          exception is not OperationCanceledException)
+        {
+            throw new TeamMemberException(
+                "MEMBER_LIST_READ_FAILED",
+                "Không thể đọc danh sách thành viên.",
+                exception);
+        }
+    }
+
+    public async Task<List<Response.OrderableTeamMemberResponse>> GetOrderableMembersAsync()
+    {
+        var orderableMembers = await _dbContext.Users
+            .AsNoTracking()
+            .Where(member => member.RoleId == null &&
+                             member.EmploymentStatus == EmploymentStatus.Working &&
+                             member.IsPublished &&
+                             member.DisplayOrder != null)
+            .OrderBy(member => member.DisplayOrder)
+            .ThenByDescending(member => member.CreateAt)
+            .ThenByDescending(member => member.Id)
+            .ToListAsync();
+
+        return orderableMembers
+            .Select(ToOrderableResponse)
+            .ToList();
+    }
+
+    private static void ValidateListRequest(Request.GetTeamMemberListRequest request)
+    {
+        var fields = new List<string>();
+
+        if (request.Page < 1)
+        {
+            fields.Add("page");
+        }
+
+        if (request.PageSize < 1 || request.PageSize > 100)
+        {
+            fields.Add("pageSize");
+        }
+
+        if (request.Search?.Trim().Length > 300)
+        {
+            fields.Add("search");
+        }
+
+        if (!string.IsNullOrWhiteSpace(request.Status) &&
+            !string.Equals(request.Status.Trim(), nameof(EmploymentStatus.Working), StringComparison.OrdinalIgnoreCase) &&
+            !string.Equals(request.Status.Trim(), nameof(EmploymentStatus.Resigned), StringComparison.OrdinalIgnoreCase))
+        {
+            fields.Add("status");
+        }
+
+        if (fields.Count > 0)
+        {
+            throw new TeamMemberException(
+                "MEMBER_QUERY_INVALID",
+                "Thông tin truy vấn danh sách thành viên không hợp lệ.",
+                fields.ToArray());
+        }
+    }
+
+    private static EmploymentStatus? ParseEmploymentStatus(string? status)
+    {
+        if (string.IsNullOrWhiteSpace(status))
+        {
+            return null;
+        }
+
+        return string.Equals(status.Trim(), nameof(EmploymentStatus.Working), StringComparison.OrdinalIgnoreCase)
+            ? EmploymentStatus.Working
+            : EmploymentStatus.Resigned;
+    }
+
+    public async Task<List<Response.OrderableTeamMemberResponse>> ReorderMembersAsync(
+        Request.ReorderTeamMembersRequest request)
     {
         ArgumentNullException.ThrowIfNull(request);
 
@@ -50,22 +216,42 @@ public sealed class Service : IService
             await using var transaction = await _dbContext.Database
                 .BeginTransactionAsync(IsolationLevel.Serializable);
 
-            var publishedMembers = await _dbContext.Users
-                .Where(member => member.RoleId == null && member.IsPublished)
+            var allMemberIds = (await _dbContext.Users
+                .Where(member => member.RoleId == null)
+                .Select(member => member.Id)
+                .ToListAsync())
+                .ToHashSet();
+
+            if (orderedMemberIds.Any(id => !allMemberIds.Contains(id)))
+            {
+                throw new TeamMemberException(
+                    "MEMBER_ORDER_INVALID",
+                    "Danh sách chứa ID thành viên không tồn tại.",
+                    "orderedMemberIds");
+            }
+
+            var orderableMembers = await _dbContext.Users
+                .Where(member => member.RoleId == null &&
+                                 member.EmploymentStatus == EmploymentStatus.Working &&
+                                 member.IsPublished &&
+                                 member.DisplayOrder != null)
                 .OrderBy(member => member.DisplayOrder)
-                .ThenBy(member => member.Id)
+                .ThenByDescending(member => member.CreateAt)
+                .ThenByDescending(member => member.Id)
                 .ToListAsync();
 
-            var currentIds = publishedMembers.Select(member => member.Id).ToHashSet();
+            var currentIds = orderableMembers.Select(member => member.Id).ToHashSet();
             if (currentIds.Count != orderedMemberIds.Count ||
                 orderedMemberIds.Any(id => !currentIds.Contains(id)))
             {
                 throw new TeamMemberException(
-                    "MEMBER_ORDER_INVALID", 
-                    "Danh sách phải chứa đúng một lần tất cả thành viên đang đăng.", "orderedMemberIds");
+                    "MEMBER_ORDER_CONFLICT",
+                    "Danh sách thành viên có thể sắp xếp đã thay đổi. Vui lòng tải lại và thử lại.",
+                    "orderedMemberIds");
             }
 
-            var membersById = publishedMembers.ToDictionary(member => member.Id);
+            // Tra cứu theo ID một lần để cập nhật đúng entity theo payload mà không phải quét lại danh sách.
+            var membersById = orderableMembers.ToDictionary(member => member.Id);
             var now = DateTimeOffset.UtcNow;
             for (var index = 0; index < orderedMemberIds.Count; index++)
             {
@@ -84,7 +270,7 @@ public sealed class Service : IService
             await transaction.CommitAsync();
 
             return orderedMemberIds
-                .Select(id => ToResponse(membersById[id]))
+                .Select(id => ToOrderableResponse(membersById[id]))
                 .ToList();
         }
         catch (Exception exception) when (
@@ -183,6 +369,20 @@ public sealed class Service : IService
                 "email");
         }
 
+        var avatarUrl = NormalizeOptional(request.AvatarUrl);
+
+        if (request.Avatar is not null)
+        {
+            var uploadResult = await _mediaService.UploadImageAsync(
+                new MediaService.Request.UploadImageRequest
+                {
+                    File = request.Avatar,
+                    Purpose = "TeamMemberAvatar"
+                });
+
+            avatarUrl = uploadResult.Url;
+        }
+
         var now = DateTimeOffset.UtcNow;
         var member = new User
         {
@@ -193,7 +393,7 @@ public sealed class Service : IService
             PasswordHash = BCrypt.Net.BCrypt.HashPassword(DefaultMemberPassword),
             Position = position,
             JobLevel = parsedJobLevel,
-            AvatarUrl = NormalizeOptional(request.AvatarUrl),
+            AvatarUrl = avatarUrl,
             AnimationUrl = NormalizeOptional(request.AnimationUrl),
             AudioUrl = NormalizeOptional(request.AudioUrl),
             Hometown = NormalizeOptional(request.Hometown),
@@ -232,9 +432,13 @@ public sealed class Service : IService
             }
 
             var remainingPublishedMembers = await _dbContext.Users
-                .Where(x => x.RoleId == null && x.IsPublished && x.Id != member.Id)
+                .Where(x => x.RoleId == null &&
+                            x.IsPublished &&
+                            x.EmploymentStatus == EmploymentStatus.Working &&
+                            x.Id != member.Id)
                 .OrderBy(x => x.DisplayOrder)
-                .ThenBy(x => x.Id)
+                .ThenByDescending(x => x.CreateAt)
+                .ThenByDescending(x => x.Id)
                 .ToListAsync();
 
             var now = DateTimeOffset.UtcNow;
@@ -304,7 +508,24 @@ public sealed class Service : IService
             throw new ArgumentException("Trạng thái làm việc không hợp lệ.");
         }
 
-        var avatarUrl = NormalizeOptional(request.AvatarUrl);
+        var avatarUrl = member.AvatarUrl;
+
+        if (request.Avatar is not null)
+        {
+            var uploadResult = await _mediaService.UploadImageAsync(
+                new MediaService.Request.UploadImageRequest
+                {
+                    File = request.Avatar,
+                    Purpose = "TeamMemberAvatar"
+                });
+
+            avatarUrl = uploadResult.Url;
+        }
+        else if (request.AvatarUrl is not null)
+        {
+            avatarUrl = NormalizeOptional(request.AvatarUrl);
+        }
+
         var animationUrl = NormalizeOptional(request.AnimationUrl);
         var audioUrl = NormalizeOptional(request.AudioUrl);
         var hometown = NormalizeOptional(request.Hometown);
@@ -312,7 +533,7 @@ public sealed class Service : IService
         var personalQuote = NormalizeOptional(request.PersonalQuote);
 
         if (!member.IsPublished && request.IsPublished == true &&
-            parsedEmploymentStatus == EmploymentStatus.Resigned)
+            parsedEmploymentStatus != EmploymentStatus.Working)
         {
             throw new ConflictException(
                 "Thành viên đã nghỉ việc không thể đăng.");
@@ -346,9 +567,13 @@ public sealed class Service : IService
             if (request.IsPublished.Value)
             {
                 var publishedMembers = await _dbContext.Users
-                    .Where(x => x.RoleId == null && x.IsPublished && x.Id != member.Id)
+                    .Where(x => x.RoleId == null &&
+                                x.IsPublished &&
+                                x.EmploymentStatus == EmploymentStatus.Working &&
+                                x.Id != member.Id)
                     .OrderBy(x => x.DisplayOrder)
-                    .ThenBy(x => x.Id)
+                    .ThenByDescending(x => x.CreateAt)
+                    .ThenByDescending(x => x.Id)
                     .ToListAsync();
 
                 var now = DateTimeOffset.UtcNow;
@@ -367,11 +592,13 @@ public sealed class Service : IService
 
                 member.DisplayOrder = publishedMembers.Count + 1;
             }
-            else
-            {
-                member.DisplayOrder = null;
-            }
         }
+
+        if (!member.IsPublished)
+        {
+            member.DisplayOrder = null;
+        }
+
         member.UpdatedAt = DateTimeOffset.UtcNow;
 
         await _dbContext.SaveChangesAsync();
@@ -381,11 +608,23 @@ public sealed class Service : IService
 
     private async Task<User> FindMemberAsync(Guid id)
     {
-        var member = await _dbContext.Users.SingleOrDefaultAsync(x => x.Id == id);
+        var member = await _dbContext.Users.SingleOrDefaultAsync(x => x.Id == id && x.RoleId == null);
         if (member is null)
             throw new NotFoundException("Không tìm thấy thành viên.");
 
         return member;
+    }
+
+    private static Response.OrderableTeamMemberResponse ToOrderableResponse(User member)
+    {
+        return new Response.OrderableTeamMemberResponse
+        {
+            Id = member.Id,
+            FullName = member.FullName,
+            Position = member.Position,
+            AvatarUrl = member.AvatarUrl,
+            DisplayOrder = member.DisplayOrder!.Value
+        };
     }
 
     private static Response.TeamMemberResponse ToResponse(User member)

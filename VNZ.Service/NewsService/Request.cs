@@ -1,3 +1,5 @@
+using Microsoft.AspNetCore.Http;
+
 namespace VNZ.Service.NewsService;
 
 public class  Request
@@ -7,6 +9,7 @@ public class  Request
         public string? Title { get; set; }
         public string? Summary { get; set; }
         public string? Content { get; set; }
+        public IFormFile? Image { get; set; }
         public List<Guid>? CategoryIds { get; set; } = new();
         public string? Status { get; set; }
     }
@@ -16,6 +19,7 @@ public class  Request
         public string? Title { get; set; }
         public string? Summary { get; set; }
         public string? Content { get; set; }
+        public IFormFile? Image { get; set; }
         public List<Guid>? CategoryIds { get; set; } = new();
         public string? Status { get; set; }
     }
@@ -27,5 +31,12 @@ public class  Request
         public Guid? CategoryId { get; set; }
         public int Page { get; set; } = 1;
         public int PageSize { get; set; } = 20;
+    }
+
+    public class GetPublicNewsListRequest
+    {
+        public int Page { get; set; } = 1;
+
+        public int PageSize { get; set; } = 5;
     }
 }

@@ -1,3 +1,5 @@
+using Microsoft.AspNetCore.Http;
+
 namespace VNZ.Service.TeamMembers;
 
 public static class Request
@@ -9,6 +11,7 @@ public static class Request
         public string? Position { get; set; }
         public string? JobLevel { get; set; }
         public DateTimeOffset? JoinedDate { get; set; }
+        public IFormFile? Avatar { get; set; }
         public string? AvatarUrl { get; set; }
         public string? AnimationUrl { get; set; }
         public string? AudioUrl { get; set; }
@@ -25,6 +28,7 @@ public static class Request
         public string? Position { get; set; }
         public string? JobLevel { get; set; }
         public DateTimeOffset? JoinedDate { get; set; }
+        public IFormFile? Avatar { get; set; }
         public string? AvatarUrl { get; set; }
         public string? AnimationUrl { get; set; }
         public string? AudioUrl { get; set; }
@@ -39,5 +43,13 @@ public static class Request
     public class ReorderTeamMembersRequest
     {
         public List<Guid>? OrderedMemberIds { get; set; }
+    }
+
+    public class GetTeamMemberListRequest
+    {
+        public string? Search { get; set; }
+        public string? Status { get; set; }
+        public int Page { get; set; } = 1;
+        public int PageSize { get; set; } = 20;
     }
 }

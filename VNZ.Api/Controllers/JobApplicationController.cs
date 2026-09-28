@@ -23,7 +23,10 @@ public sealed class JobApplicationController : ControllerBase
     {
         var data = await _jobApplicationService.GetJobApplicationListAsync(request);
 
-        return Ok(ResponseBuilder.SuccessResponse(data, "Lấy danh sách hồ sơ ứng viên thành công.", HttpContext.TraceIdentifier));
+        return Ok(ResponseBuilder.SuccessResponse(
+            data,
+            "Lấy danh sách hồ sơ ứng viên thành công.",
+            HttpContext.TraceIdentifier));
     }
 
     [HttpGet("{id:guid}")]
@@ -31,22 +34,48 @@ public sealed class JobApplicationController : ControllerBase
     {
         var data = await _jobApplicationService.GetJobApplicationByIdAsync(id);
 
-        return Ok(ResponseBuilder.SuccessResponse(data, "Lấy chi tiết hồ sơ ứng viên thành công.", HttpContext.TraceIdentifier));
+        return Ok(ResponseBuilder.SuccessResponse(
+            data,
+            "Lấy chi tiết hồ sơ ứng viên thành công.",
+            HttpContext.TraceIdentifier));
     }
 
     [HttpPost("{id:guid}/review")]
-    public async Task<IActionResult> Review(Guid id, [FromBody] Request.ReviewJobApplicationRequest request)
+    public async Task<IActionResult> Review(
+        Guid id,
+        [FromBody] Request.ReviewJobApplicationRequest request)
     {
         var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
-        if (!Guid.TryParse(userId, out var adminUserId))
-        {
-            return Unauthorized();
-        }
+        return Guid.TryParse(userId, out var adminUserId)
+            ? await ExecuteReviewAsync(id, request, adminUserId)
+            : Unauthorized();
+    }
 
+    private async Task<IActionResult> ExecuteReviewAsync(
+        Guid id,
+        Request.ReviewJobApplicationRequest request,
+        Guid adminUserId)
+    {
         var data = await _jobApplicationService.ReviewAsync(id, request, adminUserId);
+
+        // MailService đã gửi trực tiếp trước khi service cập nhật trạng thái hồ sơ.
+        // Controller chỉ trả response thành công khi service hoàn tất luồng review.
         return Ok(ResponseBuilder.SuccessResponse(
             data,
             "Review hồ sơ ứng viên thành công.",
             HttpContext.TraceIdentifier));
     }
+
+    [HttpPost("interview-invitations")]
+    public async Task<IActionResult> SendInterviewInvitations(
+        [FromBody] Request.SendInterviewInvitationsRequest request)
+    {
+        var data = await _jobApplicationService.SendInterviewInvitationsAsync(request);
+
+        return Ok(ResponseBuilder.SuccessResponse(
+            data,
+            "Đã xử lý gửi email mời phỏng vấn.",
+            HttpContext.TraceIdentifier));
+    }
 }
+

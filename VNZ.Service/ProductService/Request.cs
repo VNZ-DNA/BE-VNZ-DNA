@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.Http;
 using VNZ.Repository.Entity.Enum;
 
 namespace VNZ.Service.ProductService;
@@ -7,6 +8,7 @@ public class Request
     public class CreateProductRequest
     {
         public string Name { get; set; } = string.Empty;
+        public IFormFile? Logo { get; set; }
         public string? LogoUrl { get; set; }
         public string? ProductUrl { get; set; }
         public ProductContentRequest? Content { get; set; }
@@ -15,11 +17,12 @@ public class Request
     public class UpdateProductRequest
     {
         public string Name { get; set; } = string.Empty;
+        public IFormFile? Logo { get; set; }
         public string? LogoUrl { get; set; }
         public string? ProductUrl { get; set; }
         public ProductContentRequest? Content { get; set; }
         public ProductStatus Status { get; set; }
-        public bool IsPublished { get; set; }
+        public bool? IsPublished { get; set; }
     }
 
     public class ProductContentRequest
@@ -45,6 +48,7 @@ public class Request
     public class GetProductListRequest
     {
         public string? Search { get; set; }
+        public string? Status { get; set; }
         public int Page { get; set; } = 1;
         public int PageSize { get; set; } = 20;
     }

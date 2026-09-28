@@ -1,4 +1,6 @@
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Mvc.Infrastructure;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
@@ -7,6 +9,7 @@ using System.Text;
 using System.Text.Json.Serialization;
 
 using VNZ.Api.BackgroundJob;
+using VNZ.Api.Filters;
 
 using VNZ.Api.Middleware;
 using VNZ.Repository;
@@ -26,10 +29,27 @@ public static class ServiceCollectionExtensions
             {
                 options.JsonSerializerOptions.Converters.Add(
                     new JsonStringEnumConverter());
+            })
+            .ConfigureApiBehaviorOptions(options =>
+            {
+                options.InvalidModelStateResponseFactory = context =>
+                {
+                    var problemDetailsFactory = context.HttpContext.RequestServices
+                        .GetRequiredService<ProblemDetailsFactory>();
+                    var problemDetails = problemDetailsFactory.CreateValidationProblemDetails(
+                        context.HttpContext,
+                        context.ModelState,
+                        statusCode: StatusCodes.Status400BadRequest);
+
+                    problemDetails.Title = "Dữ liệu gửi lên không hợp lệ.";
+
+                    return new BadRequestObjectResult(problemDetails);
+                };
             });
         services.AddEndpointsApiExplorer();
         services.AddHttpContextAccessor();
         services.AddTransient<GlobalExceptionHandlerMiddleware>();
+        services.AddScoped<PublicContactApiResultFilter>();
         services.AddHostedService<JobPostExpirationBackgroundService>();
         services.AddScoped<VNZ.Service.AuthService.IService, VNZ.Service.AuthService.Service>();
         services.AddScoped<VNZ.Service.DashboardService.IService, VNZ.Service.DashboardService.Service>();
@@ -38,8 +58,13 @@ public static class ServiceCollectionExtensions
         services.AddScoped<VNZ.Service.DepartmentService.IService, VNZ.Service.DepartmentService.Service>();
         services.AddScoped<VNZ.Service.NewsService.IService, VNZ.Service.NewsService.Service>();
         services.AddScoped<VNZ.Service.ProductService.IService, VNZ.Service.ProductService.Service>();
+        services.AddScoped<VNZ.Service.PartnerService.IService, VNZ.Service.PartnerService.Service>();
         services.AddScoped<VNZ.Service.JobApplicationService.IService, VNZ.Service.JobApplicationService.Service>();
         services.AddScoped<VNZ.Service.TeamMembers.IService, VNZ.Service.TeamMembers.Service>();
+        services.Configure<VNZ.Service.Utils.CloudinaryService.CloudinaryOptions>(
+            configuration.GetSection(nameof(VNZ.Service.Utils.CloudinaryService.CloudinaryOptions)));
+        services.AddScoped<VNZ.Service.Utils.MediaService.IService, VNZ.Service.Utils.CloudinaryService.Service>();
+        services.AddScoped<VNZ.Service.Utils.RichTextService.IService, VNZ.Service.Utils.RichTextService.Service>();
         services.AddHttpClient<MailService.IService, MailService.Service>(client =>
         {
             client.Timeout = TimeSpan.FromSeconds(15);
@@ -49,6 +74,7 @@ public static class ServiceCollectionExtensions
         services.AddJwtAuthentication(configuration);
         services.AddSwaggerDocumentation();
         services.AddCorsPolicy();
+        services.AddContactInquiryRateLimit();
 
         return services;
     }
@@ -204,7 +230,8 @@ public static class ServiceCollectionExtensions
                 policy
                     .AllowAnyOrigin()
                     .AllowAnyHeader()
-                    .AllowAnyMethod();
+                    .AllowAnyMethod()
+                    .WithExposedHeaders("Retry-After");
             });
         });
 

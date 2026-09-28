@@ -19,8 +19,9 @@ public sealed class ProductsController : ControllerBase
     }
 
     [HttpPost]
+    [Consumes("multipart/form-data")]
     public async Task<IActionResult> CreateProduct(
-        [FromBody] ProductService.Request.CreateProductRequest request)
+        [FromForm] ProductService.Request.CreateProductRequest request)
     {
         var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
 
@@ -41,10 +42,15 @@ public sealed class ProductsController : ControllerBase
     {
         var data = await _productService.GetProductListAsync(request);
 
-        return Ok(ResponseBuilder.SuccessResponse(
-            data,
-            "Lấy danh sách Product thành công.",
-            HttpContext.TraceIdentifier));
+        return Ok(ResponseBuilder.SuccessResponse(data, "Lấy danh sách Product thành công.", HttpContext.TraceIdentifier));
+    }
+
+    [HttpGet("display-order")]
+    public async Task<IActionResult> GetOrderableProducts()
+    {
+        var data = await _productService.GetOrderableProductsAsync();
+
+        return Ok(ResponseBuilder.SuccessResponse(data, "Lấy danh sách Product để sắp xếp thành công.", HttpContext.TraceIdentifier));
     }
 
     [HttpGet("{id:guid}")]
@@ -52,36 +58,25 @@ public sealed class ProductsController : ControllerBase
     {
         var data = await _productService.GetProductDetailAsync(id);
 
-        return Ok(ResponseBuilder.SuccessResponse(
-            data,
-            "Lấy chi tiết sản phẩm thành công.",
-            HttpContext.TraceIdentifier));
+        return Ok(ResponseBuilder.SuccessResponse(data, "Lấy chi tiết sản phẩm thành công.", HttpContext.TraceIdentifier));
     }
 
     [HttpPut("{id:guid}")]
-    public async Task<IActionResult> UpdateProduct(
-        Guid id,
-        [FromBody] ProductService.Request.UpdateProductRequest request)
+    [Consumes("multipart/form-data")]
+    public async Task<IActionResult> UpdateProduct(Guid id, [FromForm] ProductService.Request.UpdateProductRequest request)
     {
         var data = await _productService.UpdateProductAsync(id, request);
 
-        return Ok(ResponseBuilder.SuccessResponse(
-            data,
-            "Cập nhật sản phẩm thành công.",
-            HttpContext.TraceIdentifier));
+        return Ok(ResponseBuilder.SuccessResponse(data, "Cập nhật sản phẩm thành công.", HttpContext.TraceIdentifier));
     }
 
 
 
     [HttpPut("display-order")]
-    public async Task<IActionResult> ReorderProducts(
-        [FromBody] ProductService.Request.ReorderProductsRequest request)
+    public async Task<IActionResult> ReorderProducts([FromBody] ProductService.Request.ReorderProductsRequest request)
     {
         var data = await _productService.ReorderProductsAsync(request);
 
-        return Ok(ResponseBuilder.SuccessResponse(
-            data,
-            "Cập nhật thứ tự Product thành công.",
-            HttpContext.TraceIdentifier));
+        return Ok(ResponseBuilder.SuccessResponse(data, "Cập nhật thứ tự Product thành công.", HttpContext.TraceIdentifier));
     }
 }

@@ -13,6 +13,11 @@ public interface IService
     Task<Response.PagedNewsListResponse> GetNewsListAsync(
         Request.GetNewsListRequest request);
 
+    Task<Response.PagedPublicNewsListResponse> GetPublicNewsListAsync(
+        Request.GetPublicNewsListRequest request);
+
+    Task<Response.PublicNewsDetailResponse> GetPublicNewsDetailAsync(string id);
+
     Task<Response.NewsDetailResponse> GetNewsDetailAsync(Guid id);
 
     Task<List<Response.NewsCategoryResponse>> GetNewsCategoriesAsync();
