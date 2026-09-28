@@ -260,7 +260,7 @@ public sealed class Service : IService
         return new Response.ReviewJobApplicationResponse
         {
             Id = application.Id,
-            Status = GetDisplayName(application.Status),
+            Status = GetStatusLabel(application.Status),
             ReviewedByName = reviewerName,
             ReviewAt = application.ReviewAt,
             CvUrl = application.CvUrl
@@ -338,7 +338,7 @@ public sealed class Service : IService
         return new Response.ReviewJobApplicationResponse
         {
             Id = application.Id,
-            Status = GetDisplayName(application.Status),
+            Status = GetStatusLabel(application.Status),
             ReviewedByName = reviewerName,
             ReviewAt = application.ReviewAt,
             CvUrl = application.CvUrl
@@ -420,7 +420,7 @@ public sealed class Service : IService
             Email = application.Email,
             JobPostId = application.JobPostId,
             JobPostTitle = application.JobPostTitle,
-            Status = GetDisplayName(application.Status),
+            Status = GetStatusLabel(application.Status),
             CvUrl = application.CvUrl,
             CreatedAt = application.CreatedAt,
             InterviewAt = application.InterviewAt,
@@ -530,7 +530,7 @@ public sealed class Service : IService
         };
     }
 
-    private static string GetDisplayName<TEnum>(TEnum value)
+    private static string GetStatusLabel<TEnum>(TEnum value)
         where TEnum : struct, Enum
     {
         var member = typeof(TEnum).GetMember(value.ToString()).Single();
@@ -629,7 +629,7 @@ public sealed class Service : IService
             CoverLetter = application.CoverLetter,
             ConsentToDataProcessing = application.ConsentToDataProcessing,
             JobPostSnapshot = application.JobPostSnapshot,
-            Status = GetDisplayName(application.Status),
+            Status = GetStatusLabel(application.Status),
             ReviewAt = application.ReviewAt,
             ReviewedBy = application.ReviewedBy,
             InterviewAt = application.InterViewAt,
