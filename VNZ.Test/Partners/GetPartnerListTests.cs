@@ -63,7 +63,9 @@ public class GetPartnerListTests
             firstPublishedPartner);
         await dbContext.SaveChangesAsync();
 
-        var service = new PartnerService(dbContext);
+        var service = new PartnerService(
+            dbContext,
+            new VNZ.Test.TestMediaService());
 
         var firstPage = await service.GetPartnerListAsync(
             new Request.GetPartnerListRequest

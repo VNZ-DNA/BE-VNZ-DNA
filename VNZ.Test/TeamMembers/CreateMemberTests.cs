@@ -19,7 +19,9 @@ public class CreateMemberTests
         await using var dbContext = new TestAppDbContext(options);
         var createdBy = Guid.NewGuid();
         var joinedDate = new DateTimeOffset(2026, 9, 21, 0, 0, 0, TimeSpan.Zero);
-        var service = new TeamMemberService(dbContext);
+        var service = new TeamMemberService(
+            dbContext,
+            new VNZ.Test.TestMediaService());
 
         var response = await service.CreateMemberAsync(
             new Request.CreateTeamMemberRequest

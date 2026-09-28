@@ -92,5 +92,11 @@ public class GetJobApplicationListTests
         {
             return Task.FromResult(new MailDeliveryResult { IsSuccess = true });
         }
+
+        public Task<MailDeliveryResult> SendRejectionEmailAsync(
+            RejectionEmailMailContent content)
+        {
+            return Task.FromResult(new MailDeliveryResult { IsSuccess = true });
+        }
     }
 }

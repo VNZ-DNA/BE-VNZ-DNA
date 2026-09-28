@@ -47,7 +47,9 @@ public class GetPartnerDetailTests
         dbContext.Partners.Add(partner);
         await dbContext.SaveChangesAsync();
 
-        var service = new PartnerService(dbContext);
+        var service = new PartnerService(
+            dbContext,
+            new VNZ.Test.TestMediaService());
 
         var response = await service.GetPartnerDetailAsync(partner.Id);
 

@@ -41,7 +41,9 @@ public class UpdateMemberTests
         });
         await dbContext.SaveChangesAsync();
 
-        var service = new TeamMemberService(dbContext);
+        var service = new TeamMemberService(
+            dbContext,
+            new VNZ.Test.TestMediaService());
 
         var response = await service.UpdateMemberAsync(
             memberId,
