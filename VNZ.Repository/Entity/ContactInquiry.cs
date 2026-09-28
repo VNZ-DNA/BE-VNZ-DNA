@@ -14,6 +14,7 @@ public class ContactInquiry : BaseEntity
     public ContactExpectedStart? ExpectedStart { get; set; }
     public string? Message { get; set; }
     public ContactSource? Source { get; set; }
+    public bool ConsentToDataProcessing { get; set; }
     public bool IsRead { get; set; }
     public ContactStatus ContactStatus { get; set; } = ContactStatus.NotContacted;
     public Guid? ContactedBy { get; set; }
