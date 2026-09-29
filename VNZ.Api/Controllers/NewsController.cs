@@ -19,6 +19,21 @@ public sealed class NewsController : ControllerBase
         _newsService = newsService;
     }
 
+    [HttpPost("content-images")]
+    [Consumes("multipart/form-data")]
+    public async Task<IActionResult> UploadContentImage(
+        [FromForm] NewsService.Request.UploadContentImageRequest request)
+    {
+        var data = await _newsService.UploadContentImageAsync(request);
+
+        return StatusCode(
+            StatusCodes.Status201Created,
+            ResponseBuilder.SuccessResponse(
+                data,
+                "Tải ảnh nội dung thành công.",
+                HttpContext.TraceIdentifier));
+    }
+
     [HttpPost]
     [Consumes("multipart/form-data")]
     public async Task<IActionResult> CreateNews([FromForm] NewsService.Request.CreateNewsRequest request)

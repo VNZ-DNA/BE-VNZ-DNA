@@ -4,6 +4,11 @@ namespace VNZ.Service.NewsService;
 
 public class  Request
 {
+    public class UploadContentImageRequest
+    {
+        public IFormFile? File { get; set; }
+    }
+
     public class CreateNewsRequest
     {
         public string? Title { get; set; }
@@ -20,6 +25,7 @@ public class  Request
         public string? Summary { get; set; }
         public string? Content { get; set; }
         public IFormFile? Image { get; set; }
+        public string? Action { get; set; }
         public List<Guid>? CategoryIds { get; set; } = new();
         public string? Status { get; set; }
     }

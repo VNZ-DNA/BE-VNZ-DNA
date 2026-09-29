@@ -254,6 +254,8 @@ public class GlobalExceptionHandlerMiddleware : IMiddleware
             "NEWS_PUBLIC_ARTICLE_ID_INVALID" or
             "NEWS_ARTICLE_ID_INVALID" or
             "NEWS_VALIDATION_ERROR" or
+            "NEWS_IMAGE_ACTION_INVALID" or
+            "NEWS_CONTENT_INVALID" or
             "NEWS_CONTENT_TOO_SHORT" or
             "NEWS_STATUS_INVALID" or
             "NEWS_CATEGORY_REQUIRED" or
