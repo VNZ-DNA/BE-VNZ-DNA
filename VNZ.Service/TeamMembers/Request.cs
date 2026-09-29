@@ -7,6 +7,7 @@ public static class Request
     public class CreateTeamMemberRequest
     {
         public string? FullName { get; set; }
+        public string? DisplayName { get; set; }
         public string? Email { get; set; }
         public string? Position { get; set; }
         public string? JobLevel { get; set; }
@@ -25,6 +26,7 @@ public static class Request
     public class UpdateTeamMemberRequest
     {
         public string? FullName { get; set; }
+        public string? DisplayName { get; set; }
         public string? Email { get; set; }
         public string? Position { get; set; }
         public string? JobLevel { get; set; }

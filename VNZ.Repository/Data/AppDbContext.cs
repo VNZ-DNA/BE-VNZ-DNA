@@ -40,6 +40,7 @@ public class AppDbContext : DbContext
             entity.ToTable("User");
             entity.HasKey(x => x.Id);
             entity.Property(x => x.FullName).HasMaxLength(200).IsRequired();
+            entity.Property(x => x.DisplayName).HasMaxLength(100);
             entity.Property(x => x.Email).HasMaxLength(320).IsRequired();
             entity.Property(x => x.PasswordHash)
                 .HasMaxLength(500)

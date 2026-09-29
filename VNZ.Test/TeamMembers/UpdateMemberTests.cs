@@ -11,8 +11,13 @@ namespace VNZ.Test.TeamMembers;
 
 public class UpdateMemberTests
 {
-    [Fact]
-    public async Task UpdateMemberAsync_UpdatesUnpublishedMember()
+    [Theory]
+    [InlineData("  TAN  ", "TAN")]
+    [InlineData("  Tân  ", "Tân")]
+    [InlineData(null, null)]
+    [InlineData("", null)]
+    [InlineData("   ", null)]
+    public async Task UpdateMemberAsync_UpdatesUnpublishedMember(string? displayName, string? expectedDisplayName)
     {
         var options = new DbContextOptionsBuilder<AppDbContext>()
             .UseInMemoryDatabase(Guid.NewGuid().ToString())
@@ -28,6 +33,7 @@ public class UpdateMemberTests
         {
             Id = memberId,
             FullName = "Nguyen Van A",
+            DisplayName = "Old nickname",
             Email = "a@vnz.vn",
             PasswordHash = "password-hash",
             Position = "Backend Developer",
@@ -50,6 +56,7 @@ public class UpdateMemberTests
             new Request.UpdateTeamMemberRequest
             {
                 FullName = "  Nguyen Van B  ",
+                DisplayName = displayName,
                 Email = "  B@VNZ.VN  ",
                 Position = "  Senior Backend Developer  ",
                 JobLevel = "Senior",
@@ -65,6 +72,8 @@ public class UpdateMemberTests
             .SingleAsync(member => member.Id == memberId);
 
         Assert.Equal("Nguyen Van B", response.FullName);
+        Assert.Equal(expectedDisplayName, response.DisplayName);
+        Assert.Equal(expectedDisplayName, savedMember.DisplayName);
         Assert.Equal("b@vnz.vn", response.Email);
         Assert.Equal("Senior Backend Developer", response.Position);
         Assert.Equal("Senior", response.JobLevel);
