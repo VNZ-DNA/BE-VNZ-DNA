@@ -157,6 +157,31 @@ public sealed class Service : IService
         }
     }
 
+    public async Task<Response.PublicPartnerListResponse> GetPublicPartnerListAsync()
+    {
+        var query = _dbContext.Partners
+            .AsNoTracking()
+            .Where(partner => partner.IsPublished && partner.DisplayOrder != null);
+
+        var total = await query.CountAsync();
+
+        var items = await query
+            .OrderBy(partner => partner.DisplayOrder)
+            .ThenBy(partner => partner.Id)
+            .Select(partner => new Response.PublicPartnerListItemResponse
+            {
+                LogoUrl = partner.LogoUrl,
+                WebsiteUrl = partner.WebsiteUrl
+            })
+            .ToListAsync();
+
+        return new Response.PublicPartnerListResponse
+        {
+            Total = total,
+            Items = items
+        };
+    }
+
     public async Task<List<Response.PartnerListItemResponse>> GetOrderablePartnersAsync()
     {
         try

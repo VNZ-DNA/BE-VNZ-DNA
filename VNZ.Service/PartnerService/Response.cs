@@ -2,6 +2,18 @@ namespace VNZ.Service.PartnerService;
 
 public class Response
 {
+    public class PublicPartnerListResponse
+    {
+        public List<PublicPartnerListItemResponse> Items { get; set; } = new();
+        public int Total { get; set; }
+    }
+
+    public class PublicPartnerListItemResponse
+    {
+        public string? LogoUrl { get; set; }
+        public string? WebsiteUrl { get; set; }
+    }
+
     public class PagedPartnerListResponse
     {
         public List<PartnerListItemResponse> Items { get; set; } = new();
