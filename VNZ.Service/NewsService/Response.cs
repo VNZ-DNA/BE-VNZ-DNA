@@ -2,6 +2,16 @@ namespace VNZ.Service.NewsService;
 
 public class Response
 {
+    public class UploadContentImageResponse
+    {
+        public required string Url { get; set; }
+        public required string PublicId { get; set; }
+        public required string Format { get; set; }
+        public long Bytes { get; set; }
+        public int? Width { get; set; }
+        public int? Height { get; set; }
+    }
+
     public class PagedNewsListResponse
     {
         public required List<NewsListItemResponse> Items { get; set; }
