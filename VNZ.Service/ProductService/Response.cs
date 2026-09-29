@@ -12,8 +12,15 @@ public class Response
     public class PublicProductListItemResponse
     {
         public string? LogoUrl { get; set; }
+        public List<PublicProductImageResponse> Images { get; set; } = new();
         public PublicProductContentResponse? Content { get; set; }
         public string? ProductUrl { get; set; }
+    }
+
+    public class PublicProductImageResponse
+    {
+        public required string Url { get; set; }
+        public int Order { get; set; }
     }
 
     public class PublicProductContentResponse
@@ -39,6 +46,7 @@ public class Response
         public Guid Id { get; set; }
         public required string Name { get; set; }
         public string? LogoUrl { get; set; }
+        public List<ProductImageResponse> Images { get; set; } = new();
         public string? ProductUrl { get; set; }
         public ProductContentResponse? Content { get; set; }
         public ProductStatus Status { get; set; }
@@ -47,6 +55,14 @@ public class Response
         public Guid? CreatedBy { get; set; }
         public DateTimeOffset CreatedAt { get; set; }
         public DateTimeOffset? UpdatedAt { get; set; }
+    }
+
+    public class ProductImageResponse
+    {
+        public Guid? Id { get; set; }
+        public ProductImageType Type { get; set; }
+        public int Order { get; set; }
+        public string? Url { get; set; }
     }
 
     public class ProductContentResponse
