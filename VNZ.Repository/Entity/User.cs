@@ -8,6 +8,7 @@ public class User : BaseEntity
     public Guid? RoleId { get; set; }
     public Guid? CreatedBy { get; set; }
     public string FullName { get; set; } = null!;
+    public string? DisplayName { get; set; }
     public string Email { get; set; } = null!;
     public string PasswordHash { get; set; } = null!;
     public string? Position { get; set; }

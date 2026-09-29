@@ -1,5 +1,7 @@
 using System.ComponentModel.DataAnnotations;
 using System.Data;
+using System.Globalization;
+using System.Text;
 using Microsoft.EntityFrameworkCore;
 using Npgsql;
 using VNZ.Repository;
@@ -43,6 +45,7 @@ public sealed class Service : IService
             .Select(member => new Response.FeaturedTeamMemberResponse
             {
                 Id = member.Id,
+                DisplayName = member.DisplayName,
                 FullName = member.FullName,
                 Position = member.Position,
                 JobLevel = member.JobLevel.HasValue
@@ -53,6 +56,11 @@ public sealed class Service : IService
                 BackgroundUrl = member.BackgroundUrl
             })
             .ToListAsync();
+
+        foreach (var item in items)
+        {
+            item.DisplayName = RemoveDisplayNameDiacritics(item.DisplayName);
+        }
 
         return new Response.FeaturedTeamMembersResponse
         {
@@ -343,6 +351,7 @@ public sealed class Service : IService
         ArgumentNullException.ThrowIfNull(request);
 
         var fullName = request.FullName?.Trim();
+        var displayName = NormalizeOptional(request.DisplayName);
         var email = request.Email?.Trim().ToLowerInvariant();
         var position = request.Position?.Trim();
         var jobLevel = request.JobLevel?.Trim();
@@ -389,6 +398,12 @@ public sealed class Service : IService
                 "Vị trí không được vượt quá 200 ký tự.",
                 "position");
 
+        if (displayName is { Length: > 100 })
+            throw new TeamMemberException(
+                "MEMBER_VALIDATION_ERROR",
+                "Tên hiển thị không được vượt quá 100 ký tự.",
+                "displayName");
+
         if (email!.Length > 320 || !new EmailAddressAttribute().IsValid(email))
             throw new TeamMemberException(
                 "MEMBER_VALIDATION_ERROR",
@@ -431,6 +446,7 @@ public sealed class Service : IService
             Id = Guid.NewGuid(),
             CreatedBy = createdBy,
             FullName = fullName,
+            DisplayName = displayName,
             Email = email,
             PasswordHash = BCrypt.Net.BCrypt.HashPassword(DefaultMemberPassword),
             Position = position,
@@ -513,6 +529,7 @@ public sealed class Service : IService
         var position = request.Position?.Trim();
         var jobLevel = request.JobLevel?.Trim();
         var employmentStatus = request.EmploymentStatus?.Trim();
+        var displayName = NormalizeOptional(request.DisplayName);
 
         if (string.IsNullOrWhiteSpace(fullName))
             throw new ArgumentException("Vui lòng nhập họ và tên.");
@@ -537,6 +554,9 @@ public sealed class Service : IService
 
         if (position.Length > 200)
             throw new ArgumentException("Vị trí không được vượt quá 200 ký tự.");
+
+        if (displayName is { Length: > 100 })
+            throw new ArgumentException("Tên hiển thị không được vượt quá 100 ký tự.");
 
         if (email.Length > 320 || !new EmailAddressAttribute().IsValid(email))
             throw new ArgumentException("Email không đúng định dạng.");
@@ -593,6 +613,7 @@ public sealed class Service : IService
         }
 
         member.FullName = fullName;
+        member.DisplayName = displayName;
         member.Email = email;
         member.Position = position;
         member.JobLevel = parsedJobLevel;
@@ -677,6 +698,7 @@ public sealed class Service : IService
         return new Response.TeamMemberResponse
         {
             Id = member.Id,
+            DisplayName = member.DisplayName,
             FullName = member.FullName,
             Email = member.Email,
             Position = member.Position,
@@ -698,6 +720,33 @@ public sealed class Service : IService
             CreatedAt = member.CreateAt,
             UpdatedAt = member.UpdatedAt
         };
+    }
+
+    private static string? RemoveDisplayNameDiacritics(string? value)
+    {
+        if (value is null)
+        {
+            return null;
+        }
+
+        var result = new StringBuilder(value.Length);
+        foreach (var character in value.Normalize(NormalizationForm.FormD))
+        {
+            if (CharUnicodeInfo.GetUnicodeCategory(character) == UnicodeCategory.NonSpacingMark)
+            {
+                continue;
+            }
+
+            // Vietnamese đ/Đ do not decompose into d/D plus a combining mark.
+            if (character == 'đ')
+                result.Append('d');
+            else if (character == 'Đ')
+                result.Append('D');
+            else
+                result.Append(character);
+        }
+
+        return result.ToString().Normalize(NormalizationForm.FormC);
     }
 
     private static string? NormalizeOptional(string? value)

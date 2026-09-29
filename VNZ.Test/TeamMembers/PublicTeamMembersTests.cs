@@ -104,6 +104,7 @@ public class PublicTeamMembersTests
             CreateMember(ids[7], "H", EmploymentStatus.Working, true, null, date.AddDays(-1))
         };
         members[1].Position = "Developer";
+        members[1].DisplayName = "TÂN";
         members[1].JobLevel = JobLevel.Lead;
         members[1].Hometown = "Nam Định";
         members[1].BackgroundUrl = "https://cdn.vnzdna.com/members/backgrounds/nam-dinh.png";
@@ -123,6 +124,9 @@ public class PublicTeamMembersTests
         Assert.Equal(new[] { ids[1], ids[0], ids[2], ids[3], ids[6], ids[5], ids[4], ids[7] },
             selector.Select(member => member.Id));
         Assert.Equal("Lead", featured.Items[0].JobLevel);
+        Assert.Equal("TAN", featured.Items[0].DisplayName);
+        Assert.Equal("B", featured.Items[0].FullName);
+        Assert.Null(featured.Items[1].DisplayName);
         Assert.Equal(members[1].Hometown, featured.Items[0].Hometown);
         Assert.Equal(members[1].BackgroundUrl, featured.Items[0].BackgroundUrl);
         Assert.Equal("avatar.png", featured.Items[0].AvatarUrl);
@@ -131,7 +135,9 @@ public class PublicTeamMembersTests
         var featuredJson = JsonSerializer.SerializeToElement(featured, jsonOptions);
         Assert.Equal(8, featuredJson.GetProperty("total").GetInt32());
         Assert.Equal(6, featuredJson.GetProperty("items").GetArrayLength());
-        Assert.Equal(new[] { "avatarUrl", "backgroundUrl", "fullName", "hometown", "id", "jobLevel", "position" },
+        Assert.Equal("TAN", featuredJson.GetProperty("items")[0].GetProperty("displayName").GetString());
+        Assert.Equal(JsonValueKind.Null, featuredJson.GetProperty("items")[1].GetProperty("displayName").ValueKind);
+        Assert.Equal(new[] { "avatarUrl", "backgroundUrl", "displayName", "fullName", "hometown", "id", "jobLevel", "position" },
             featuredJson.GetProperty("items")[0].EnumerateObject().Select(property => property.Name).OrderBy(name => name));
         var selectorJson = JsonSerializer.SerializeToElement(selector, jsonOptions);
         Assert.Equal(8, selectorJson.GetArrayLength());
@@ -142,6 +148,42 @@ public class PublicTeamMembersTests
         var lastDetail = await service.GetPublicMemberByIdAsync(selector[^1].Id);
         Assert.Equal(ids[7], lastDetail.Id);
         Assert.Empty(dbContext.ChangeTracker.Entries());
+    }
+
+    [Theory]
+    [InlineData("Tân", "Tan")]
+    [InlineData("TÂN", "TAN")]
+    [InlineData("Đặng Đỗ", "Dang Do")]
+    [InlineData("đặng", "dang")]
+    [InlineData("Ta\u0302n Đa\u0323\u0306ng", "Tan Dang")]
+    [InlineData("Nguyễn-Đạt 99", "Nguyen-Dat 99")]
+    [InlineData("TAN", "TAN")]
+    [InlineData(null, null)]
+    public async Task GetFeaturedMembersAsync_RemovesDisplayNameDiacriticsWithoutChangingStoredProfile(
+        string? displayName, string? expectedDisplayName)
+    {
+        var options = new DbContextOptionsBuilder<AppDbContext>()
+            .UseInMemoryDatabase(Guid.NewGuid().ToString())
+            .Options;
+        await using var dbContext = new TestAppDbContext(options);
+        var member = CreateMember(Guid.NewGuid(), "Trần Đình Thiên Tân", EmploymentStatus.Working,
+            true, 1, DateTimeOffset.UtcNow);
+        member.DisplayName = displayName;
+        dbContext.Users.Add(member);
+        await dbContext.SaveChangesAsync();
+        dbContext.ChangeTracker.Clear();
+        var service = new TeamMemberService(dbContext, new VNZ.Test.TestMediaService());
+
+        var response = await service.GetFeaturedMembersAsync();
+
+        var item = Assert.Single(response.Items);
+        Assert.Equal(expectedDisplayName, item.DisplayName);
+        Assert.Equal("Trần Đình Thiên Tân", item.FullName);
+        Assert.Empty(dbContext.ChangeTracker.Entries());
+        Assert.Equal(displayName, (await dbContext.Users.AsNoTracking().SingleAsync()).DisplayName);
+        Assert.Equal(displayName, (await service.GetMemberByIdAsync(member.Id)).DisplayName);
+        var json = JsonSerializer.SerializeToElement(item, new JsonSerializerOptions(JsonSerializerDefaults.Web));
+        Assert.Equal(expectedDisplayName, json.GetProperty("displayName").GetString());
     }
 
     [Theory]
@@ -183,6 +225,7 @@ public class PublicTeamMembersTests
         {
             Id = memberId,
             FullName = "Member A",
+            DisplayName = "TAN",
             Email = "member@vnz.vn",
             PasswordHash = "password-hash",
             Position = "Product Designer",

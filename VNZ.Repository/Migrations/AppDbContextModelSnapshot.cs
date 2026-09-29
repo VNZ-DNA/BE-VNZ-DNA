@@ -503,6 +503,10 @@ namespace VNZ.Repository.Migrations
                     b.Property<Guid?>("CreatedBy")
                         .HasColumnType("uuid");
 
+                    b.Property<string>("DisplayName")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
                     b.Property<int?>("DisplayOrder")
                         .HasColumnType("integer");
 

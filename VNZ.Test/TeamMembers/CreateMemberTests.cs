@@ -9,8 +9,13 @@ namespace VNZ.Test.TeamMembers;
 
 public class CreateMemberTests
 {
-    [Fact]
-    public async Task CreateMemberAsync_CreatesWorkingUnpublishedMember()
+    [Theory]
+    [InlineData("  TAN  ", "TAN")]
+    [InlineData("  Tân  ", "Tân")]
+    [InlineData(null, null)]
+    [InlineData("", null)]
+    [InlineData("   ", null)]
+    public async Task CreateMemberAsync_CreatesWorkingUnpublishedMember(string? displayName, string? expectedDisplayName)
     {
         var options = new DbContextOptionsBuilder<AppDbContext>()
             .UseInMemoryDatabase(Guid.NewGuid().ToString())
@@ -27,6 +32,7 @@ public class CreateMemberTests
             new Request.CreateTeamMemberRequest
             {
                 FullName = "  Nguyen Van A  ",
+                DisplayName = displayName,
                 Email = "  A@VNZ.VN  ",
                 Position = "  Backend Developer  ",
                 JobLevel = "Junior",
@@ -41,6 +47,8 @@ public class CreateMemberTests
             .SingleAsync(member => member.Id == response.Id);
 
         Assert.Equal("Nguyen Van A", response.FullName);
+        Assert.Equal(expectedDisplayName, response.DisplayName);
+        Assert.Equal(expectedDisplayName, savedMember.DisplayName);
         Assert.Equal("a@vnz.vn", response.Email);
         Assert.Equal("Backend Developer", response.Position);
         Assert.Equal("Junior", response.JobLevel);

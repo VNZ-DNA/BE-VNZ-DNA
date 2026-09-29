@@ -27,6 +27,7 @@ public class GetMemberListTests
             {
                 Id = firstMemberId,
                 FullName = "Nguyen Van A",
+                DisplayName = "TAN",
                 Email = "a@vnz.vn",
                 PasswordHash = "password",
                 EmploymentStatus = EmploymentStatus.Working,
@@ -84,6 +85,8 @@ public class GetMemberListTests
         Assert.Equal(20, response.PageSize);
         Assert.Equal(3, response.Items.Count);
         Assert.Equal(firstMemberId, response.Items[0].Id);
+        Assert.Equal("TAN", response.Items[0].DisplayName);
+        Assert.Null(response.Items[1].DisplayName);
         Assert.Equal(secondMemberId, response.Items[1].Id);
         Assert.Equal("Nguyen Van C", response.Items[2].FullName);
     }

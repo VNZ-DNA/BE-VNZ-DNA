@@ -11,6 +11,7 @@ public static class Response
     public class FeaturedTeamMemberResponse
     {
         public Guid Id { get; set; }
+        public string? DisplayName { get; set; }
         public required string FullName { get; set; }
         public string? Position { get; set; }
         public string? JobLevel { get; set; }
@@ -64,6 +65,7 @@ public static class Response
     public class TeamMemberResponse
     {
         public Guid Id { get; set; }
+        public string? DisplayName { get; set; }
         public required string FullName { get; set; }
         public required string Email { get; set; }
         public string? Position { get; set; }

@@ -27,6 +27,7 @@ public class GetMemberByIdTests
         {
             Id = memberId,
             FullName = "Nguyen Van A",
+            DisplayName = "TAN",
             Email = "member@vnz.vn",
             PasswordHash = "password-hash",
             Position = "Backend Developer",
@@ -56,6 +57,7 @@ public class GetMemberByIdTests
 
         Assert.Equal(memberId, response.Id);
         Assert.Equal("Nguyen Van A", response.FullName);
+        Assert.Equal("TAN", response.DisplayName);
         Assert.Equal("member@vnz.vn", response.Email);
         Assert.Equal("Backend Developer", response.Position);
         Assert.Equal("Senior", response.JobLevel);
