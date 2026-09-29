@@ -4,6 +4,36 @@ namespace VNZ.Service.ProductService;
 
 public class Response
 {
+    public class PublicProductListResponse
+    {
+        public List<PublicProductListItemResponse> Items { get; set; } = new();
+    }
+
+    public class PublicProductListItemResponse
+    {
+        public string? LogoUrl { get; set; }
+        public PublicProductContentResponse? Content { get; set; }
+        public string? ProductUrl { get; set; }
+    }
+
+    public class PublicProductContentResponse
+    {
+        public List<PublicContentBlockResponse> Blocks { get; set; } = new();
+    }
+
+    public class PublicContentBlockResponse
+    {
+        public ContentBlockType Type { get; set; }
+        public int Order { get; set; }
+        public string? Text { get; set; }
+        public List<PublicFeatureItemResponse>? Items { get; set; }
+    }
+
+    public class PublicFeatureItemResponse
+    {
+        public string? Title { get; set; }
+    }
+
     public class ProductDetailResponse
     {
         public Guid Id { get; set; }
