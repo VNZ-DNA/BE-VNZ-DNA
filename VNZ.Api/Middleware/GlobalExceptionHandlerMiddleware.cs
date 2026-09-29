@@ -64,6 +64,8 @@ public class GlobalExceptionHandlerMiddleware : IMiddleware
             Exception when IsPublicNewsDetailRequest(context) => HttpStatusCode.InternalServerError,
             DbException when IsPublicProductListRequest(context) => HttpStatusCode.InternalServerError,
             Exception when IsPublicProductListRequest(context) => HttpStatusCode.InternalServerError,
+            DbException when IsPublicPartnerListRequest(context) => HttpStatusCode.InternalServerError,
+            Exception when IsPublicPartnerListRequest(context) => HttpStatusCode.InternalServerError,
             BadHttpRequestException { StatusCode: StatusCodes.Status413PayloadTooLarge }
                 when IsPublicContactCreateRequest(context) => HttpStatusCode.RequestEntityTooLarge,
             DbUpdateException when IsPublicContactCreateRequest(context) => HttpStatusCode.InternalServerError,
@@ -122,6 +124,10 @@ public class GlobalExceptionHandlerMiddleware : IMiddleware
                 ("PRODUCT_PUBLIC_LIST_FAILED", "Không thể lấy danh sách Product công khai."),
             Exception when IsPublicProductListRequest(context) =>
                 ("PRODUCT_PUBLIC_LIST_FAILED", "Không thể lấy danh sách Product công khai."),
+            DbException when IsPublicPartnerListRequest(context) =>
+                ("PARTNER_PUBLIC_LIST_FAILED", "Không thể lấy danh sách Partner công khai."),
+            Exception when IsPublicPartnerListRequest(context) =>
+                ("PARTNER_PUBLIC_LIST_FAILED", "Không thể lấy danh sách Partner công khai."),
             BadHttpRequestException { StatusCode: StatusCodes.Status413PayloadTooLarge }
                 when IsPublicContactCreateRequest(context) =>
                 ("CONTACT_REQUEST_TOO_LARGE", "Dung lượng yêu cầu vượt giới hạn của hệ thống."),
@@ -419,6 +425,12 @@ public class GlobalExceptionHandlerMiddleware : IMiddleware
     {
         return HttpMethods.IsGet(context.Request.Method) &&
             context.Request.Path.Equals("/api/v1/public/products", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool IsPublicPartnerListRequest(HttpContext context)
+    {
+        return HttpMethods.IsGet(context.Request.Method) &&
+            context.Request.Path.Equals("/api/v1/public/partners", StringComparison.OrdinalIgnoreCase);
     }
 
     private static bool IsContactListRequest(HttpContext context)
