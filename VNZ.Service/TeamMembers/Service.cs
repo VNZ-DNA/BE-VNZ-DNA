@@ -25,7 +25,43 @@ public sealed class Service : IService
         _mediaService = mediaService;
     }
 
-    public async Task<List<Response.PublicTeamMemberResponse>> GetFeaturedMembersAsync()
+    public async Task<Response.FeaturedTeamMembersResponse> GetFeaturedMembersAsync()
+    {
+        var query = _dbContext.Users
+            .AsNoTracking()
+            .Where(member => member.RoleId == null &&
+                             member.EmploymentStatus == EmploymentStatus.Working &&
+                             member.IsPublished);
+
+        var total = await query.CountAsync();
+        var items = await query
+            .OrderBy(member => member.DisplayOrder == null)
+            .ThenBy(member => member.DisplayOrder)
+            .ThenByDescending(member => member.CreateAt)
+            .ThenByDescending(member => member.Id)
+            .Take(6)
+            .Select(member => new Response.FeaturedTeamMemberResponse
+            {
+                Id = member.Id,
+                FullName = member.FullName,
+                Position = member.Position,
+                JobLevel = member.JobLevel.HasValue
+                    ? GetDisplayName(member.JobLevel.Value)
+                    : null,
+                AvatarUrl = member.AvatarUrl,
+                Hometown = member.Hometown,
+                BackgroundUrl = member.BackgroundUrl
+            })
+            .ToListAsync();
+
+        return new Response.FeaturedTeamMembersResponse
+        {
+            Total = total,
+            Items = items
+        };
+    }
+
+    public async Task<List<Response.PublicTeamMemberResponse>> GetPublicMemberListAsync()
     {
         return await _dbContext.Users
             .AsNoTracking()
@@ -59,11 +95,17 @@ public sealed class Service : IService
                 Id = member.Id,
                 FullName = member.FullName,
                 Position = member.Position,
+                JobLevel = member.JobLevel.HasValue
+                    ? GetDisplayName(member.JobLevel.Value)
+                    : null,
                 AvatarUrl = member.AvatarUrl,
                 Hometown = member.Hometown,
+                BackgroundUrl = member.BackgroundUrl,
                 Hobbies = member.Hobbies,
                 JoinedDate = member.JoinedDate,
-                PersonalQuote = member.PersonalQuote
+                PersonalQuote = member.PersonalQuote,
+                AnimationUrl = member.AnimationUrl,
+                AudioUrl = member.AudioUrl
             })
             .SingleOrDefaultAsync();
 
@@ -397,6 +439,7 @@ public sealed class Service : IService
             AnimationUrl = NormalizeOptional(request.AnimationUrl),
             AudioUrl = NormalizeOptional(request.AudioUrl),
             Hometown = NormalizeOptional(request.Hometown),
+            BackgroundUrl = NormalizeOptional(request.BackgroundUrl),
             Hobbies = NormalizeOptional(request.Hobbies),
             PersonalQuote = NormalizeOptional(request.PersonalQuote),
             JoinedDate = request.JoinedDate,
@@ -529,6 +572,7 @@ public sealed class Service : IService
         var animationUrl = NormalizeOptional(request.AnimationUrl);
         var audioUrl = NormalizeOptional(request.AudioUrl);
         var hometown = NormalizeOptional(request.Hometown);
+        var backgroundUrl = NormalizeOptional(request.BackgroundUrl);
         var hobbies = NormalizeOptional(request.Hobbies);
         var personalQuote = NormalizeOptional(request.PersonalQuote);
 
@@ -557,6 +601,7 @@ public sealed class Service : IService
         member.AnimationUrl = animationUrl;
         member.AudioUrl = audioUrl;
         member.Hometown = hometown;
+        member.BackgroundUrl = backgroundUrl;
         member.Hobbies = hobbies;
         member.PersonalQuote = personalQuote;
         member.EmploymentStatus = parsedEmploymentStatus;
@@ -642,6 +687,7 @@ public sealed class Service : IService
             AnimationUrl = member.AnimationUrl,
             AudioUrl = member.AudioUrl,
             Hometown = member.Hometown,
+            BackgroundUrl = member.BackgroundUrl,
             Hobbies = member.Hobbies,
             PersonalQuote = member.PersonalQuote,
             JoinedDate = member.JoinedDate,

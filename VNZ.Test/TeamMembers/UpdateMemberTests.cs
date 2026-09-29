@@ -56,7 +56,8 @@ public class UpdateMemberTests
                 JoinedDate = joinedDate,
                 EmploymentStatus = "Resigned",
                 IsPublished = false,
-                Hometown = "  Ha Noi  "
+                Hometown = "  Ha Noi  ",
+                BackgroundUrl = "  https://maps.example/ha-noi  "
             });
 
         var savedMember = await dbContext.Users
@@ -77,6 +78,7 @@ public class UpdateMemberTests
         Assert.Equal("b@vnz.vn", savedMember.Email);
         Assert.Equal(EmploymentStatus.Resigned, savedMember.EmploymentStatus);
         Assert.Equal("Ha Noi", savedMember.Hometown);
+        Assert.Equal("https://maps.example/ha-noi", savedMember.BackgroundUrl);
         Assert.False(savedMember.IsPublished);
         Assert.Null(savedMember.DisplayOrder);
         Assert.Equal(originalCreatedAt, savedMember.CreateAt);

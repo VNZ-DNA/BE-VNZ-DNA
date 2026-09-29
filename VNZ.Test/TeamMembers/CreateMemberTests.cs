@@ -31,7 +31,8 @@ public class CreateMemberTests
                 Position = "  Backend Developer  ",
                 JobLevel = "Junior",
                 JoinedDate = joinedDate,
-                Hometown = "  Da Nang  "
+                Hometown = "  Da Nang  ",
+                BackgroundUrl = "  https://maps.example/da-nang  "
             },
             createdBy);
 
@@ -57,6 +58,7 @@ public class CreateMemberTests
         Assert.False(savedMember.IsPublished);
         Assert.Null(savedMember.DisplayOrder);
         Assert.Equal("Da Nang", savedMember.Hometown);
+        Assert.Equal("https://maps.example/da-nang", savedMember.BackgroundUrl);
         Assert.NotEqual("Vnz@123456", savedMember.PasswordHash);
         Assert.True(BCrypt.Net.BCrypt.Verify("Vnz@123456", savedMember.PasswordHash));
         Assert.NotEqual(default, savedMember.CreateAt);

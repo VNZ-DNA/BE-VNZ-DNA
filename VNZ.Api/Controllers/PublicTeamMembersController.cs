@@ -17,6 +17,13 @@ public sealed class PublicTeamMembersController : ControllerBase
         _teamMemberService = teamMemberService;
     }
 
+    [HttpGet]
+    public async Task<IActionResult> GetPublicMemberList()
+    {
+        var data = await _teamMemberService.GetPublicMemberListAsync();
+        return Ok(ResponseBuilder.SuccessResponse(data, "Lấy danh sách thành viên thành công.", HttpContext.TraceIdentifier));
+    }
+
     [HttpGet("featured")]
     public async Task<IActionResult> GetFeaturedMembers()
     {

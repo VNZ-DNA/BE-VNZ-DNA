@@ -16,6 +16,7 @@ public class User : BaseEntity
     public string? AnimationUrl { get; set; }
     public string? AudioUrl { get; set; }
     public string? Hometown { get; set; }
+    public string? BackgroundUrl { get; set; }
     public string? Hobbies { get; set; }
     public string? PersonalQuote { get; set; }
     public DateTimeOffset? JoinedDate { get; set; }
