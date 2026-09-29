@@ -35,6 +35,7 @@ public class GetMemberByIdTests
             AnimationUrl = "animation.gif",
             AudioUrl = "audio.mp3",
             Hometown = "Ha Noi",
+            BackgroundUrl = "https://maps.example/ha-noi",
             Hobbies = "Doc sach",
             PersonalQuote = "Lam dung ngay tu dau",
             JoinedDate = joinedDate,
@@ -62,6 +63,7 @@ public class GetMemberByIdTests
         Assert.Equal("animation.gif", response.AnimationUrl);
         Assert.Equal("audio.mp3", response.AudioUrl);
         Assert.Equal("Ha Noi", response.Hometown);
+        Assert.Equal("https://maps.example/ha-noi", response.BackgroundUrl);
         Assert.Equal("Doc sach", response.Hobbies);
         Assert.Equal("Lam dung ngay tu dau", response.PersonalQuote);
         Assert.Equal(joinedDate, response.JoinedDate);

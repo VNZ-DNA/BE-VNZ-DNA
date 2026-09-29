@@ -2,7 +2,8 @@ namespace VNZ.Service.TeamMembers;
 
 public interface IService
 {
-    Task<List<Response.PublicTeamMemberResponse>> GetFeaturedMembersAsync();
+    Task<Response.FeaturedTeamMembersResponse> GetFeaturedMembersAsync();
+    Task<List<Response.PublicTeamMemberResponse>> GetPublicMemberListAsync();
     Task<Response.PublicTeamMemberDetailResponse> GetPublicMemberByIdAsync(Guid id);
     Task<Response.PagedTeamMemberListResponse> GetMemberListAsync(Request.GetTeamMemberListRequest request);
     Task<List<Response.OrderableTeamMemberResponse>> GetOrderableMembersAsync();
