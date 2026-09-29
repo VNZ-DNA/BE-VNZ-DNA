@@ -1,4 +1,5 @@
 using System.ComponentModel.DataAnnotations;
+using System.Text.RegularExpressions;
 using Microsoft.EntityFrameworkCore;
 using VNZ.Repository;
 using VNZ.Repository.Entity;
@@ -29,6 +30,29 @@ public sealed class Service : IService
         _richTextService = richTextService;
     }
 
+    public async Task<Response.UploadContentImageResponse> UploadContentImageAsync(
+        Request.UploadContentImageRequest request)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+
+        var uploadResult = await _mediaService.UploadImageAsync(
+            new MediaService.Request.UploadImageRequest
+            {
+                File = request.File,
+                Purpose = "NewsImage"
+            });
+
+        return new Response.UploadContentImageResponse
+        {
+            Url = uploadResult.Url,
+            PublicId = uploadResult.PublicId,
+            Format = uploadResult.Format,
+            Bytes = uploadResult.Bytes,
+            Width = uploadResult.Width,
+            Height = uploadResult.Height
+        };
+    }
+
     public async Task<Response.CreateNewsResponse> CreateNewsAsync(
         Request.CreateNewsRequest request,
         Guid createdBy)
@@ -52,11 +76,15 @@ public sealed class Service : IService
 
         // 2. Validate dữ liệu bắt buộc theo trạng thái đích.
         var title = request.Title?.Trim();
-        var summary = _richTextService.Sanitize(request.Summary?.Trim(), allowLinks: true);
-        var content = _richTextService.Sanitize(request.Content?.Trim(), allowLinks: true);
+        var summary = _richTextService.SanitizeNewsSummary(request.Summary?.Trim());
+        var content = SanitizeNewsContent(request.Content?.Trim());
         var requiredFields = new List<string>();
 
         if (string.IsNullOrWhiteSpace(title))
+        {
+            requiredFields.Add("title");
+        }
+        else if (ContainsHtmlTag(title))
         {
             requiredFields.Add("title");
         }
@@ -278,12 +306,39 @@ public sealed class Service : IService
         }
 
         // 3. Validate nội dung theo trạng thái đích.
+        var imageAction = string.IsNullOrWhiteSpace(request.Action)
+            ? null
+            : request.Action.Trim();
+
+        if (!string.IsNullOrWhiteSpace(imageAction) &&
+            !string.Equals(imageAction, "removeImage", StringComparison.Ordinal))
+        {
+            throw new NewsException(
+                "NEWS_IMAGE_ACTION_INVALID",
+                "Thao tác ảnh đại diện không hợp lệ.",
+                "action");
+        }
+
+        if (string.Equals(imageAction, "removeImage", StringComparison.Ordinal) &&
+            request.Image is not null)
+        {
+            throw new NewsException(
+                "NEWS_IMAGE_ACTION_INVALID",
+                "Không thể vừa gỡ ảnh đại diện vừa gửi ảnh mới.",
+                "action",
+                "image");
+        }
+
         var title = request.Title?.Trim();
-        var summary = _richTextService.Sanitize(request.Summary?.Trim(), allowLinks: true);
-        var content = _richTextService.Sanitize(request.Content?.Trim(), allowLinks: true);
+        var summary = _richTextService.SanitizeNewsSummary(request.Summary?.Trim());
+        var content = SanitizeNewsContent(request.Content?.Trim());
         var requiredFields = new List<string>();
 
         if (string.IsNullOrWhiteSpace(title))
+        {
+            requiredFields.Add("title");
+        }
+        else if (ContainsHtmlTag(title))
         {
             requiredFields.Add("title");
         }
@@ -355,9 +410,11 @@ public sealed class Service : IService
                 "categoryIds");
         }
 
-        var imageUrl = article.ImageUrl;
+        var imageUrl = string.Equals(imageAction, "removeImage", StringComparison.Ordinal)
+            ? null
+            : article.ImageUrl;
 
-        if (request.Image is not null)
+        if (imageAction is null && request.Image is not null)
         {
             var uploadResult = await _mediaService.UploadImageAsync(
                 new MediaService.Request.UploadImageRequest
@@ -473,6 +530,41 @@ public sealed class Service : IService
             .Length;
 
         return Math.Max(1, (int)Math.Ceiling(wordCount / (double)WordsPerMinute));
+    }
+
+    private string? SanitizeNewsContent(string? value)
+    {
+        try
+        {
+            return _richTextService.SanitizeNewsContent(value);
+        }
+        catch (RichTextService.RichTextValidationException)
+        {
+            throw new NewsException(
+                "NEWS_CONTENT_INVALID",
+                "News content is invalid.",
+                "content");
+        }
+    }
+
+    private string? SafeNormalizeNewsContent(string? value)
+    {
+        try
+        {
+            return _richTextService.SanitizeNewsContent(value);
+        }
+        catch (RichTextService.RichTextValidationException)
+        {
+            return _richTextService.Sanitize(value, allowLinks: true);
+        }
+    }
+
+    private static bool ContainsHtmlTag(string value)
+    {
+        return Regex.IsMatch(
+            value,
+            "<[^>]*>",
+            RegexOptions.CultureInvariant | RegexOptions.Singleline);
     }
 
     public async Task<Response.PagedNewsListResponse> GetNewsListAsync(
@@ -723,7 +815,7 @@ public sealed class Service : IService
             {
                 Id = article.Id,
                 Title = article.Title,
-                Summary = _richTextService.Sanitize(article.Summary, allowLinks: true),
+                Summary = _richTextService.SanitizeNewsSummary(article.Summary),
                 PublishAt = article.PublishAt!.Value,
                 ReadingTimeMinutes = article.ReadingTimeMinutes,
                 Categories = GetCategories(categoriesByArticleId, article.Id)
@@ -778,8 +870,8 @@ public sealed class Service : IService
         {
             Id = article.Id,
             Title = article.Title,
-            Summary = _richTextService.Sanitize(article.Summary, allowLinks: true),
-            Content = _richTextService.Sanitize(article.Content, allowLinks: true),
+            Summary = _richTextService.SanitizeNewsSummary(article.Summary),
+            Content = SafeNormalizeNewsContent(article.Content),
             ImageUrl = article.ImageUrl,
             PublishAt = article.PublishAt!.Value,
             ReadingTimeMinutes = article.ReadingTimeMinutes,
@@ -839,8 +931,8 @@ public sealed class Service : IService
         {
             Id = article.Id,
             Title = article.Title,
-            Summary = article.Summary,
-            Content = article.Content,
+            Summary = _richTextService.SanitizeNewsSummary(article.Summary),
+            Content = SafeNormalizeNewsContent(article.Content),
             ImageUrl = article.ImageUrl,
             AuthorName = article.Creator.FullName,
             CreatedAt = article.CreatedAt,

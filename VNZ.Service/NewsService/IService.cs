@@ -2,6 +2,9 @@ namespace VNZ.Service.NewsService;
 
 public interface IService
 {
+    Task<Response.UploadContentImageResponse> UploadContentImageAsync(
+        Request.UploadContentImageRequest request);
+
     Task<Response.CreateNewsResponse> CreateNewsAsync(
         Request.CreateNewsRequest request,
         Guid createdBy);
