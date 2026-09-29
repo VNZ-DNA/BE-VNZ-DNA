@@ -11,6 +11,8 @@ public class Request
         public IFormFile? Logo { get; set; }
         public string? LogoUrl { get; set; }
         public string? ProductUrl { get; set; }
+        public string? Images { get; set; }
+        public List<IFormFile> ImageFiles { get; set; } = new();
         public ProductContentRequest? Content { get; set; }
     }
 
@@ -20,6 +22,8 @@ public class Request
         public IFormFile? Logo { get; set; }
         public string? LogoUrl { get; set; }
         public string? ProductUrl { get; set; }
+        public string? Images { get; set; }
+        public List<IFormFile> ImageFiles { get; set; } = new();
         public ProductContentRequest? Content { get; set; }
         public ProductStatus Status { get; set; }
         public bool? IsPublished { get; set; }
