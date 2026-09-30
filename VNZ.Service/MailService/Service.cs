@@ -102,6 +102,7 @@ public class Service : IService
         {
             var renderedEmail = _emailTemplateRenderer.RenderInterview(new InterviewEmailTemplateData
             {
+                CandidateName = content.ToName,
                 PositionTitle = content.PositionTitle,
                 InterviewAt = content.InterviewAt,
                 DurationMinutes = content.DurationMinutes,
@@ -349,9 +350,7 @@ public class Service : IService
     {
         var localInterviewAt = interviewAt.ToOffset(VietnamOffset);
         var formattedInterviewAt = FormatInterviewAt(localInterviewAt);
-        var confirmationDeadline = localInterviewAt.AddDays(-2).ToString(
-            "dd/MM/yyyy",
-            System.Globalization.CultureInfo.InvariantCulture);
+        var confirmationDeadline = $"14:00 ngày {localInterviewAt.AddDays(-2):dd/MM/yyyy}";
         var encodedPositionTitle = WebUtility.HtmlEncode(positionTitle);
 
         return $"""
@@ -431,7 +430,7 @@ public class Service : IService
                                 <tr><td style="padding:12px 18px;color:#64748b;">•&nbsp; CV bản cứng hoặc bản mềm (nếu có cập nhật mới)<br>•&nbsp; Thẻ sinh viên<br>•&nbsp; Sản phẩm, dự án hoặc portfolio bạn muốn giới thiệu (nếu có)<br>•&nbsp; Có mặt trước giờ hẹn khoảng 10 phút để chuẩn bị</td></tr>
                             </table>
 
-                            <p style="margin:24px 0 12px;">Vui lòng phản hồi email này để xác nhận tham gia trước <strong>14:00 ngày {confirmationDeadline}</strong>. Nếu thời gian trên không phù hợp, bạn có thể đề xuất khung giờ khác để chúng tôi sắp xếp lại.</p>
+                            <p style="margin:24px 0 12px;">Vui lòng phản hồi email này để xác nhận tham gia trước <strong>{confirmationDeadline}</strong>. Nếu thời gian trên không phù hợp, bạn có thể đề xuất khung giờ khác để chúng tôi sắp xếp lại.</p>
                             <p style="margin:0 0 4px;">Chúc bạn có một buổi phỏng vấn thật thoải mái. Rất mong được gặp bạn.</p>
                             <p style="margin:0;">Trân trọng,<br><strong>VNZ Technology</strong></p>
                         </td>

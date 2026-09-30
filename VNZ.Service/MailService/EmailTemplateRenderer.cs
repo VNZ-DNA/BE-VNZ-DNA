@@ -1,4 +1,3 @@
-using System.Globalization;
 using System.Net;
 
 namespace VNZ.Service.MailService;
@@ -17,6 +16,7 @@ public sealed class RenderedEmail
 
 public sealed class InterviewEmailTemplateData
 {
+    public string CandidateName { get; init; } = string.Empty;
     public string PositionTitle { get; init; } = string.Empty;
     public DateTimeOffset InterviewAt { get; init; }
     public int DurationMinutes { get; init; } = 30;
@@ -40,6 +40,31 @@ public sealed class ContactEmailTemplateData
 internal static class EmailTemplateDefaults
 {
     public const string VnzLogoUrl = "https://be-vnz-dna-latest.onrender.com/images/logo-dark.png";
+    public const string PrimaryColor = "#f36b21";
+    public const string FontFamily = "Arial, Helvetica, sans-serif";
+    public const int ContentMaxWidthPx = 640;
+
+    public const string InterviewSubject = "Thư mời phỏng vấn tại VNZ";
+    public const string InterviewGreetingTemplate = "Thân chào {{candidate.fullName}},";
+    public const string InterviewOpeningTemplate = "Cảm ơn bạn đã quan tâm và ứng tuyển tại VNZ Technology.\n\nSau khi xem xét hồ sơ, chúng tôi trân trọng mời bạn tham gia buổi phỏng vấn cho vị trí {{candidate.positionTitle}}.";
+    public const string InterviewInformationHeading = "Thông tin buổi phỏng vấn";
+    public const string InterviewAgendaHeading = "Nội dung buổi phỏng vấn";
+    public const string InterviewPreparationHeading = "Bạn cần chuẩn bị";
+    public const string InterviewConfirmationTemplate = "Vui lòng phản hồi email này để xác nhận tham gia trước {{deadline}}. Nếu thời gian trên không phù hợp, bạn có thể đề xuất khung giờ khác để chúng tôi sắp xếp lại.";
+    public const string InterviewClosing = "Chúc bạn có một buổi phỏng vấn thật thoải mái. Rất mong được gặp bạn.\n\nTrân trọng,";
+    public const string InterviewSignature = "VNZ Technology";
+
+    public const string ContactEyebrow = "PHẢN HỒI TỪ VNZ TECHNOLOGY";
+    public const string ContactHeading = "Cảm ơn Anh/Chị đã kết nối với VNZ";
+    public const string ContactGreetingTemplate = "Thân chào {{contact.fullName}},";
+    public const string ContactOpening = "VNZ Technology trân trọng cảm ơn Anh/Chị đã dành thời gian liên hệ và chia sẻ nhu cầu. Chúng tôi đã xem xét nội dung trao đổi và gửi phản hồi đến Anh/Chị bên dưới.";
+    public const string ContactBodyHeading = "Trao đổi cùng đội ngũ VNZ";
+    public const string ContactProposalHeading = "Phương án đề xuất";
+    public const string ContactNextStepsHeading = "Bước tiếp theo";
+    public const string ContactClosing = "Chúng tôi mong muốn được tiếp tục lắng nghe, trao đổi để hiểu rõ hơn mục tiêu của Anh/Chị và cùng tìm ra hướng hợp tác phù hợp. Anh/Chị có thể trả lời trực tiếp email này nếu muốn bổ sung thông tin hoặc hẹn một buổi trao đổi.";
+    public const string ContactSignature = "Đội ngũ VNZ Technology";
+    public const string ContactFooter = "VNZ Technology\nVietnamese Minds • Global Solutions";
+
     public const string DefaultInterviewLocationUrl =
         "https://www.google.com/maps/place/C%C3%94NG+TY+TNHH+KOKEN/@10.8210167,106.7842329,1018m/data=!3m2!1e3!4b1!4m6!3m5!1s0x3175277517c8d095:0xa5a0955a7ad81fc3!8m2!3d10.8210167!4d106.7842329!16s%2Fg%2F11svb4wcm6!18m1!1e1?entry=ttu&g_ep=EgoyMDI2MDkyMi4wIKXMDSoASAFQAw%3D%3D";
     public const string DefaultInterviewAddress = "84 đường D5, KDC Thiên Lý, Phường Phước Long, TP. HCM";
@@ -56,13 +81,13 @@ public sealed class EmailTemplateRenderer : IEmailTemplateRenderer
         ArgumentNullException.ThrowIfNull(data);
 
         var localInterviewAt = data.InterviewAt.ToOffset(VietnamOffset);
+        var encodedCandidateName = WebUtility.HtmlEncode(
+            string.IsNullOrWhiteSpace(data.CandidateName) ? "bạn" : data.CandidateName);
         var encodedPositionTitle = WebUtility.HtmlEncode(data.PositionTitle);
         var encodedLocation = WebUtility.HtmlEncode(data.Location ?? string.Empty);
         var encodedLocationUrl = WebUtility.HtmlEncode(data.LocationUrl ?? string.Empty);
         var formattedInterviewAt = FormatInterviewAt(localInterviewAt);
-        var confirmationDeadline = localInterviewAt.AddDays(-2).ToString(
-            "dd/MM/yyyy",
-            CultureInfo.InvariantCulture);
+        var confirmationDeadline = $"14:00 ngày {localInterviewAt.AddDays(-2):dd/MM/yyyy}";
         var isOnline = string.Equals(data.InterviewMode, "Online", StringComparison.Ordinal);
         var modeLabel = isOnline ? "Trực tuyến" : "Trực tiếp tại văn phòng";
         var locationLabel = isOnline ? "Tham gia trực tuyến" : encodedLocation;
@@ -70,6 +95,30 @@ public sealed class EmailTemplateRenderer : IEmailTemplateRenderer
             ? locationLabel
             : $"<a href=\"{encodedLocationUrl}\" style=\"color:#1769aa;text-decoration:underline;\">{locationLabel}</a>";
         var interviewInformation = RenderOptionalRichBlock(data.InterviewInformationHtml);
+        var greeting = EmailTemplateDefaults.InterviewGreetingTemplate.Replace(
+            "{{candidate.fullName}}",
+            encodedCandidateName,
+            StringComparison.Ordinal);
+        var openingText = EmailTemplateDefaults.InterviewOpeningTemplate.Replace(
+            "{{candidate.positionTitle}}",
+            $"<strong>{encodedPositionTitle}</strong>",
+            StringComparison.Ordinal)
+            .Replace(
+                "VNZ Technology.",
+                "<strong>VNZ Technology.</strong>",
+            StringComparison.Ordinal);
+        var openingHtml = string.Join(
+            string.Empty,
+            openingText
+                .Split("\n\n", StringSplitOptions.RemoveEmptyEntries)
+                .Select(paragraph => $"<p style=\"margin:0 0 18px;\">{paragraph}</p>"));
+        var confirmationCopy = EmailTemplateDefaults.InterviewConfirmationTemplate.Replace(
+            "{{deadline}}",
+            $"<strong>{confirmationDeadline}</strong>",
+            StringComparison.Ordinal);
+        var closingParts = EmailTemplateDefaults.InterviewClosing.Split(
+            "\n\n",
+            StringSplitOptions.RemoveEmptyEntries);
 
         var html = $"""
             <!DOCTYPE html>
@@ -79,8 +128,8 @@ public sealed class EmailTemplateRenderer : IEmailTemplateRenderer
                 <meta name="viewport" content="width=device-width, initial-scale=1.0">
                 <title>Thư mời phỏng vấn tại VNZ</title>
             </head>
-            <body style="margin:0;padding:32px 12px;background:#eef2f6;font-family:Arial,Helvetica,sans-serif;color:#243447;font-size:14px;line-height:1.85;">
-                <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width:600px;margin:0 auto;background:#ffffff;border-collapse:separate;border-spacing:0;border-radius:6px;">
+            <body style="margin:0;padding:32px 12px;background:#eef2f6;font-family:{EmailTemplateDefaults.FontFamily};color:#243447;font-size:14px;line-height:1.85;">
+                <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width:{EmailTemplateDefaults.ContentMaxWidthPx}px;margin:0 auto;background:#ffffff;border-collapse:separate;border-spacing:0;border-radius:6px;">
                     <tr>
                         <td align="center" style="padding:36px 40px 24px;">
                             <img src="{EmailTemplateDefaults.VnzLogoUrl}" width="200" alt="VNZ Technology" style="display:block;width:200px;max-width:100%;height:auto;border:0;">
@@ -91,11 +140,10 @@ public sealed class EmailTemplateRenderer : IEmailTemplateRenderer
                     </tr>
                     <tr>
                         <td style="padding:26px 40px 38px;">
-                            <p style="margin:0 0 18px;font-size:14px;">Thân chào bạn,</p>
-                            <p style="margin:0 0 18px;">Cảm ơn bạn đã quan tâm và ứng tuyển tại <strong>VNZ Technology.</strong></p>
-                            <p style="margin:0 0 20px;">Sau khi xem xét hồ sơ, chúng tôi trân trọng mời bạn tham gia buổi phỏng vấn cho vị trí <strong>{encodedPositionTitle}.</strong></p>
+                            <p style="margin:0 0 18px;font-size:14px;">{greeting}</p>
+                            {openingHtml}
 
-                            <p style="margin:0 0 12px;">Thông tin buổi phỏng vấn:</p>
+                            <p style="margin:0 0 12px;">{EmailTemplateDefaults.InterviewInformationHeading}:</p>
                             <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="border-collapse:collapse;font-size:14px;line-height:1.6;">
                                 <tr>
                                     <td width="38%" style="padding:12px 14px;background:#f3f6f9;border-bottom:1px solid #dfe5ec;color:#64748b;">Vị trí thực tập</td>
@@ -120,21 +168,21 @@ public sealed class EmailTemplateRenderer : IEmailTemplateRenderer
                             </table>
                             {interviewInformation}
 
-                            <p style="margin:24px 0 10px;font-weight:700;color:#1f2937;">Nội dung buổi phỏng vấn</p>
+                            <p style="margin:24px 0 10px;font-weight:700;color:#1f2937;">{EmailTemplateDefaults.InterviewAgendaHeading}</p>
                             <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="border-collapse:collapse;">
                                 <tr>
-                                    <td style="padding:0 0 0 14px;border-left:3px solid #f36b21;color:#334155;">{data.AgendaHtml}</td>
+                                    <td style="padding:0 0 0 14px;border-left:3px solid {EmailTemplateDefaults.PrimaryColor};color:#334155;">{data.AgendaHtml}</td>
                                 </tr>
                             </table>
 
-                            <p style="margin:24px 0 10px;font-weight:700;color:#1f2937;">Bạn cần chuẩn bị</p>
+                            <p style="margin:24px 0 10px;font-weight:700;color:#1f2937;">{EmailTemplateDefaults.InterviewPreparationHeading}</p>
                             <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="border-collapse:collapse;background:#f3f6f9;">
                                 <tr><td style="padding:12px 18px;color:#64748b;">{data.PreparationHtml}</td></tr>
                             </table>
 
-                            <p style="margin:24px 0 12px;">Vui lòng phản hồi email này để xác nhận tham gia trước <strong>14:00 ngày {confirmationDeadline}</strong>. Nếu thời gian trên không phù hợp, bạn có thể đề xuất khung giờ khác để chúng tôi sắp xếp lại.</p>
-                            <p style="margin:0 0 4px;">Chúc bạn có một buổi phỏng vấn thật thoải mái. Rất mong được gặp bạn.</p>
-                            <p style="margin:0;">Trân trọng,<br><strong>VNZ Technology</strong></p>
+                            <p style="margin:24px 0 12px;">{confirmationCopy}</p>
+                            <p style="margin:0 0 4px;">{closingParts[0]}</p>
+                            <p style="margin:0;">{closingParts[1]}<br><strong>{EmailTemplateDefaults.InterviewSignature}</strong></p>
                         </td>
                     </tr>
                 </table>
@@ -144,7 +192,7 @@ public sealed class EmailTemplateRenderer : IEmailTemplateRenderer
 
         return new RenderedEmail
         {
-            Subject = "Thư mời phỏng vấn tại VNZ",
+            Subject = EmailTemplateDefaults.InterviewSubject,
             HtmlBody = html
         };
     }
@@ -154,8 +202,15 @@ public sealed class EmailTemplateRenderer : IEmailTemplateRenderer
         ArgumentNullException.ThrowIfNull(data);
 
         var encodedRecipientName = WebUtility.HtmlEncode(data.RecipientName);
-        var proposal = RenderOptionalContactSection("Phương án đề xuất", data.ProposalHtml);
-        var nextSteps = RenderOptionalContactSection("Bước tiếp theo", data.NextStepsHtml);
+        var greeting = EmailTemplateDefaults.ContactGreetingTemplate.Replace(
+            "{{contact.fullName}}",
+            encodedRecipientName,
+            StringComparison.Ordinal);
+        var footerParts = EmailTemplateDefaults.ContactFooter.Split(
+            '\n',
+            StringSplitOptions.RemoveEmptyEntries);
+        var proposal = RenderOptionalContactSection(EmailTemplateDefaults.ContactProposalHeading, data.ProposalHtml);
+        var nextSteps = RenderOptionalContactSection(EmailTemplateDefaults.ContactNextStepsHeading, data.NextStepsHtml);
 
         var html = $"""
             <!DOCTYPE html>
@@ -165,31 +220,31 @@ public sealed class EmailTemplateRenderer : IEmailTemplateRenderer
                 <meta name="viewport" content="width=device-width, initial-scale=1.0">
                 <title>VNZ Technology | Phản hồi liên hệ</title>
             </head>
-            <body style="margin:0;padding:32px 12px;background:#eef2f6;font-family:Arial,Helvetica,sans-serif;color:#243447;font-size:14px;line-height:1.85;">
-                <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width:600px;margin:0 auto;background:#ffffff;border-collapse:separate;border-spacing:0;border-radius:6px;">
+            <body style="margin:0;padding:32px 12px;background:#eef2f6;font-family:{EmailTemplateDefaults.FontFamily};color:#243447;font-size:14px;line-height:1.85;">
+                <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width:{EmailTemplateDefaults.ContentMaxWidthPx}px;margin:0 auto;background:#ffffff;border-collapse:separate;border-spacing:0;border-radius:6px;">
                     <tr>
                         <td align="center" style="padding:36px 40px 24px;"><img src="{EmailTemplateDefaults.VnzLogoUrl}" width="200" alt="VNZ Technology" style="display:block;width:200px;max-width:100%;height:auto;border:0;"></td>
                     </tr>
                     <tr><td style="padding:0 40px;"><div style="height:1px;background:#dbe2ea;"></div></td></tr>
                     <tr>
                         <td style="padding:28px 40px 36px;">
-                            <p style="margin:0 0 8px;color:#e85d18;font-size:11px;font-weight:700;letter-spacing:1.2px;">PHẢN HỒI TỪ VNZ TECHNOLOGY</p>
-                            <h1 style="margin:0 0 22px;color:#243447;font-size:18px;font-weight:700;line-height:1.4;">Cảm ơn Anh/Chị đã kết nối với VNZ</h1>
-                            <p style="margin:0 0 16px;font-size:14px;">Thân chào {encodedRecipientName},</p>
-                            <p style="margin:0 0 22px;">VNZ Technology trân trọng cảm ơn Anh/Chị đã dành thời gian liên hệ và chia sẻ nhu cầu. Chúng tôi đã xem xét nội dung trao đổi và gửi phản hồi đến Anh/Chị bên dưới.</p>
-                            <p style="margin:0 0 10px;font-weight:700;color:#243447;">Trao đổi cùng đội ngũ VNZ</p>
+                            <p style="margin:0 0 8px;color:{EmailTemplateDefaults.PrimaryColor};font-size:11px;font-weight:700;letter-spacing:1.2px;">{EmailTemplateDefaults.ContactEyebrow}</p>
+                            <h1 style="margin:0 0 22px;color:#243447;font-size:18px;font-weight:700;line-height:1.4;">{EmailTemplateDefaults.ContactHeading}</h1>
+                            <p style="margin:0 0 16px;font-size:14px;">{greeting}</p>
+                            <p style="margin:0 0 22px;">{EmailTemplateDefaults.ContactOpening}</p>
+                            <p style="margin:0 0 10px;font-weight:700;color:#243447;">{EmailTemplateDefaults.ContactBodyHeading}</p>
                             <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="border-collapse:collapse;background:#f3f6f9;">
-                                <tr><td style="padding:18px 20px;border-left:3px solid #f36b21;color:#334155;line-height:1.8;">{data.BodyHtml}</td></tr>
+                                <tr><td style="padding:18px 20px;border-left:3px solid {EmailTemplateDefaults.PrimaryColor};color:#334155;line-height:1.8;">{data.BodyHtml}</td></tr>
                             </table>
                             {proposal}
                             {nextSteps}
-                            <p style="margin:22px 0 16px;">Chúng tôi mong muốn được tiếp tục lắng nghe, trao đổi để hiểu rõ hơn mục tiêu của Anh/Chị và cùng tìm ra hướng hợp tác phù hợp. Anh/Chị có thể trả lời trực tiếp email này nếu muốn bổ sung thông tin hoặc hẹn một buổi trao đổi.</p>
-                            <p style="margin:0;">Trân trọng,<br><strong style="color:#243447;">Đội ngũ VNZ Technology</strong></p>
+                            <p style="margin:22px 0 16px;">{EmailTemplateDefaults.ContactClosing}</p>
+                            <p style="margin:0;">Trân trọng,<br><strong style="color:#243447;">{EmailTemplateDefaults.ContactSignature}</strong></p>
                         </td>
                     </tr>
                     <tr><td style="padding:0 40px;"><div style="height:1px;background:#dbe2ea;"></div></td></tr>
                     <tr>
-                        <td align="center" style="padding:18px 24px 22px;background:#f3f6f9;color:#64748b;font-size:12px;line-height:1.6;"><strong style="color:#334155;">VNZ Technology</strong><br>Vietnamese Minds <span style="color:#f36b21;">&#8226;</span> Global Solutions</td>
+                        <td align="center" style="padding:18px 24px 22px;background:#f3f6f9;color:#64748b;font-size:12px;line-height:1.6;"><strong style="color:#334155;">{footerParts[0]}</strong><br>{footerParts[1].Replace("•", $"<span style=\"color:{EmailTemplateDefaults.PrimaryColor};\">&#8226;</span>", StringComparison.Ordinal)}</td>
                     </tr>
                 </table>
             </body>
@@ -212,7 +267,7 @@ public sealed class EmailTemplateRenderer : IEmailTemplateRenderer
 
         return $"""
             <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="border-collapse:collapse;background:#f3f6f9;margin-top:18px;">
-                <tr><td style="padding:14px 18px;border-left:3px solid #f36b21;color:#64748b;">{html}</td></tr>
+                <tr><td style="padding:14px 18px;border-left:3px solid {EmailTemplateDefaults.PrimaryColor};color:#64748b;">{html}</td></tr>
             </table>
             """;
     }
@@ -227,7 +282,7 @@ public sealed class EmailTemplateRenderer : IEmailTemplateRenderer
         return $"""
             <p style="margin:22px 0 10px;font-weight:700;color:#243447;">{heading}</p>
             <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="border-collapse:collapse;background:#f3f6f9;">
-                <tr><td style="padding:18px 20px;border-left:3px solid #f36b21;color:#334155;line-height:1.8;">{html}</td></tr>
+                <tr><td style="padding:18px 20px;border-left:3px solid {EmailTemplateDefaults.PrimaryColor};color:#334155;line-height:1.8;">{html}</td></tr>
             </table>
             """;
     }
