@@ -23,11 +23,6 @@ public sealed class ProductsController : ControllerBase
     public async Task<IActionResult> CreateProduct(
         [FromForm] ProductService.Request.CreateProductRequest request)
     {
-        if (Request.Form.ContainsKey("images") && request.Images is null)
-        {
-            request.Images = string.Empty;
-        }
-
         var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
 
         if (!Guid.TryParse(userId, out var createdBy))
@@ -70,11 +65,6 @@ public sealed class ProductsController : ControllerBase
     [Consumes("multipart/form-data")]
     public async Task<IActionResult> UpdateProduct(Guid id, [FromForm] ProductService.Request.UpdateProductRequest request)
     {
-        if (Request.Form.ContainsKey("images") && request.Images is null)
-        {
-            request.Images = string.Empty;
-        }
-
         var data = await _productService.UpdateProductAsync(id, request);
 
         return Ok(ResponseBuilder.SuccessResponse(data, "Cập nhật sản phẩm thành công.", HttpContext.TraceIdentifier));

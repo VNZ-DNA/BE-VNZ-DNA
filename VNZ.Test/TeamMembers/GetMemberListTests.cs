@@ -102,5 +102,6 @@ internal sealed class TestAppDbContext : AppDbContext
         modelBuilder.Entity<JobPost>().Ignore(jobPost => jobPost.Skills);
         modelBuilder.Entity<JobApplication>().Ignore(application => application.JobPostSnapshot);
         modelBuilder.Entity<Product>().Ignore(product => product.Content);
+        modelBuilder.Entity<Product>().Ignore(product => product.Images);
     }
 }

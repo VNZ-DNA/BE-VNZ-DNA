@@ -33,6 +33,8 @@ public class UpdateProductTests
         {
             Id = Guid.NewGuid(),
             Name = "VNZ Analytics",
+            LogoUrl = "analytics.svg",
+            WordmarkUrl = "analytics-wordmark.svg",
             Status = ProductStatus.InProgress,
             IsPublished = false,
             DisplayOrder = null,
@@ -52,7 +54,6 @@ public class UpdateProductTests
             new Request.UpdateProductRequest
             {
                 Name = "  VNZ Analytics 2.0  ",
-                LogoUrl = "analytics.svg",
                 ProductUrl = "https://vnz.vn/products/analytics",
                 Status = ProductStatus.Completed,
                 IsPublished = true
@@ -65,6 +66,7 @@ public class UpdateProductTests
         Assert.Equal(productToUpdate.Id, response.Id);
         Assert.Equal("VNZ Analytics 2.0", response.Name);
         Assert.Equal("analytics.svg", response.LogoUrl);
+        Assert.Equal("analytics-wordmark.svg", response.WordmarkUrl);
         Assert.Equal("https://vnz.vn/products/analytics", response.ProductUrl);
         Assert.Equal(ProductStatus.Completed, response.Status);
         Assert.True(response.IsPublished);
@@ -72,6 +74,8 @@ public class UpdateProductTests
         Assert.NotNull(response.UpdatedAt);
 
         Assert.Equal("VNZ Analytics 2.0", savedProduct.Name);
+        Assert.Equal("analytics.svg", savedProduct.LogoUrl);
+        Assert.Equal("analytics-wordmark.svg", savedProduct.WordmarkUrl);
         Assert.Equal(ProductStatus.Completed, savedProduct.Status);
         Assert.True(savedProduct.IsPublished);
         Assert.Equal(5, savedProduct.DisplayOrder);

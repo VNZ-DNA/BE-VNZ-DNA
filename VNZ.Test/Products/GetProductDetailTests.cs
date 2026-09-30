@@ -123,6 +123,7 @@ public class GetProductDetailTests
 
             modelBuilder.Entity<JobPost>().Ignore(jobPost => jobPost.Skills);
             modelBuilder.Entity<JobApplication>().Ignore(application => application.JobPostSnapshot);
+            modelBuilder.Entity<Product>().Ignore(product => product.Images);
 
             var productContentConverter = new ValueConverter<ProductContent?, string?>(
                 content => JsonSerializer.Serialize(content, (JsonSerializerOptions?)null),
