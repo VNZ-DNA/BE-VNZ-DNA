@@ -162,6 +162,10 @@ public sealed class Service : IService
                 return ToDetailResponse(product);
             }
 
+            var logoAction = NormalizeProductImageAction(request.LogoAction);
+            var wordmarkAction = NormalizeProductImageAction(request.WordmarkAction);
+            ValidateProductImageActions(logoAction, wordmarkAction, request);
+
             var content = SanitizeProductContent(request.Content);
             ValidateUpdateRequest(request, content);
             var isPublished = request.IsPublished.GetValueOrDefault();
@@ -178,27 +182,34 @@ public sealed class Service : IService
             var currentLogoUrl = NormalizeProductImageUrl(product.LogoUrl);
             var currentWordmarkUrl = NormalizeProductImageUrl(product.WordmarkUrl);
 
-            if (isPublished &&
-                request.Logo is null &&
-                currentLogoUrl is null)
+            var removeLogo = string.Equals(logoAction, "remove", StringComparison.Ordinal);
+            var removeWordmark = string.Equals(wordmarkAction, "remove", StringComparison.Ordinal);
+            var hasFinalLogo = !removeLogo &&
+                (request.Logo is not null || currentLogoUrl is not null);
+            var hasFinalWordmark = !removeWordmark &&
+                (request.Wordmark is not null || currentWordmarkUrl is not null);
+
+            if (isPublished && !hasFinalLogo)
             {
                 throw ProductImagesRequired("logoUrl");
             }
 
-            if (isPublished &&
-                request.Wordmark is null &&
-                currentWordmarkUrl is null)
+            if (isPublished && !hasFinalWordmark)
             {
                 throw ProductImagesRequired("wordmarkUrl");
             }
 
-            var logoUrl = request.Logo is null
-                ? currentLogoUrl
-                : await UploadProductImageIfPresentAsync(request.Logo);
+            var logoUrl = removeLogo
+                ? null
+                : request.Logo is null
+                    ? currentLogoUrl
+                    : await UploadProductImageIfPresentAsync(request.Logo);
 
-            var wordmarkUrl = request.Wordmark is null
-                ? currentWordmarkUrl
-                : await UploadProductImageIfPresentAsync(request.Wordmark);
+            var wordmarkUrl = removeWordmark
+                ? null
+                : request.Wordmark is null
+                    ? currentWordmarkUrl
+                    : await UploadProductImageIfPresentAsync(request.Wordmark);
 
             if (isPublished)
             {
@@ -479,6 +490,57 @@ public sealed class Service : IService
         return string.IsNullOrWhiteSpace(imageUrl)
             ? null
             : imageUrl.Trim();
+    }
+
+    private static string? NormalizeProductImageAction(string? action)
+    {
+        return string.IsNullOrWhiteSpace(action)
+            ? null
+            : action.Trim();
+    }
+
+    private static void ValidateProductImageActions(
+        string? logoAction,
+        string? wordmarkAction,
+        Request.UpdateProductRequest request)
+    {
+        if (logoAction is not null &&
+            !string.Equals(logoAction, "remove", StringComparison.Ordinal))
+        {
+            throw new ProductException(
+                "PRODUCT_IMAGE_ACTION_INVALID",
+                "Thao tác Logo của Product không hợp lệ.",
+                "logoAction");
+        }
+
+        if (wordmarkAction is not null &&
+            !string.Equals(wordmarkAction, "remove", StringComparison.Ordinal))
+        {
+            throw new ProductException(
+                "PRODUCT_IMAGE_ACTION_INVALID",
+                "Thao tác Wordmark của Product không hợp lệ.",
+                "wordmarkAction");
+        }
+
+        if (string.Equals(logoAction, "remove", StringComparison.Ordinal) &&
+            request.Logo is not null)
+        {
+            throw new ProductException(
+                "PRODUCT_IMAGE_ACTION_INVALID",
+                "Không thể vừa gỡ Logo vừa gửi Logo mới.",
+                "logoAction",
+                "logo");
+        }
+
+        if (string.Equals(wordmarkAction, "remove", StringComparison.Ordinal) &&
+            request.Wordmark is not null)
+        {
+            throw new ProductException(
+                "PRODUCT_IMAGE_ACTION_INVALID",
+                "Không thể vừa gỡ Wordmark vừa gửi Wordmark mới.",
+                "wordmarkAction",
+                "wordmark");
+        }
     }
 
     private static ProductException ProductImagesRequired(params string[] fields)
