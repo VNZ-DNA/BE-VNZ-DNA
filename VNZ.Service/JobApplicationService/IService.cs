@@ -12,7 +12,6 @@ public interface IService
         Guid adminUserId);
     Task<Response.SendInterviewInvitationsResponse> SendInterviewInvitationsAsync(
         Request.SendInterviewInvitationsRequest request);
-    Task<Response.InterviewInvitationPreviewResponse> PreviewInterviewInvitationAsync(
-        Request.SendInterviewInvitationsRequest request);
+    Task<VNZ.Service.MailService.Response.InterviewTemplateSchemaResponse> GetInterviewInvitationTemplateAsync();
 
 }

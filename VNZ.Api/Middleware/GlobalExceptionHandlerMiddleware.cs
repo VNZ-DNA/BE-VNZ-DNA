@@ -74,10 +74,10 @@ public class GlobalExceptionHandlerMiddleware : IMiddleware
             DbException when IsContactListRequest(context) => HttpStatusCode.InternalServerError,
             DbException when IsContactDetailRequest(context) => HttpStatusCode.InternalServerError,
             DbUpdateException when IsContactDetailRequest(context) => HttpStatusCode.InternalServerError,
-            DbException when IsInterviewPreviewRequest(context) => HttpStatusCode.InternalServerError,
-            Exception when IsInterviewPreviewRequest(context) => HttpStatusCode.InternalServerError,
-            DbException when IsContactReplyPreviewRequest(context) => HttpStatusCode.InternalServerError,
-            Exception when IsContactReplyPreviewRequest(context) => HttpStatusCode.InternalServerError,
+            DbException when IsInterviewTemplateRequest(context) => HttpStatusCode.InternalServerError,
+            Exception when IsInterviewTemplateRequest(context) => HttpStatusCode.InternalServerError,
+            DbException when IsContactReplyTemplateRequest(context) => HttpStatusCode.InternalServerError,
+            Exception when IsContactReplyTemplateRequest(context) => HttpStatusCode.InternalServerError,
             DbException when IsContactReplyRequest(context) => HttpStatusCode.InternalServerError,
             DbUpdateException when IsContactReplyRequest(context) => HttpStatusCode.InternalServerError,
             HttpRequestException when IsContactReplyRequest(context) => HttpStatusCode.InternalServerError,
@@ -147,14 +147,14 @@ public class GlobalExceptionHandlerMiddleware : IMiddleware
                 ("CONTACT_DETAIL_READ_FAILED", "Không thể đọc chi tiết liên hệ."),
             DbUpdateException when IsContactDetailRequest(context) =>
                 ("CONTACT_DETAIL_READ_FAILED", "Không thể đọc chi tiết liên hệ."),
-            DbException when IsInterviewPreviewRequest(context) =>
-                ("JOB_APPLICATION_INTERVIEW_PREVIEW_FAILED", "Không thể tạo preview email mời phỏng vấn."),
-            Exception when IsInterviewPreviewRequest(context) =>
-                ("JOB_APPLICATION_INTERVIEW_PREVIEW_FAILED", "Không thể tạo preview email mời phỏng vấn."),
-            DbException when IsContactReplyPreviewRequest(context) =>
-                ("CONTACT_REPLY_PREVIEW_FAILED", "Không thể tạo preview email phản hồi."),
-            Exception when IsContactReplyPreviewRequest(context) =>
-                ("CONTACT_REPLY_PREVIEW_FAILED", "Không thể tạo preview email phản hồi."),
+            DbException when IsInterviewTemplateRequest(context) =>
+                ("JOB_APPLICATION_INTERVIEW_TEMPLATE_READ_FAILED", "Không thể đọc template email mời phỏng vấn."),
+            Exception when IsInterviewTemplateRequest(context) =>
+                ("JOB_APPLICATION_INTERVIEW_TEMPLATE_READ_FAILED", "Không thể đọc template email mời phỏng vấn."),
+            DbException when IsContactReplyTemplateRequest(context) =>
+                ("CONTACT_REPLY_TEMPLATE_READ_FAILED", "Không thể đọc template email phản hồi."),
+            Exception when IsContactReplyTemplateRequest(context) =>
+                ("CONTACT_REPLY_TEMPLATE_READ_FAILED", "Không thể đọc template email phản hồi."),
             DbException when IsContactReplyRequest(context) =>
                 ("CONTACT_REPLY_READ_FAILED", "Không thể đọc yêu cầu liên hệ để gửi phản hồi."),
             DbUpdateException when IsContactReplyRequest(context) =>
@@ -356,7 +356,7 @@ public class GlobalExceptionHandlerMiddleware : IMiddleware
             "CONTACT_LIST_READ_FAILED" or
             "CONTACT_DETAIL_READ_FAILED" or
             "CONTACT_REPLY_READ_FAILED" or
-            "CONTACT_REPLY_PREVIEW_FAILED" or
+            "CONTACT_REPLY_TEMPLATE_READ_FAILED" or
             "CONTACT_EMAIL_SEND_FAILED" or
             "CONTACT_REPLY_UPDATE_FAILED" or
             "CONTACT_CREATE_FAILED" => HttpStatusCode.InternalServerError,
@@ -382,7 +382,7 @@ public class GlobalExceptionHandlerMiddleware : IMiddleware
             "JOB_POST_NOT_AVAILABLE" => HttpStatusCode.Conflict,
             "JOB_APPLICATION_REJECTION_EMAIL_FAILED" or
             "JOB_APPLICATION_REJECTION_PERSIST_FAILED" => HttpStatusCode.InternalServerError,
-            "JOB_APPLICATION_INTERVIEW_PREVIEW_FAILED" or
+            "JOB_APPLICATION_INTERVIEW_TEMPLATE_READ_FAILED" or
             "JOB_APPLICATION_INTERVIEW_PERSIST_FAILED" or
             "JOB_APPLICATION_CREATE_FAILED" => HttpStatusCode.InternalServerError,
             _ => HttpStatusCode.InternalServerError
@@ -507,33 +507,19 @@ public class GlobalExceptionHandlerMiddleware : IMiddleware
         return Guid.TryParse(id, out _);
     }
 
-    private static bool IsContactReplyPreviewRequest(HttpContext context)
+    private static bool IsContactReplyTemplateRequest(HttpContext context)
     {
-        const string routePrefix = "/api/v1/admin/contacts/";
-        const string routeSuffix = "/reply/preview";
-
-        if (!HttpMethods.IsPost(context.Request.Method))
-        {
-            return false;
-        }
-
-        var path = context.Request.Path.Value;
-        if (path is null
-            || !path.StartsWith(routePrefix, StringComparison.OrdinalIgnoreCase)
-            || !path.EndsWith(routeSuffix, StringComparison.OrdinalIgnoreCase))
-        {
-            return false;
-        }
-
-        var id = path[routePrefix.Length..^routeSuffix.Length];
-        return Guid.TryParse(id, out _);
+        return HttpMethods.IsGet(context.Request.Method)
+            && context.Request.Path.Equals(
+                "/api/v1/admin/contacts/reply/template",
+                StringComparison.OrdinalIgnoreCase);
     }
 
-    private static bool IsInterviewPreviewRequest(HttpContext context)
+    private static bool IsInterviewTemplateRequest(HttpContext context)
     {
-        return HttpMethods.IsPost(context.Request.Method)
+        return HttpMethods.IsGet(context.Request.Method)
             && context.Request.Path.Equals(
-                "/api/v1/admin/job-applications/interview-invitations/preview",
+                "/api/v1/admin/job-applications/interview-invitations/template",
                 StringComparison.OrdinalIgnoreCase);
     }
 

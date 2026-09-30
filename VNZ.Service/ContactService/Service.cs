@@ -217,6 +217,11 @@ public class Service : IService
         };
     }
 
+    public Task<VNZ.Service.MailService.Response.ContactTemplateSchemaResponse> GetReplyTemplateAsync()
+    {
+        return Task.FromResult(VNZ.Service.MailService.EmailTemplateSchemaProvider.GetContactSchema());
+    }
+
     public async Task<Response.CreateContactInquiryResponse> CreateContactInquiryAsync(
         Request.CreateContactInquiryRequest request)
     {
@@ -359,54 +364,13 @@ public class Service : IService
         };
     }
 
-    public async Task<Response.ContactReplyPreviewResponse> PreviewReplyAsync(
-        Guid id,
-        Request.SendContactReplyRequest request)
-    {
-        var normalized = ValidateReplyRequest(request);
-        var contact = await _dbContext.ContactInquiries
-            .AsNoTracking()
-            .SingleOrDefaultAsync(item => item.Id == id);
-
-        if (contact is null)
-        {
-            throw new ContactException(
-                "CONTACT_NOT_FOUND",
-                "Không tìm thấy yêu cầu liên hệ.",
-                "id");
-        }
-
-        if (contact.ContactStatus == ContactStatus.Contacted)
-        {
-            throw new ContactException(
-                "CONTACT_ALREADY_CONTACTED",
-                "Yêu cầu liên hệ này đã được phản hồi.");
-        }
-
-        var renderedEmail = _emailTemplateRenderer.RenderContact(new MailService.ContactEmailTemplateData
-        {
-            RecipientName = contact.FullName,
-            Subject = normalized.Subject,
-            BodyHtml = normalized.BodyHtml,
-            ProposalHtml = normalized.ProposalHtml,
-            NextStepsHtml = normalized.NextStepsHtml
-        });
-
-        return new Response.ContactReplyPreviewResponse
-        {
-            ContactId = contact.Id,
-            RecipientName = contact.FullName,
-            RecipientEmail = contact.Email,
-            Subject = renderedEmail.Subject,
-            Html = renderedEmail.HtmlBody
-        };
-    }
-
     public async Task<Response.SendContactReplyResponse> SendReplyAsync(
         Guid id,
         Request.SendContactReplyRequest request)
     {
         var contactedBy = GetAdminId();
+
+        ValidateAdditionalFields(request?.AdditionalFields);
 
         var normalized = ValidateReplyRequest(request);
 
@@ -505,6 +469,18 @@ public class Service : IService
             ProposalHtml = sanitizedProposal,
             NextStepsHtml = sanitizedNextSteps
         };
+    }
+
+    private static void ValidateAdditionalFields(
+        Dictionary<string, System.Text.Json.JsonElement>? additionalFields)
+    {
+        if (additionalFields is { Count: > 0 })
+        {
+            throw new ContactException(
+                "CONTACT_REPLY_VALIDATION_ERROR",
+                "Payload chứa field không thuộc contract email phản hồi.",
+                additionalFields.Keys.ToArray());
+        }
     }
 
     private string? NormalizeEmailRichText(

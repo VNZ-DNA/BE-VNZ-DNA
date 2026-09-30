@@ -1,3 +1,5 @@
+using System.Text.Json;
+using System.Text.Json.Serialization;
 using VNZ.Repository.Entity.Enum;
 
 namespace VNZ.Service.ContactService;
@@ -18,6 +20,9 @@ public class Request
         public string? Body { get; set; }
         public string? ProposalHtml { get; set; }
         public string? NextStepsHtml { get; set; }
+
+        [JsonExtensionData]
+        public Dictionary<string, JsonElement>? AdditionalFields { get; set; }
     }
 
     public class CreateContactInquiryRequest

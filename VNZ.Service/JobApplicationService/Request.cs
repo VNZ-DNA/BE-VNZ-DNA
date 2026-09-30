@@ -1,3 +1,6 @@
+using System.Text.Json;
+using System.Text.Json.Serialization;
+
 namespace VNZ.Service.JobApplicationService;
 
 public static class Request
@@ -45,6 +48,8 @@ public static class Request
         public string? InterviewInformationHtml { get; set; }
         public string? AgendaHtml { get; set; }
         public string? PreparationHtml { get; set; }
-        public Guid? PreviewApplicationId { get; set; }
+
+        [JsonExtensionData]
+        public Dictionary<string, JsonElement>? AdditionalFields { get; set; }
     }
 }
