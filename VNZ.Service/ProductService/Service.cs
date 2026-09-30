@@ -1,6 +1,4 @@
 using System.Data;
-using System.Text.Json;
-using System.Text.Json.Serialization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.EntityFrameworkCore;
 using Npgsql;
@@ -16,12 +14,6 @@ namespace VNZ.Service.ProductService;
 
 public sealed class Service : IService
 {
-    private static readonly JsonSerializerOptions ProductImageManifestOptions = new()
-    {
-        PropertyNameCaseInsensitive = true,
-        UnmappedMemberHandling = JsonUnmappedMemberHandling.Disallow
-    };
-
     private readonly AppDbContext _dbContext;
     private readonly MediaService.IService _mediaService;
     private readonly RichTextService.IService _richTextService;
@@ -52,21 +44,17 @@ public sealed class Service : IService
         var content = SanitizeProductContent(request.Content);
         ValidateProductContent(content);
 
-        var imageState = await BuildProductImageStateAsync(
-            existingProduct: null,
-            request.Images,
-            request.Logo,
-            request.LogoUrl,
-            request.ImageFiles);
+        var logoUrl = await UploadProductImageIfPresentAsync(request.Logo);
+        var wordmarkUrl = await UploadProductImageIfPresentAsync(request.Wordmark);
 
         var product = new Product
         {
             Id = Guid.NewGuid(),
             Name = name,
-            LogoUrl = imageState.LogoUrl,
+            LogoUrl = logoUrl,
+            WordmarkUrl = wordmarkUrl,
             ProductUrl = request.ProductUrl,
             Content = ToProductContent(content),
-            Images = imageState.Images,
             Status = ProductStatus.InProgress,
             IsPublished = false,
             DisplayOrder = null,
@@ -174,6 +162,10 @@ public sealed class Service : IService
                 return ToDetailResponse(product);
             }
 
+            var logoAction = NormalizeProductImageAction(request.LogoAction);
+            var wordmarkAction = NormalizeProductImageAction(request.WordmarkAction);
+            ValidateProductImageActions(logoAction, wordmarkAction, request);
+
             var content = SanitizeProductContent(request.Content);
             ValidateUpdateRequest(request, content);
             var isPublished = request.IsPublished.GetValueOrDefault();
@@ -187,12 +179,37 @@ public sealed class Service : IService
                     "isPublished");
             }
 
-            var imageState = await BuildProductImageStateAsync(
-                product,
-                request.Images,
-                request.Logo,
-                request.LogoUrl,
-                request.ImageFiles);
+            var currentLogoUrl = NormalizeProductImageUrl(product.LogoUrl);
+            var currentWordmarkUrl = NormalizeProductImageUrl(product.WordmarkUrl);
+
+            var removeLogo = string.Equals(logoAction, "remove", StringComparison.Ordinal);
+            var removeWordmark = string.Equals(wordmarkAction, "remove", StringComparison.Ordinal);
+            var hasFinalLogo = !removeLogo &&
+                (request.Logo is not null || currentLogoUrl is not null);
+            var hasFinalWordmark = !removeWordmark &&
+                (request.Wordmark is not null || currentWordmarkUrl is not null);
+
+            if (isPublished && !hasFinalLogo)
+            {
+                throw ProductImagesRequired("logoUrl");
+            }
+
+            if (isPublished && !hasFinalWordmark)
+            {
+                throw ProductImagesRequired("wordmarkUrl");
+            }
+
+            var logoUrl = removeLogo
+                ? null
+                : request.Logo is null
+                    ? currentLogoUrl
+                    : await UploadProductImageIfPresentAsync(request.Logo);
+
+            var wordmarkUrl = removeWordmark
+                ? null
+                : request.Wordmark is null
+                    ? currentWordmarkUrl
+                    : await UploadProductImageIfPresentAsync(request.Wordmark);
 
             if (isPublished)
             {
@@ -208,10 +225,10 @@ public sealed class Service : IService
             }
 
             product.Name = request.Name.Trim();
-            product.LogoUrl = imageState.LogoUrl;
+            product.LogoUrl = logoUrl;
+            product.WordmarkUrl = wordmarkUrl;
             product.ProductUrl = request.ProductUrl;
             product.Content = ToProductContent(content);
-            product.Images = imageState.Images;
             product.Status = request.Status;
             product.IsPublished = isPublished;
             product.UpdatedAt = updatedAt;
@@ -295,7 +312,9 @@ public sealed class Service : IService
             .Where(product =>
                 product.Status == ProductStatus.Completed &&
                 product.IsPublished &&
-                product.DisplayOrder.HasValue)
+                product.DisplayOrder.HasValue &&
+                product.LogoUrl != null &&
+                product.WordmarkUrl != null)
             .OrderBy(product => product.DisplayOrder)
             .ThenBy(product => product.Id)
             .ToListAsync();
@@ -304,7 +323,7 @@ public sealed class Service : IService
             .Select(product => new Response.PublicProductListItemResponse
             {
                 LogoUrl = product.LogoUrl,
-                Images = ToPublicImageResponses(product),
+                WordmarkUrl = product.WordmarkUrl,
                 Content = product.Content is null
                     ? null
                     : new Response.PublicProductContentResponse
@@ -444,285 +463,6 @@ public sealed class Service : IService
         }
     }
 
-    private async Task<ProductImageState> BuildProductImageStateAsync(
-        Product? existingProduct,
-        string? imagesJson,
-        IFormFile? logo,
-        string? logoUrl,
-        List<IFormFile>? imageFiles)
-    {
-        var files = imageFiles ?? new List<IFormFile>();
-        var manifest = ParseProductImageManifest(imagesJson);
-
-        if (manifest is null)
-        {
-            if (files.Count > 0)
-            {
-                throw InvalidProductImages("images", "imageFiles");
-            }
-
-            if (existingProduct is null)
-            {
-                var createdLogoUrl = await ResolveLogoUrlAsync(
-                    logo,
-                    NormalizeProductLogoUrl(logoUrl));
-
-                var createdImages = new ProductImages();
-                if (createdLogoUrl is not null)
-                {
-                    createdImages.Items.Add(new ProductImage
-                    {
-                        Type = ProductImageType.Logo,
-                        Order = 1
-                    });
-                }
-
-                return new ProductImageState
-                {
-                    LogoUrl = createdLogoUrl,
-                    Images = createdImages
-                };
-            }
-
-            var requestedLogoUrl = NormalizeProductLogoUrl(logoUrl);
-            if (logo is null && requestedLogoUrl is null)
-            {
-                return new ProductImageState
-                {
-                    LogoUrl = existingProduct.LogoUrl,
-                    Images = existingProduct.Images
-                };
-            }
-
-            var updatedLogoUrl = await ResolveLogoUrlAsync(logo, requestedLogoUrl);
-            var updatedItems = GetStoredProductImages(existingProduct);
-            var existingLogo = updatedItems.FirstOrDefault(item => item.Type == ProductImageType.Logo);
-
-            if (existingLogo is null)
-            {
-                foreach (var item in updatedItems)
-                {
-                    item.Order++;
-                }
-
-                updatedItems.Insert(0, new ProductImage
-                {
-                    Type = ProductImageType.Logo,
-                    Order = 1
-                });
-            }
-
-            NormalizeProductImageOrders(updatedItems);
-
-            return new ProductImageState
-            {
-                LogoUrl = updatedLogoUrl,
-                Images = new ProductImages
-                {
-                    Items = updatedItems
-                }
-            };
-        }
-
-        ValidateProductImageManifest(manifest, files, existingProduct);
-
-        var hasLogoMarker = manifest.Any(item => item.Type == ProductImageType.Logo);
-        var requestedLogoUrlForManifest = NormalizeProductLogoUrl(logoUrl);
-        var hasRequestedLogoSource = logo is not null || requestedLogoUrlForManifest is not null;
-        var existingLogoUrl = NormalizeProductLogoUrl(existingProduct?.LogoUrl);
-
-        if (!hasLogoMarker && hasRequestedLogoSource)
-        {
-            throw InvalidProductImages("images", "logo", "logoUrl");
-        }
-
-        if (hasLogoMarker && logo is null && requestedLogoUrlForManifest is null && existingLogoUrl is null)
-        {
-            throw InvalidProductImages("images", "logo");
-        }
-
-        var finalLogoUrl = hasLogoMarker
-            ? await ResolveLogoUrlAsync(
-                logo,
-                requestedLogoUrlForManifest ?? existingLogoUrl)
-            : null;
-
-        var existingItems = existingProduct is null
-            ? new List<ProductImage>()
-            : GetStoredProductImages(existingProduct);
-
-        var existingImagesById = existingItems
-            .Where(item => item.Type == ProductImageType.Image && item.Id.HasValue)
-            .ToDictionary(item => item.Id!.Value);
-
-        var uploadedImageUrls = new Dictionary<int, string>();
-        for (var fileIndex = 0; fileIndex < files.Count; fileIndex++)
-        {
-            uploadedImageUrls[fileIndex] = await UploadProductImageAsync(files[fileIndex]);
-        }
-
-        var finalItems = new List<ProductImage>();
-
-        foreach (var manifestItem in manifest.OrderBy(item => item.Order))
-        {
-            if (manifestItem.Type == ProductImageType.Logo)
-            {
-                finalItems.Add(new ProductImage
-                {
-                    Id = null,
-                    Type = ProductImageType.Logo,
-                    Order = manifestItem.Order,
-                    Url = null
-                });
-
-                continue;
-            }
-
-            var imageId = manifestItem.Id ?? Guid.NewGuid();
-            var imageUrl = manifestItem.FileIndex.HasValue
-                ? uploadedImageUrls[manifestItem.FileIndex.Value]
-                : existingImagesById[manifestItem.Id!.Value].Url;
-
-            finalItems.Add(new ProductImage
-            {
-                Id = imageId,
-                Type = ProductImageType.Image,
-                Order = manifestItem.Order,
-                Url = imageUrl
-            });
-        }
-
-        return new ProductImageState
-        {
-            LogoUrl = finalLogoUrl,
-            Images = new ProductImages
-            {
-                Items = finalItems
-            }
-        };
-    }
-
-    private static List<ProductImageManifestItem>? ParseProductImageManifest(string? imagesJson)
-    {
-        if (imagesJson is null)
-        {
-            return null;
-        }
-
-        if (string.IsNullOrWhiteSpace(imagesJson))
-        {
-            throw InvalidProductImages("images");
-        }
-
-        try
-        {
-            var manifest = JsonSerializer.Deserialize<List<ProductImageManifestItem>>(
-                imagesJson,
-                ProductImageManifestOptions);
-
-            if (manifest is null)
-            {
-                throw InvalidProductImages("images");
-            }
-
-            return manifest;
-        }
-        catch (JsonException exception)
-        {
-            throw new ProductException(
-                "PRODUCT_IMAGES_INVALID",
-                "Nhóm ảnh Product không hợp lệ.",
-                exception);
-        }
-    }
-
-    private static void ValidateProductImageManifest(
-        List<ProductImageManifestItem> manifest,
-        List<IFormFile> imageFiles,
-        Product? existingProduct)
-    {
-        var imageItems = manifest
-            .Where(item => item.Type == ProductImageType.Image)
-            .ToList();
-        var logoItems = manifest
-            .Where(item => item.Type == ProductImageType.Logo)
-            .ToList();
-
-        if (manifest.Count > 3 || imageItems.Count > 2 || logoItems.Count > 1)
-        {
-            throw InvalidProductImages("images");
-        }
-
-        var orders = manifest.Select(item => item.Order).ToHashSet();
-        if (orders.Count != manifest.Count ||
-            manifest.Any(item => item.Order < 1) ||
-            Enumerable.Range(1, manifest.Count).Any(order => !orders.Contains(order)))
-        {
-            throw InvalidProductImages("images");
-        }
-
-        var existingImageIds = existingProduct is null
-            ? new HashSet<Guid>()
-            : GetStoredProductImages(existingProduct)
-                .Where(item => item.Type == ProductImageType.Image && item.Id.HasValue)
-                .Select(item => item.Id!.Value)
-                .ToHashSet();
-
-        var referencedFileIndexes = new HashSet<int>();
-
-        foreach (var item in manifest)
-        {
-            if (!Enum.IsDefined(item.Type))
-            {
-                throw InvalidProductImages("images");
-            }
-
-            if (item.Id == Guid.Empty)
-            {
-                throw InvalidProductImages("images");
-            }
-
-            if (item.Type == ProductImageType.Logo)
-            {
-                if (item.Id.HasValue || item.FileIndex.HasValue)
-                {
-                    throw InvalidProductImages("images");
-                }
-
-                continue;
-            }
-
-            if (existingProduct is null)
-            {
-                if (item.Id.HasValue || !item.FileIndex.HasValue)
-                {
-                    throw InvalidProductImages("images");
-                }
-            }
-            else if (item.Id.HasValue && !existingImageIds.Contains(item.Id.Value))
-            {
-                throw InvalidProductImages("images");
-            }
-            else if (!item.Id.HasValue && !item.FileIndex.HasValue)
-            {
-                throw InvalidProductImages("images");
-            }
-
-            if (item.FileIndex.HasValue &&
-                (item.FileIndex.Value < 0 ||
-                 item.FileIndex.Value >= imageFiles.Count ||
-                 !referencedFileIndexes.Add(item.FileIndex.Value)))
-            {
-                throw InvalidProductImages("images", "imageFiles");
-            }
-        }
-
-        if (referencedFileIndexes.Count != imageFiles.Count)
-        {
-            throw InvalidProductImages("images", "imageFiles");
-        }
-    }
-
     private async Task<string> UploadProductImageAsync(IFormFile file)
     {
         var uploadResult = await _mediaService.UploadImageAsync(
@@ -735,126 +475,79 @@ public sealed class Service : IService
         return uploadResult.Url;
     }
 
-    private async Task<string?> ResolveLogoUrlAsync(IFormFile? logo, string? fallbackUrl)
+    private async Task<string?> UploadProductImageIfPresentAsync(IFormFile? file)
     {
-        if (logo is null)
+        if (file is null)
         {
-            return fallbackUrl;
+            return null;
         }
 
-        return await UploadProductImageAsync(logo);
+        return await UploadProductImageAsync(file);
     }
 
-    private static string? NormalizeProductLogoUrl(string? logoUrl)
+    private static string? NormalizeProductImageUrl(string? imageUrl)
     {
-        return string.IsNullOrWhiteSpace(logoUrl)
+        return string.IsNullOrWhiteSpace(imageUrl)
             ? null
-            : logoUrl.Trim();
+            : imageUrl.Trim();
     }
 
-    private static List<ProductImage> GetStoredProductImages(Product product)
+    private static string? NormalizeProductImageAction(string? action)
     {
-        var items = product.Images?.Items?
-            .OrderBy(item => item.Order)
-            .Select(CloneProductImage)
-            .ToList() ?? new List<ProductImage>();
+        return string.IsNullOrWhiteSpace(action)
+            ? null
+            : action.Trim();
+    }
 
-        if (product.Images is null && NormalizeProductLogoUrl(product.LogoUrl) is not null)
+    private static void ValidateProductImageActions(
+        string? logoAction,
+        string? wordmarkAction,
+        Request.UpdateProductRequest request)
+    {
+        if (logoAction is not null &&
+            !string.Equals(logoAction, "remove", StringComparison.Ordinal))
         {
-            items.Insert(0, new ProductImage
-            {
-                Type = ProductImageType.Logo,
-                Order = 1
-            });
+            throw new ProductException(
+                "PRODUCT_IMAGE_ACTION_INVALID",
+                "Thao tác Logo của Product không hợp lệ.",
+                "logoAction");
         }
 
-        return items;
-    }
-
-    private static ProductImage CloneProductImage(ProductImage image)
-    {
-        return new ProductImage
+        if (wordmarkAction is not null &&
+            !string.Equals(wordmarkAction, "remove", StringComparison.Ordinal))
         {
-            Id = image.Id,
-            Type = image.Type,
-            Order = image.Order,
-            Url = image.Url
-        };
-    }
+            throw new ProductException(
+                "PRODUCT_IMAGE_ACTION_INVALID",
+                "Thao tác Wordmark của Product không hợp lệ.",
+                "wordmarkAction");
+        }
 
-    private static void NormalizeProductImageOrders(List<ProductImage> items)
-    {
-        items.Sort((left, right) => left.Order.CompareTo(right.Order));
-
-        for (var index = 0; index < items.Count; index++)
+        if (string.Equals(logoAction, "remove", StringComparison.Ordinal) &&
+            request.Logo is not null)
         {
-            items[index].Order = index + 1;
+            throw new ProductException(
+                "PRODUCT_IMAGE_ACTION_INVALID",
+                "Không thể vừa gỡ Logo vừa gửi Logo mới.",
+                "logoAction",
+                "logo");
+        }
+
+        if (string.Equals(wordmarkAction, "remove", StringComparison.Ordinal) &&
+            request.Wordmark is not null)
+        {
+            throw new ProductException(
+                "PRODUCT_IMAGE_ACTION_INVALID",
+                "Không thể vừa gỡ Wordmark vừa gửi Wordmark mới.",
+                "wordmarkAction",
+                "wordmark");
         }
     }
 
-    private static List<Response.ProductImageResponse> ToAdminImageResponses(Product product)
-    {
-        return ResolveProductImages(product)
-            .Select(item => new Response.ProductImageResponse
-            {
-                Id = item.Id,
-                Type = item.Type,
-                Order = item.Order,
-                Url = item.Url
-            })
-            .ToList();
-    }
-
-    private static List<Response.PublicProductImageResponse> ToPublicImageResponses(Product product)
-    {
-        var responses = new List<Response.PublicProductImageResponse>();
-        var logoAlreadyAdded = false;
-
-        foreach (var item in ResolveProductImages(product))
-        {
-            if (item.Type == ProductImageType.Logo)
-            {
-                if (logoAlreadyAdded)
-                {
-                    continue;
-                }
-
-                logoAlreadyAdded = true;
-            }
-
-            if (string.IsNullOrWhiteSpace(item.Url))
-            {
-                continue;
-            }
-
-            responses.Add(new Response.PublicProductImageResponse
-            {
-                Url = item.Url,
-                Order = item.Order
-            });
-        }
-
-        return responses;
-    }
-
-    private static List<ProductImage> ResolveProductImages(Product product)
-    {
-        var items = GetStoredProductImages(product);
-        var logoUrl = NormalizeProductLogoUrl(product.LogoUrl);
-
-        foreach (var item in items.Where(item => item.Type == ProductImageType.Logo))
-        {
-            item.Url = logoUrl;
-        }
-
-        return items;
-    }
-
-    private static ProductException InvalidProductImages(params string[] fields)
+    private static ProductException ProductImagesRequired(params string[] fields)
     {
         return new ProductException(
-            "PRODUCT_IMAGES_INVALID",
-            "Nhóm ảnh Product không hợp lệ.",
+            "PRODUCT_IMAGES_REQUIRED",
+            "Product đăng công khai phải có cả Logo và Wordmark.",
             fields);
     }
 
@@ -1137,7 +830,7 @@ public sealed class Service : IService
             Id = product.Id,
             Name = product.Name,
             LogoUrl = product.LogoUrl,
-            Images = ToAdminImageResponses(product),
+            WordmarkUrl = product.WordmarkUrl,
             ProductUrl = product.ProductUrl,
             Content = product.Content is null
                 ? null
@@ -1165,28 +858,6 @@ public sealed class Service : IService
             CreatedAt = product.CreatedAt,
             UpdatedAt = product.UpdatedAt
         };
-    }
-
-    private sealed class ProductImageState
-    {
-        public string? LogoUrl { get; set; }
-        public ProductImages? Images { get; set; }
-    }
-
-    private sealed class ProductImageManifestItem
-    {
-        [JsonPropertyName("id")]
-        public Guid? Id { get; set; }
-
-        [JsonPropertyName("type")]
-        [JsonConverter(typeof(JsonStringEnumConverter))]
-        public ProductImageType Type { get; set; }
-
-        [JsonPropertyName("order")]
-        public int Order { get; set; }
-
-        [JsonPropertyName("fileIndex")]
-        public int? FileIndex { get; set; }
     }
 
     private static PostgresException? FindPostgresException(Exception exception)

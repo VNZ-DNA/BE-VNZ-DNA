@@ -125,6 +125,7 @@ public class GetJobApplicationByIdTests
 
             modelBuilder.Entity<JobPost>().Ignore(jobPost => jobPost.Skills);
             modelBuilder.Entity<Product>().Ignore(product => product.Content);
+            modelBuilder.Entity<Product>().Ignore(product => product.Images);
 
             var snapshotConverter = new ValueConverter<JobPostSnapshot?, string?>(
                 value => JsonSerializer.Serialize(value, (JsonSerializerOptions?)null),

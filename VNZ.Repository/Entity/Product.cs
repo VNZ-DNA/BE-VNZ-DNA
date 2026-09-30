@@ -8,6 +8,7 @@ public class Product : BaseEntity
 {
     public string Name { get; set; } = null!;
     public string? LogoUrl { get; set; }
+    public string? WordmarkUrl { get; set; }
     public string? ProductUrl { get; set; }
     public ProductStatus Status { get; set; }
     public bool IsPublished { get; set; }

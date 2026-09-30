@@ -283,7 +283,9 @@ public class GlobalExceptionHandlerMiddleware : IMiddleware
             "PRODUCT_VALIDATION_FAILED" or
             "PRODUCT_VALIDATION_ERROR" or
             "PRODUCT_CONTENT_INVALID" or
-            "PRODUCT_IMAGES_INVALID" => HttpStatusCode.BadRequest,
+            "PRODUCT_IMAGE_ACTION_INVALID" or
+            "PRODUCT_IMAGES_INVALID" or
+            "PRODUCT_IMAGES_REQUIRED" => HttpStatusCode.BadRequest,
             "PRODUCT_NOT_FOUND" => HttpStatusCode.NotFound,
             "PRODUCT_ORDER_CONFLICT" or
             "PRODUCT_PUBLISHED_CANNOT_EDIT" or
