@@ -38,5 +38,13 @@ public static class Request
         public List<Guid>? ApplicationIds { get; set; }
         public string? InterviewDate { get; set; }
         public string? InterviewTime { get; set; }
+        public int? DurationMinutes { get; set; }
+        public string? InterviewMode { get; set; }
+        public string? Location { get; set; }
+        public string? LocationUrl { get; set; }
+        public string? InterviewInformationHtml { get; set; }
+        public string? AgendaHtml { get; set; }
+        public string? PreparationHtml { get; set; }
+        public Guid? PreviewApplicationId { get; set; }
     }
 }

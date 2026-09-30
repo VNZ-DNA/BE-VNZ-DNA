@@ -66,6 +66,19 @@ public sealed class JobApplicationController : ControllerBase
             HttpContext.TraceIdentifier));
     }
 
+    [HttpPost("interview-invitations/preview")]
+    [ResponseCache(NoStore = true, Location = ResponseCacheLocation.None)]
+    public async Task<IActionResult> PreviewInterviewInvitation(
+        [FromBody] Request.SendInterviewInvitationsRequest request)
+    {
+        var data = await _jobApplicationService.PreviewInterviewInvitationAsync(request);
+
+        return Ok(ResponseBuilder.SuccessResponse(
+            data,
+            "Xem trước email mời phỏng vấn thành công.",
+            HttpContext.TraceIdentifier));
+    }
+
     [HttpPost("interview-invitations")]
     public async Task<IActionResult> SendInterviewInvitations(
         [FromBody] Request.SendInterviewInvitationsRequest request)
