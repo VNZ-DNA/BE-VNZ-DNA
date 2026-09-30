@@ -10,10 +10,7 @@ public interface IService
     Task<Response.SendContactReplyResponse> SendReplyAsync(
         Guid id,
         Request.SendContactReplyRequest request);
-
-    Task<Response.ContactReplyPreviewResponse> PreviewReplyAsync(
-        Guid id,
-        Request.SendContactReplyRequest request);
+    Task<VNZ.Service.MailService.Response.ContactTemplateSchemaResponse> GetReplyTemplateAsync();
 
     Task<Response.CreateContactInquiryResponse> CreateContactInquiryAsync(
         Request.CreateContactInquiryRequest request);

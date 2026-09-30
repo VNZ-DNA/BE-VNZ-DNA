@@ -417,19 +417,7 @@ public sealed class Service : IService
             .ThenByDescending(application => application.Id)
             .Skip((request.Page - 1) * request.PageSize)
             .Take(request.PageSize)
-            .Select(application => new
-            {
-                Id = application.Id,
-                FullName = application.FullName,
-                Email = application.Email,
-                JobPostId = application.JobPostId,
-                JobPostTitle = application.JobPost.Title,
-                Status = application.Status,
-                CvUrl = application.CvUrl,
-                CreatedAt = application.CreatedAt,
-                InterviewAt = application.InterViewAt,
-                CanSelectForInterviewEmail = application.Status == JobApplicationStatus.Accepted
-            })
+            .Include(application => application.JobPost)
             .ToListAsync();
 
         var applications = applicationRows.Select(application => new Response.JobApplicationListItemResponse
@@ -438,12 +426,13 @@ public sealed class Service : IService
             FullName = application.FullName,
             Email = application.Email,
             JobPostId = application.JobPostId,
-            JobPostTitle = application.JobPostTitle,
+            JobPostTitle = application.JobPost.Title,
+            JobPostSnapshotTitle = application.JobPostSnapshot?.Title,
             Status = GetStatusLabel(application.Status),
             CvUrl = application.CvUrl,
             CreatedAt = application.CreatedAt,
-            InterviewAt = application.InterviewAt,
-            CanSelectForInterviewEmail = application.CanSelectForInterviewEmail
+            InterviewAt = application.InterViewAt,
+            CanSelectForInterviewEmail = application.Status == JobApplicationStatus.Accepted
         }).ToList();
 
         return new Response.JobApplicationListResponse
@@ -456,84 +445,17 @@ public sealed class Service : IService
         };
     }
 
-    public async Task<Response.InterviewInvitationPreviewResponse> PreviewInterviewInvitationAsync(
-        Request.SendInterviewInvitationsRequest request)
+    public Task<VNZ.Service.MailService.Response.InterviewTemplateSchemaResponse> GetInterviewInvitationTemplateAsync()
     {
-        ArgumentNullException.ThrowIfNull(request);
-
-        var applicationIds = ValidateApplicationIds(request.ApplicationIds);
-        var interviewAt = ParseInterviewAt(request.InterviewDate, request.InterviewTime);
-        var normalizedContent = NormalizeInterviewContent(request);
-
-        if (interviewAt <= DateTimeOffset.UtcNow.ToOffset(VietnamOffset))
-        {
-            throw new JobApplicationException(
-                "JOB_APPLICATION_INTERVIEW_TIME_INVALID",
-                "Lịch phỏng vấn phải lớn hơn thời điểm hiện tại.",
-                nameof(request.InterviewDate),
-                nameof(request.InterviewTime));
-        }
-
-        if (!request.PreviewApplicationId.HasValue)
-        {
-            throw new JobApplicationException(
-                "JOB_APPLICATION_INTERVIEW_REQUEST_INVALID",
-                "Phải chọn một hồ sơ để xem trước email.",
-                "previewApplicationId");
-        }
-
-        if (!applicationIds.Contains(request.PreviewApplicationId.Value))
-        {
-            throw new JobApplicationException(
-                "JOB_APPLICATION_INTERVIEW_REQUEST_INVALID",
-                "Hồ sơ xem trước phải thuộc danh sách hồ sơ được chọn.",
-                "previewApplicationId");
-        }
-
-        var applications = await _dbContext.JobApplications
-            .Where(application => applicationIds.Contains(application.Id))
-            .Include(application => application.JobPost)
-            .ToListAsync();
-
-        if (applications.Count != applicationIds.Count ||
-            applications.Any(application => application.Status != JobApplicationStatus.Accepted))
-        {
-            throw new JobApplicationException(
-                "JOB_APPLICATION_INTERVIEW_BATCH_INVALID",
-                "Tất cả hồ sơ được chọn phải đang ở trạng thái Đã duyệt.",
-                nameof(request.ApplicationIds));
-        }
-
-        var application = applications.Single(item => item.Id == request.PreviewApplicationId.Value);
-        var positionTitle = application.JobPostSnapshot?.Title ?? application.JobPost.Title;
-        var renderedEmail = _emailTemplateRenderer.RenderInterview(new MailService.InterviewEmailTemplateData
-        {
-            PositionTitle = positionTitle,
-            InterviewAt = interviewAt,
-            DurationMinutes = normalizedContent.DurationMinutes,
-            InterviewMode = normalizedContent.InterviewMode,
-            Location = normalizedContent.Location,
-            LocationUrl = normalizedContent.LocationUrl,
-            InterviewInformationHtml = normalizedContent.InterviewInformationHtml,
-            AgendaHtml = normalizedContent.AgendaHtml,
-            PreparationHtml = normalizedContent.PreparationHtml
-        });
-
-        return new Response.InterviewInvitationPreviewResponse
-        {
-            ApplicationId = application.Id,
-            RecipientName = application.FullName,
-            RecipientEmail = application.Email,
-            PositionTitle = positionTitle,
-            Subject = renderedEmail.Subject,
-            Html = renderedEmail.HtmlBody
-        };
+        return Task.FromResult(VNZ.Service.MailService.EmailTemplateSchemaProvider.GetInterviewSchema());
     }
 
     public async Task<Response.SendInterviewInvitationsResponse> SendInterviewInvitationsAsync(
         Request.SendInterviewInvitationsRequest request)
     {
         ArgumentNullException.ThrowIfNull(request);
+
+        ValidateAdditionalFields(request.AdditionalFields);
 
         var applicationIds = ValidateApplicationIds(request.ApplicationIds);
         var interviewAt = ParseInterviewAt(request.InterviewDate, request.InterviewTime);
@@ -715,6 +637,18 @@ public sealed class Service : IService
             AgendaHtml = agendaHtml!,
             PreparationHtml = preparationHtml!
         };
+    }
+
+    private static void ValidateAdditionalFields(
+        Dictionary<string, System.Text.Json.JsonElement>? additionalFields)
+    {
+        if (additionalFields is { Count: > 0 })
+        {
+            throw new JobApplicationException(
+                "JOB_APPLICATION_INTERVIEW_REQUEST_INVALID",
+                "Payload chứa field không thuộc contract email mời phỏng vấn.",
+                additionalFields.Keys.ToArray());
+        }
     }
 
     private sealed class NormalizedInterviewContent
