@@ -11,6 +11,10 @@ public interface IService
         Guid id,
         Request.SendContactReplyRequest request);
 
+    Task<Response.ContactReplyPreviewResponse> PreviewReplyAsync(
+        Guid id,
+        Request.SendContactReplyRequest request);
+
     Task<Response.CreateContactInquiryResponse> CreateContactInquiryAsync(
         Request.CreateContactInquiryRequest request);
 }

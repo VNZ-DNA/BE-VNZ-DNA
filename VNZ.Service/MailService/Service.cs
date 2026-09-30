@@ -18,14 +18,17 @@ public class Service : IService
     private readonly HttpClient _httpClient;
     private readonly MailOptions _mailOptions;
     private readonly ILogger<Service> _logger;
+    private readonly IEmailTemplateRenderer _emailTemplateRenderer;
 
     public Service(
         HttpClient httpClient,
         IConfiguration configuration,
-        ILogger<Service> logger)
+        ILogger<Service> logger,
+        IEmailTemplateRenderer? emailTemplateRenderer = null)
     {
         _httpClient = httpClient;
         _logger = logger;
+        _emailTemplateRenderer = emailTemplateRenderer ?? new EmailTemplateRenderer();
         _mailOptions = new MailOptions
         {
             BaseUrl = configuration["BREVO_BASE_URL"] ?? "https://api.brevo.com/v3/",
@@ -67,7 +70,9 @@ public class Service : IService
             {
                 ["Idempotency-Key"] = mailContent.IdempotencyKey
             },
-            tags = mailContent.IsHtmlBody ? null : new[] { "contact-reply" }
+            tags = mailContent.Tag is not null
+                ? new[] { mailContent.Tag }
+                : mailContent.IsHtmlBody ? null : new[] { "contact-reply" }
         };
 
         using var request = new HttpRequestMessage(HttpMethod.Post, new Uri(new Uri(_mailOptions.BaseUrl), "smtp/email"));
@@ -95,14 +100,28 @@ public class Service : IService
     {
         try
         {
+            var renderedEmail = _emailTemplateRenderer.RenderInterview(new InterviewEmailTemplateData
+            {
+                PositionTitle = content.PositionTitle,
+                InterviewAt = content.InterviewAt,
+                DurationMinutes = content.DurationMinutes,
+                InterviewMode = content.InterviewMode,
+                Location = content.Location,
+                LocationUrl = content.LocationUrl,
+                InterviewInformationHtml = content.InterviewInformationHtml,
+                AgendaHtml = content.AgendaHtml,
+                PreparationHtml = content.PreparationHtml
+            });
+
             await SendAsync(new MailContent
             {
                 To = content.To,
                 ToName = content.ToName,
-                Subject = "Thư mời phỏng vấn tại VNZ",
-                Body = BuildInterviewInvitationHtml(content.PositionTitle, content.InterviewAt),
+                Subject = renderedEmail.Subject,
+                Body = renderedEmail.HtmlBody,
                 IdempotencyKey = content.IdempotencyKey,
-                IsHtmlBody = true
+                IsHtmlBody = true,
+                Tag = "interview-invitation"
             });
 
             return new MailDeliveryResult

@@ -72,6 +72,16 @@ public static class Response
         public required List<InterviewInvitationResultResponse> Results { get; set; }
     }
 
+    public class InterviewInvitationPreviewResponse
+    {
+        public Guid ApplicationId { get; set; }
+        public required string RecipientName { get; set; }
+        public required string RecipientEmail { get; set; }
+        public required string PositionTitle { get; set; }
+        public required string Subject { get; set; }
+        public required string Html { get; set; }
+    }
+
     public class InterviewInvitationResultResponse
     {
         public Guid ApplicationId { get; set; }

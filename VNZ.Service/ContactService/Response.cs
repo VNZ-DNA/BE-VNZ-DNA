@@ -47,6 +47,15 @@ public class Response
         public Guid ContactedBy { get; set; }
     }
 
+    public class ContactReplyPreviewResponse
+    {
+        public Guid ContactId { get; set; }
+        public required string RecipientName { get; set; }
+        public required string RecipientEmail { get; set; }
+        public required string Subject { get; set; }
+        public required string Html { get; set; }
+    }
+
     public class CreateContactInquiryResponse
     {
         public Guid Id { get; set; }

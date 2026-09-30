@@ -16,6 +16,8 @@ public class Request
     {
         public string? Subject { get; set; }
         public string? Body { get; set; }
+        public string? ProposalHtml { get; set; }
+        public string? NextStepsHtml { get; set; }
     }
 
     public class CreateContactInquiryRequest

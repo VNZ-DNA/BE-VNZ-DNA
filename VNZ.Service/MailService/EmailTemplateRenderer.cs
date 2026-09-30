@@ -1,0 +1,251 @@
+using System.Globalization;
+using System.Net;
+
+namespace VNZ.Service.MailService;
+
+public interface IEmailTemplateRenderer
+{
+    RenderedEmail RenderInterview(InterviewEmailTemplateData data);
+    RenderedEmail RenderContact(ContactEmailTemplateData data);
+}
+
+public sealed class RenderedEmail
+{
+    public string Subject { get; init; } = string.Empty;
+    public string HtmlBody { get; init; } = string.Empty;
+}
+
+public sealed class InterviewEmailTemplateData
+{
+    public string PositionTitle { get; init; } = string.Empty;
+    public DateTimeOffset InterviewAt { get; init; }
+    public int DurationMinutes { get; init; } = 30;
+    public string InterviewMode { get; init; } = "Onsite";
+    public string? Location { get; init; } = EmailTemplateDefaults.DefaultInterviewAddress;
+    public string? LocationUrl { get; init; } = EmailTemplateDefaults.DefaultInterviewLocationUrl;
+    public string? InterviewInformationHtml { get; init; }
+    public string AgendaHtml { get; init; } = EmailTemplateDefaults.DefaultAgendaHtml;
+    public string PreparationHtml { get; init; } = EmailTemplateDefaults.DefaultPreparationHtml;
+}
+
+public sealed class ContactEmailTemplateData
+{
+    public string RecipientName { get; init; } = string.Empty;
+    public string Subject { get; init; } = string.Empty;
+    public string BodyHtml { get; init; } = string.Empty;
+    public string? ProposalHtml { get; init; }
+    public string? NextStepsHtml { get; init; }
+}
+
+internal static class EmailTemplateDefaults
+{
+    public const string VnzLogoUrl = "https://be-vnz-dna-latest.onrender.com/images/logo-dark.png";
+    public const string DefaultInterviewLocationUrl =
+        "https://www.google.com/maps/place/C%C3%94NG+TY+TNHH+KOKEN/@10.8210167,106.7842329,1018m/data=!3m2!1e3!4b1!4m6!3m5!1s0x3175277517c8d095:0xa5a0955a7ad81fc3!8m2!3d10.8210167!4d106.7842329!16s%2Fg%2F11svb4wcm6!18m1!1e1?entry=ttu&g_ep=EgoyMDI2MDkyMi4wIKXMDSoASAFQAw%3D%3D";
+    public const string DefaultInterviewAddress = "84 đường D5, KDC Thiên Lý, Phường Phước Long, TP. HCM";
+    public const string DefaultAgendaHtml = "<p>1. Giới thiệu &amp; định hướng</p><p>Trao đổi về bản thân, định hướng nghề nghiệp và mong muốn của bạn trong kỳ thực tập.</p><p>2. Kiến thức chuyên môn</p><p>Một số câu hỏi cơ bản liên quan đến vị trí ứng tuyển và các môn học, dự án bạn đã thực hiện tại trường.</p><p>3. Giới thiệu công ty &amp; hỏi đáp</p><p>Chia sẻ về VNZ Technology, lộ trình thực tập, và giải đáp các thắc mắc của bạn.</p>";
+    public const string DefaultPreparationHtml = "<p>•&nbsp; CV bản cứng hoặc bản mềm (nếu có cập nhật mới)</p><p>•&nbsp; Thẻ sinh viên</p><p>•&nbsp; Sản phẩm, dự án hoặc portfolio bạn muốn giới thiệu (nếu có)</p><p>•&nbsp; Có mặt trước giờ hẹn khoảng 10 phút để chuẩn bị</p>";
+}
+
+public sealed class EmailTemplateRenderer : IEmailTemplateRenderer
+{
+    private static readonly TimeSpan VietnamOffset = TimeSpan.FromHours(7);
+
+    public RenderedEmail RenderInterview(InterviewEmailTemplateData data)
+    {
+        ArgumentNullException.ThrowIfNull(data);
+
+        var localInterviewAt = data.InterviewAt.ToOffset(VietnamOffset);
+        var encodedPositionTitle = WebUtility.HtmlEncode(data.PositionTitle);
+        var encodedLocation = WebUtility.HtmlEncode(data.Location ?? string.Empty);
+        var encodedLocationUrl = WebUtility.HtmlEncode(data.LocationUrl ?? string.Empty);
+        var formattedInterviewAt = FormatInterviewAt(localInterviewAt);
+        var confirmationDeadline = localInterviewAt.AddDays(-2).ToString(
+            "dd/MM/yyyy",
+            CultureInfo.InvariantCulture);
+        var isOnline = string.Equals(data.InterviewMode, "Online", StringComparison.Ordinal);
+        var modeLabel = isOnline ? "Trực tuyến" : "Trực tiếp tại văn phòng";
+        var locationLabel = isOnline ? "Tham gia trực tuyến" : encodedLocation;
+        var locationHtml = string.IsNullOrWhiteSpace(data.LocationUrl)
+            ? locationLabel
+            : $"<a href=\"{encodedLocationUrl}\" style=\"color:#1769aa;text-decoration:underline;\">{locationLabel}</a>";
+        var interviewInformation = RenderOptionalRichBlock(data.InterviewInformationHtml);
+
+        var html = $"""
+            <!DOCTYPE html>
+            <html lang="vi">
+            <head>
+                <meta charset="UTF-8">
+                <meta name="viewport" content="width=device-width, initial-scale=1.0">
+                <title>Thư mời phỏng vấn tại VNZ</title>
+            </head>
+            <body style="margin:0;padding:32px 12px;background:#eef2f6;font-family:Arial,Helvetica,sans-serif;color:#243447;font-size:14px;line-height:1.85;">
+                <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width:600px;margin:0 auto;background:#ffffff;border-collapse:separate;border-spacing:0;border-radius:6px;">
+                    <tr>
+                        <td align="center" style="padding:36px 40px 24px;">
+                            <img src="{EmailTemplateDefaults.VnzLogoUrl}" width="200" alt="VNZ Technology" style="display:block;width:200px;max-width:100%;height:auto;border:0;">
+                        </td>
+                    </tr>
+                    <tr>
+                        <td style="padding:0 40px;"><div style="height:1px;background:#dbe2ea;"></div></td>
+                    </tr>
+                    <tr>
+                        <td style="padding:26px 40px 38px;">
+                            <p style="margin:0 0 18px;font-size:14px;">Thân chào bạn,</p>
+                            <p style="margin:0 0 18px;">Cảm ơn bạn đã quan tâm và ứng tuyển tại <strong>VNZ Technology.</strong></p>
+                            <p style="margin:0 0 20px;">Sau khi xem xét hồ sơ, chúng tôi trân trọng mời bạn tham gia buổi phỏng vấn cho vị trí <strong>{encodedPositionTitle}.</strong></p>
+
+                            <p style="margin:0 0 12px;">Thông tin buổi phỏng vấn:</p>
+                            <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="border-collapse:collapse;font-size:14px;line-height:1.6;">
+                                <tr>
+                                    <td width="38%" style="padding:12px 14px;background:#f3f6f9;border-bottom:1px solid #dfe5ec;color:#64748b;">Vị trí thực tập</td>
+                                    <td style="padding:12px 14px;border-bottom:1px solid #dfe5ec;">{encodedPositionTitle}</td>
+                                </tr>
+                                <tr>
+                                    <td width="38%" style="padding:12px 14px;background:#f3f6f9;border-bottom:1px solid #dfe5ec;color:#64748b;">Thời gian</td>
+                                    <td style="padding:12px 14px;border-bottom:1px solid #dfe5ec;color:#e83e00;font-weight:700;">{formattedInterviewAt}</td>
+                                </tr>
+                                <tr>
+                                    <td width="38%" style="padding:12px 14px;background:#f3f6f9;border-bottom:1px solid #dfe5ec;color:#64748b;">Hình thức</td>
+                                    <td style="padding:12px 14px;border-bottom:1px solid #dfe5ec;">{modeLabel}</td>
+                                </tr>
+                                <tr>
+                                    <td width="38%" style="padding:12px 14px;background:#f3f6f9;border-bottom:1px solid #dfe5ec;color:#64748b;">Địa điểm / Link</td>
+                                    <td style="padding:12px 14px;border-bottom:1px solid #dfe5ec;">{locationHtml}</td>
+                                </tr>
+                                <tr>
+                                    <td width="38%" style="padding:12px 14px;background:#f3f6f9;color:#64748b;">Thời lượng dự kiến</td>
+                                    <td style="padding:12px 14px;">{data.DurationMinutes} phút</td>
+                                </tr>
+                            </table>
+                            {interviewInformation}
+
+                            <p style="margin:24px 0 10px;font-weight:700;color:#1f2937;">Nội dung buổi phỏng vấn</p>
+                            <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="border-collapse:collapse;">
+                                <tr>
+                                    <td style="padding:0 0 0 14px;border-left:3px solid #f36b21;color:#334155;">{data.AgendaHtml}</td>
+                                </tr>
+                            </table>
+
+                            <p style="margin:24px 0 10px;font-weight:700;color:#1f2937;">Bạn cần chuẩn bị</p>
+                            <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="border-collapse:collapse;background:#f3f6f9;">
+                                <tr><td style="padding:12px 18px;color:#64748b;">{data.PreparationHtml}</td></tr>
+                            </table>
+
+                            <p style="margin:24px 0 12px;">Vui lòng phản hồi email này để xác nhận tham gia trước <strong>14:00 ngày {confirmationDeadline}</strong>. Nếu thời gian trên không phù hợp, bạn có thể đề xuất khung giờ khác để chúng tôi sắp xếp lại.</p>
+                            <p style="margin:0 0 4px;">Chúc bạn có một buổi phỏng vấn thật thoải mái. Rất mong được gặp bạn.</p>
+                            <p style="margin:0;">Trân trọng,<br><strong>VNZ Technology</strong></p>
+                        </td>
+                    </tr>
+                </table>
+            </body>
+            </html>
+            """;
+
+        return new RenderedEmail
+        {
+            Subject = "Thư mời phỏng vấn tại VNZ",
+            HtmlBody = html
+        };
+    }
+
+    public RenderedEmail RenderContact(ContactEmailTemplateData data)
+    {
+        ArgumentNullException.ThrowIfNull(data);
+
+        var encodedRecipientName = WebUtility.HtmlEncode(data.RecipientName);
+        var proposal = RenderOptionalContactSection("Phương án đề xuất", data.ProposalHtml);
+        var nextSteps = RenderOptionalContactSection("Bước tiếp theo", data.NextStepsHtml);
+
+        var html = $"""
+            <!DOCTYPE html>
+            <html lang="vi">
+            <head>
+                <meta charset="UTF-8">
+                <meta name="viewport" content="width=device-width, initial-scale=1.0">
+                <title>VNZ Technology | Phản hồi liên hệ</title>
+            </head>
+            <body style="margin:0;padding:32px 12px;background:#eef2f6;font-family:Arial,Helvetica,sans-serif;color:#243447;font-size:14px;line-height:1.85;">
+                <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width:600px;margin:0 auto;background:#ffffff;border-collapse:separate;border-spacing:0;border-radius:6px;">
+                    <tr>
+                        <td align="center" style="padding:36px 40px 24px;"><img src="{EmailTemplateDefaults.VnzLogoUrl}" width="200" alt="VNZ Technology" style="display:block;width:200px;max-width:100%;height:auto;border:0;"></td>
+                    </tr>
+                    <tr><td style="padding:0 40px;"><div style="height:1px;background:#dbe2ea;"></div></td></tr>
+                    <tr>
+                        <td style="padding:28px 40px 36px;">
+                            <p style="margin:0 0 8px;color:#e85d18;font-size:11px;font-weight:700;letter-spacing:1.2px;">PHẢN HỒI TỪ VNZ TECHNOLOGY</p>
+                            <h1 style="margin:0 0 22px;color:#243447;font-size:18px;font-weight:700;line-height:1.4;">Cảm ơn Anh/Chị đã kết nối với VNZ</h1>
+                            <p style="margin:0 0 16px;font-size:14px;">Thân chào {encodedRecipientName},</p>
+                            <p style="margin:0 0 22px;">VNZ Technology trân trọng cảm ơn Anh/Chị đã dành thời gian liên hệ và chia sẻ nhu cầu. Chúng tôi đã xem xét nội dung trao đổi và gửi phản hồi đến Anh/Chị bên dưới.</p>
+                            <p style="margin:0 0 10px;font-weight:700;color:#243447;">Trao đổi cùng đội ngũ VNZ</p>
+                            <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="border-collapse:collapse;background:#f3f6f9;">
+                                <tr><td style="padding:18px 20px;border-left:3px solid #f36b21;color:#334155;line-height:1.8;">{data.BodyHtml}</td></tr>
+                            </table>
+                            {proposal}
+                            {nextSteps}
+                            <p style="margin:22px 0 16px;">Chúng tôi mong muốn được tiếp tục lắng nghe, trao đổi để hiểu rõ hơn mục tiêu của Anh/Chị và cùng tìm ra hướng hợp tác phù hợp. Anh/Chị có thể trả lời trực tiếp email này nếu muốn bổ sung thông tin hoặc hẹn một buổi trao đổi.</p>
+                            <p style="margin:0;">Trân trọng,<br><strong style="color:#243447;">Đội ngũ VNZ Technology</strong></p>
+                        </td>
+                    </tr>
+                    <tr><td style="padding:0 40px;"><div style="height:1px;background:#dbe2ea;"></div></td></tr>
+                    <tr>
+                        <td align="center" style="padding:18px 24px 22px;background:#f3f6f9;color:#64748b;font-size:12px;line-height:1.6;"><strong style="color:#334155;">VNZ Technology</strong><br>Vietnamese Minds <span style="color:#f36b21;">&#8226;</span> Global Solutions</td>
+                    </tr>
+                </table>
+            </body>
+            </html>
+            """;
+
+        return new RenderedEmail
+        {
+            Subject = data.Subject,
+            HtmlBody = html
+        };
+    }
+
+    private static string RenderOptionalRichBlock(string? html)
+    {
+        if (string.IsNullOrWhiteSpace(html))
+        {
+            return string.Empty;
+        }
+
+        return $"""
+            <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="border-collapse:collapse;background:#f3f6f9;margin-top:18px;">
+                <tr><td style="padding:14px 18px;border-left:3px solid #f36b21;color:#64748b;">{html}</td></tr>
+            </table>
+            """;
+    }
+
+    private static string RenderOptionalContactSection(string heading, string? html)
+    {
+        if (string.IsNullOrWhiteSpace(html))
+        {
+            return string.Empty;
+        }
+
+        return $"""
+            <p style="margin:22px 0 10px;font-weight:700;color:#243447;">{heading}</p>
+            <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="border-collapse:collapse;background:#f3f6f9;">
+                <tr><td style="padding:18px 20px;border-left:3px solid #f36b21;color:#334155;line-height:1.8;">{html}</td></tr>
+            </table>
+            """;
+    }
+
+    private static string FormatInterviewAt(DateTimeOffset interviewAt)
+    {
+        var weekday = interviewAt.DayOfWeek switch
+        {
+            DayOfWeek.Sunday => "Chủ nhật",
+            DayOfWeek.Monday => "Thứ hai",
+            DayOfWeek.Tuesday => "Thứ ba",
+            DayOfWeek.Wednesday => "Thứ tư",
+            DayOfWeek.Thursday => "Thứ năm",
+            DayOfWeek.Friday => "Thứ sáu",
+            DayOfWeek.Saturday => "Thứ bảy",
+            _ => throw new ArgumentOutOfRangeException(nameof(interviewAt))
+        };
+
+        return $"{interviewAt:HH:mm} - {weekday}, ngày {interviewAt:dd/MM/yyyy}";
+    }
+}

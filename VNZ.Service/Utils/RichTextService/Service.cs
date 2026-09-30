@@ -32,6 +32,10 @@ public sealed class Service : IService
         new[] { "p", "strong", "em", "a", "br" },
         StringComparer.OrdinalIgnoreCase);
 
+    private static readonly HashSet<string> EmailAllowedTags = new(
+        new[] { "p", "br", "strong", "em", "u", "s", "ul", "ol", "li", "blockquote", "a" },
+        StringComparer.OrdinalIgnoreCase);
+
     private static readonly Regex TagTokenRegex = new(
         @"<!--.*?-->|</?[A-Za-z][^>]*>",
         RegexOptions.Compiled | RegexOptions.Singleline | RegexOptions.CultureInvariant);
@@ -62,6 +66,35 @@ public sealed class Service : IService
         {
             AppendEncodedText(result, value[lastIndex..tokenMatch.Index]);
             result.Append(SanitizeTag(tokenMatch.Value, allowLinks));
+            lastIndex = tokenMatch.Index + tokenMatch.Length;
+        }
+
+        AppendEncodedText(result, value[lastIndex..]);
+
+        var sanitized = result.ToString().Trim();
+        return string.IsNullOrWhiteSpace(ToPlainText(sanitized))
+            ? null
+            : sanitized;
+    }
+
+    public string? SanitizeEmail(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return null;
+        }
+
+        var result = new StringBuilder();
+        var lastIndex = 0;
+
+        foreach (Match tokenMatch in TagTokenRegex.Matches(value))
+        {
+            AppendEncodedText(result, value[lastIndex..tokenMatch.Index]);
+            result.Append(SanitizeTag(
+                tokenMatch.Value,
+                allowLinks: true,
+                EmailAllowedTags,
+                decodeHref: true));
             lastIndex = tokenMatch.Index + tokenMatch.Length;
         }
 
@@ -413,7 +446,8 @@ public sealed class Service : IService
     private static string SanitizeTag(
         string token,
         bool allowLinks,
-        HashSet<string> allowedTags)
+        HashSet<string> allowedTags,
+        bool decodeHref = false)
     {
         if (token.StartsWith("<!--", StringComparison.Ordinal))
         {
@@ -448,6 +482,11 @@ public sealed class Service : IService
         }
 
         var href = GetAttributeValue(tagMatch.Groups["attributes"].Value, "href");
+        if (decodeHref && href is not null)
+        {
+            href = WebUtility.HtmlDecode(href);
+        }
+
         if (href is null || !IsHttpsUrl(href))
         {
             return "<a>";
