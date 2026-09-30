@@ -161,6 +161,7 @@ public class AppDbContext : DbContext
             entity.HasKey(x => x.Id);
             entity.Property(x => x.Name).HasMaxLength(200).IsRequired();
             entity.Property(x => x.Status).HasConversion<string>().IsRequired();
+            entity.Property(x => x.WordmarkUrl).HasColumnType("text");
             entity.Property(x => x.Content).HasColumnType("jsonb");
             entity.Property(x => x.Images).HasColumnType("jsonb");
             entity.HasOne(x => x.Creator).WithMany(x => x.Products).HasForeignKey(x => x.CreatedBy).OnDelete(DeleteBehavior.Restrict);

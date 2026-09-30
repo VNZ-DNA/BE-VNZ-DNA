@@ -148,6 +148,7 @@ public class GetPublicJobPostListTests
 
             modelBuilder.Entity<JobApplication>().Ignore(application => application.JobPostSnapshot);
             modelBuilder.Entity<Product>().Ignore(product => product.Content);
+            modelBuilder.Entity<Product>().Ignore(product => product.Images);
 
             var skillsConverter = new ValueConverter<List<string>, string>(
                 skills => JsonSerializer.Serialize(skills, (JsonSerializerOptions?)null),
