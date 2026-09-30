@@ -20,15 +20,34 @@ public sealed class Service : IService
     private readonly AppDbContext _dbContext;
     private readonly MailService.IService _mailService;
     private readonly ILogger<Service> _logger;
+    private readonly MailService.IEmailTemplateRenderer _emailTemplateRenderer;
+    private readonly VNZ.Service.Utils.RichTextService.IService _richTextService;
 
     public Service(
         AppDbContext dbContext,
         MailService.IService mailService,
         ILogger<Service> logger)
+        : this(
+            dbContext,
+            mailService,
+            logger,
+            new MailService.EmailTemplateRenderer(),
+            new VNZ.Service.Utils.RichTextService.Service())
+    {
+    }
+
+    public Service(
+        AppDbContext dbContext,
+        MailService.IService mailService,
+        ILogger<Service> logger,
+        MailService.IEmailTemplateRenderer emailTemplateRenderer,
+        VNZ.Service.Utils.RichTextService.IService richTextService)
     {
         _dbContext = dbContext;
         _mailService = mailService;
         _logger = logger;
+        _emailTemplateRenderer = emailTemplateRenderer;
+        _richTextService = richTextService;
     }
 
     public async Task<Response.CreateJobApplicationResponse> CreateAsync(Request.CreateJobApplicationRequest request)
@@ -437,6 +456,80 @@ public sealed class Service : IService
         };
     }
 
+    public async Task<Response.InterviewInvitationPreviewResponse> PreviewInterviewInvitationAsync(
+        Request.SendInterviewInvitationsRequest request)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+
+        var applicationIds = ValidateApplicationIds(request.ApplicationIds);
+        var interviewAt = ParseInterviewAt(request.InterviewDate, request.InterviewTime);
+        var normalizedContent = NormalizeInterviewContent(request);
+
+        if (interviewAt <= DateTimeOffset.UtcNow.ToOffset(VietnamOffset))
+        {
+            throw new JobApplicationException(
+                "JOB_APPLICATION_INTERVIEW_TIME_INVALID",
+                "Lịch phỏng vấn phải lớn hơn thời điểm hiện tại.",
+                nameof(request.InterviewDate),
+                nameof(request.InterviewTime));
+        }
+
+        if (!request.PreviewApplicationId.HasValue)
+        {
+            throw new JobApplicationException(
+                "JOB_APPLICATION_INTERVIEW_REQUEST_INVALID",
+                "Phải chọn một hồ sơ để xem trước email.",
+                "previewApplicationId");
+        }
+
+        if (!applicationIds.Contains(request.PreviewApplicationId.Value))
+        {
+            throw new JobApplicationException(
+                "JOB_APPLICATION_INTERVIEW_REQUEST_INVALID",
+                "Hồ sơ xem trước phải thuộc danh sách hồ sơ được chọn.",
+                "previewApplicationId");
+        }
+
+        var applications = await _dbContext.JobApplications
+            .Where(application => applicationIds.Contains(application.Id))
+            .Include(application => application.JobPost)
+            .ToListAsync();
+
+        if (applications.Count != applicationIds.Count ||
+            applications.Any(application => application.Status != JobApplicationStatus.Accepted))
+        {
+            throw new JobApplicationException(
+                "JOB_APPLICATION_INTERVIEW_BATCH_INVALID",
+                "Tất cả hồ sơ được chọn phải đang ở trạng thái Đã duyệt.",
+                nameof(request.ApplicationIds));
+        }
+
+        var application = applications.Single(item => item.Id == request.PreviewApplicationId.Value);
+        var positionTitle = application.JobPostSnapshot?.Title ?? application.JobPost.Title;
+        var renderedEmail = _emailTemplateRenderer.RenderInterview(new MailService.InterviewEmailTemplateData
+        {
+            PositionTitle = positionTitle,
+            InterviewAt = interviewAt,
+            DurationMinutes = normalizedContent.DurationMinutes,
+            InterviewMode = normalizedContent.InterviewMode,
+            Location = normalizedContent.Location,
+            LocationUrl = normalizedContent.LocationUrl,
+            InterviewInformationHtml = normalizedContent.InterviewInformationHtml,
+            AgendaHtml = normalizedContent.AgendaHtml,
+            PreparationHtml = normalizedContent.PreparationHtml
+        });
+
+        return new Response.InterviewInvitationPreviewResponse
+        {
+            ApplicationId = application.Id,
+            RecipientName = application.FullName,
+            RecipientEmail = application.Email,
+            PositionTitle = positionTitle,
+            Subject = renderedEmail.Subject,
+            Html = renderedEmail.HtmlBody
+        };
+    }
+
     public async Task<Response.SendInterviewInvitationsResponse> SendInterviewInvitationsAsync(
         Request.SendInterviewInvitationsRequest request)
     {
@@ -444,6 +537,7 @@ public sealed class Service : IService
 
         var applicationIds = ValidateApplicationIds(request.ApplicationIds);
         var interviewAt = ParseInterviewAt(request.InterviewDate, request.InterviewTime);
+        var normalizedContent = NormalizeInterviewContent(request);
 
         if (interviewAt <= DateTimeOffset.UtcNow.ToOffset(VietnamOffset))
         {
@@ -484,6 +578,13 @@ public sealed class Service : IService
                 ToName = application.FullName,
                 PositionTitle = application.JobPostSnapshot?.Title ?? application.JobPost.Title,
                 InterviewAt = interviewAt,
+                DurationMinutes = normalizedContent.DurationMinutes,
+                InterviewMode = normalizedContent.InterviewMode,
+                Location = normalizedContent.Location,
+                LocationUrl = normalizedContent.LocationUrl,
+                InterviewInformationHtml = normalizedContent.InterviewInformationHtml,
+                AgendaHtml = normalizedContent.AgendaHtml,
+                PreparationHtml = normalizedContent.PreparationHtml,
                 IdempotencyKey = $"interview-invitation-{application.Id}"
             });
 
@@ -528,6 +629,103 @@ public sealed class Service : IService
             FailedCount = results.Count(result => result.Outcome == "MailFailed"),
             Results = results
         };
+    }
+
+    private string? NormalizeEmailRichText(
+        string? value,
+        string field,
+        bool required,
+        ICollection<string> fields)
+    {
+        if (value is { Length: > 20_000 })
+        {
+            fields.Add(field);
+            return null;
+        }
+
+        var sanitized = _richTextService.SanitizeEmail(value);
+        if (required && string.IsNullOrWhiteSpace(sanitized))
+        {
+            fields.Add(field);
+        }
+
+        return sanitized;
+    }
+
+    private NormalizedInterviewContent NormalizeInterviewContent(
+        Request.SendInterviewInvitationsRequest request)
+    {
+        var fields = new List<string>();
+        var mode = request.InterviewMode?.Trim();
+        var location = NormalizeOptional(request.Location);
+        var locationUrl = NormalizeOptional(request.LocationUrl);
+
+        if (!request.DurationMinutes.HasValue || request.DurationMinutes.Value <= 0)
+        {
+            fields.Add("durationMinutes");
+        }
+
+        if (!string.Equals(mode, "Onsite", StringComparison.Ordinal)
+            && !string.Equals(mode, "Online", StringComparison.Ordinal))
+        {
+            fields.Add("interviewMode");
+        }
+
+        if (string.Equals(mode, "Onsite", StringComparison.Ordinal) && string.IsNullOrWhiteSpace(location))
+        {
+            fields.Add("location");
+        }
+
+        if (string.IsNullOrWhiteSpace(locationUrl) || !IsHttpsUrl(locationUrl))
+        {
+            fields.Add("locationUrl");
+        }
+
+        var interviewInformationHtml = NormalizeEmailRichText(
+            request.InterviewInformationHtml,
+            "interviewInformationHtml",
+            required: false,
+            fields);
+        var agendaHtml = NormalizeEmailRichText(
+            request.AgendaHtml,
+            "agendaHtml",
+            required: true,
+            fields);
+        var preparationHtml = NormalizeEmailRichText(
+            request.PreparationHtml,
+            "preparationHtml",
+            required: true,
+            fields);
+
+        if (fields.Count > 0)
+        {
+            throw new JobApplicationException(
+                "JOB_APPLICATION_INTERVIEW_CONTENT_INVALID",
+                "Nội dung email mời phỏng vấn không hợp lệ.",
+                fields.Distinct().ToArray());
+        }
+
+        return new NormalizedInterviewContent
+        {
+            DurationMinutes = request.DurationMinutes!.Value,
+            InterviewMode = mode!,
+            Location = location,
+            LocationUrl = locationUrl,
+            InterviewInformationHtml = interviewInformationHtml,
+            AgendaHtml = agendaHtml!,
+            PreparationHtml = preparationHtml!
+        };
+    }
+
+    private sealed class NormalizedInterviewContent
+    {
+        public int DurationMinutes { get; init; }
+        public string InterviewMode { get; init; } = string.Empty;
+        public string? Location { get; init; }
+        public string? LocationUrl { get; init; }
+        public string? InterviewInformationHtml { get; init; }
+        public string AgendaHtml { get; init; } = string.Empty;
+        public string PreparationHtml { get; init; } = string.Empty;
     }
 
     private static string GetStatusLabel<TEnum>(TEnum value)
@@ -669,6 +867,12 @@ public sealed class Service : IService
     {
         return Uri.TryCreate(value, UriKind.Absolute, out var uri) &&
             (uri.Scheme == Uri.UriSchemeHttp || uri.Scheme == Uri.UriSchemeHttps);
+    }
+
+    private static bool IsHttpsUrl(string value)
+    {
+        return Uri.TryCreate(value, UriKind.Absolute, out var uri) &&
+            uri.Scheme.Equals(Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase);
     }
 }
 

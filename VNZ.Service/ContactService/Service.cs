@@ -15,15 +15,34 @@ public class Service : IService
     private readonly AppDbContext _dbContext;
     private readonly MailService.IService _mailService;
     private readonly IHttpContextAccessor _httpContextAccessor;
+    private readonly MailService.IEmailTemplateRenderer _emailTemplateRenderer;
+    private readonly VNZ.Service.Utils.RichTextService.IService _richTextService;
 
     public Service(
         AppDbContext dbContext,
         MailService.IService mailService,
         IHttpContextAccessor httpContextAccessor)
+        : this(
+            dbContext,
+            mailService,
+            httpContextAccessor,
+            new MailService.EmailTemplateRenderer(),
+            new VNZ.Service.Utils.RichTextService.Service())
+    {
+    }
+
+    public Service(
+        AppDbContext dbContext,
+        MailService.IService mailService,
+        IHttpContextAccessor httpContextAccessor,
+        MailService.IEmailTemplateRenderer emailTemplateRenderer,
+        VNZ.Service.Utils.RichTextService.IService richTextService)
     {
         _dbContext = dbContext;
         _mailService = mailService;
         _httpContextAccessor = httpContextAccessor;
+        _emailTemplateRenderer = emailTemplateRenderer;
+        _richTextService = richTextService;
     }
 
     public async Task<Response.ContactListResponse> GetContactListAsync(
@@ -340,13 +359,56 @@ public class Service : IService
         };
     }
 
+    public async Task<Response.ContactReplyPreviewResponse> PreviewReplyAsync(
+        Guid id,
+        Request.SendContactReplyRequest request)
+    {
+        var normalized = ValidateReplyRequest(request);
+        var contact = await _dbContext.ContactInquiries
+            .AsNoTracking()
+            .SingleOrDefaultAsync(item => item.Id == id);
+
+        if (contact is null)
+        {
+            throw new ContactException(
+                "CONTACT_NOT_FOUND",
+                "Không tìm thấy yêu cầu liên hệ.",
+                "id");
+        }
+
+        if (contact.ContactStatus == ContactStatus.Contacted)
+        {
+            throw new ContactException(
+                "CONTACT_ALREADY_CONTACTED",
+                "Yêu cầu liên hệ này đã được phản hồi.");
+        }
+
+        var renderedEmail = _emailTemplateRenderer.RenderContact(new MailService.ContactEmailTemplateData
+        {
+            RecipientName = contact.FullName,
+            Subject = normalized.Subject,
+            BodyHtml = normalized.BodyHtml,
+            ProposalHtml = normalized.ProposalHtml,
+            NextStepsHtml = normalized.NextStepsHtml
+        });
+
+        return new Response.ContactReplyPreviewResponse
+        {
+            ContactId = contact.Id,
+            RecipientName = contact.FullName,
+            RecipientEmail = contact.Email,
+            Subject = renderedEmail.Subject,
+            Html = renderedEmail.HtmlBody
+        };
+    }
+
     public async Task<Response.SendContactReplyResponse> SendReplyAsync(
         Guid id,
         Request.SendContactReplyRequest request)
     {
         var contactedBy = GetAdminId();
 
-        var (subject, body) = ValidateReplyRequest(request);
+        var normalized = ValidateReplyRequest(request);
 
         await using var transaction = await _dbContext.Database.BeginTransactionAsync();
 
@@ -371,14 +433,24 @@ public class Service : IService
                 "Yêu cầu liên hệ này đã được phản hồi.");
         }
 
+        var renderedEmail = _emailTemplateRenderer.RenderContact(new MailService.ContactEmailTemplateData
+        {
+            RecipientName = contact.FullName,
+            Subject = normalized.Subject,
+            BodyHtml = normalized.BodyHtml,
+            ProposalHtml = normalized.ProposalHtml,
+            NextStepsHtml = normalized.NextStepsHtml
+        });
+
         await _mailService.SendAsync(new MailService.MailContent
         {
             To = contact.Email,
             ToName = contact.FullName,
-            Subject = subject,
-            Body = body,
+            Subject = renderedEmail.Subject,
+            Body = renderedEmail.HtmlBody,
             IdempotencyKey = $"contact-reply-{contact.Id}",
-            IsHtmlBody = false
+            IsHtmlBody = true,
+            Tag = "contact-reply"
         });
 
         contact.ContactStatus = ContactStatus.Contacted;
@@ -395,24 +467,28 @@ public class Service : IService
         };
     }
 
-    private static (string Subject, string Body) ValidateReplyRequest(
+    private NormalizedReplyContent ValidateReplyRequest(
         Request.SendContactReplyRequest? request)
     {
         var fields = new List<string>();
         var subject = request?.Subject?.Trim();
-        var body = request?.Body?.Trim();
+        var body = request?.Body;
+        var proposalHtml = request?.ProposalHtml;
+        var nextStepsHtml = request?.NextStepsHtml;
 
         if (string.IsNullOrWhiteSpace(subject)
+            || subject.Length > 200
+            || subject.Contains('<')
+            || subject.Contains('>')
             || subject.Contains('\r')
             || subject.Contains('\n'))
         {
             fields.Add("subject");
         }
 
-        if (string.IsNullOrWhiteSpace(body))
-        {
-            fields.Add("body");
-        }
+        var sanitizedBody = NormalizeEmailRichText(body, "body", required: true, fields);
+        var sanitizedProposal = NormalizeEmailRichText(proposalHtml, "proposalHtml", required: false, fields);
+        var sanitizedNextSteps = NormalizeEmailRichText(nextStepsHtml, "nextStepsHtml", required: false, fields);
 
         if (fields.Count > 0)
         {
@@ -422,7 +498,42 @@ public class Service : IService
                 fields.ToArray());
         }
 
-        return (subject!, body!);
+        return new NormalizedReplyContent
+        {
+            Subject = subject!,
+            BodyHtml = sanitizedBody!,
+            ProposalHtml = sanitizedProposal,
+            NextStepsHtml = sanitizedNextSteps
+        };
+    }
+
+    private string? NormalizeEmailRichText(
+        string? value,
+        string field,
+        bool required,
+        ICollection<string> fields)
+    {
+        if (value is { Length: > 20_000 })
+        {
+            fields.Add(field);
+            return null;
+        }
+
+        var sanitized = _richTextService.SanitizeEmail(value);
+        if (required && string.IsNullOrWhiteSpace(sanitized))
+        {
+            fields.Add(field);
+        }
+
+        return sanitized;
+    }
+
+    private sealed class NormalizedReplyContent
+    {
+        public string Subject { get; init; } = string.Empty;
+        public string BodyHtml { get; init; } = string.Empty;
+        public string? ProposalHtml { get; init; }
+        public string? NextStepsHtml { get; init; }
     }
 
     private Guid GetAdminId()

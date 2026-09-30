@@ -40,6 +40,21 @@ public class ContactsController : ControllerBase
             HttpContext.TraceIdentifier));
     }
 
+    [HttpPost("{id:guid}/reply/preview")]
+    [ResponseCache(NoStore = true, Location = ResponseCacheLocation.None)]
+    public async Task<IActionResult> PreviewReply(
+        Guid id,
+        [FromBody] ContactService.Request.SendContactReplyRequest? request)
+    {
+        var replyRequest = request ?? new ContactService.Request.SendContactReplyRequest();
+        var data = await _contactService.PreviewReplyAsync(id, replyRequest);
+
+        return Ok(ResponseBuilder.SuccessResponse(
+            data,
+            "Xem trước email phản hồi thành công.",
+            HttpContext.TraceIdentifier));
+    }
+
     [HttpPost("{id:guid}/reply")]
     public async Task<IActionResult> SendReply(
         Guid id,
