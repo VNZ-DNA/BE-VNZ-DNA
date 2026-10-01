@@ -21,7 +21,13 @@ public sealed class TeamMembersController : ControllerBase
     [HttpDelete("{id:guid}")]
     public async Task<IActionResult> DeleteMember(Guid id)
     {
-        var data = await _teamMemberService.DeleteTeamMemberAsync(id);
+        var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+        if (!Guid.TryParse(userId, out var currentUserId))
+        {
+            return Unauthorized();
+        }
+
+        var data = await _teamMemberService.DeleteTeamMemberAsync(id, currentUserId);
 
         return Ok(ResponseBuilder.SuccessResponse(
             data,

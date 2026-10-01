@@ -27,37 +27,41 @@ public sealed class Service : IService
         _mediaService = mediaService;
     }
 
-    public async Task<Response.DeleteTeamMemberResponse> DeleteTeamMemberAsync(Guid id)
+    public async Task<Response.DeleteTeamMemberResponse> DeleteTeamMemberAsync(Guid id, Guid currentUserId)
     {
-        var member = await _dbContext.Users
-            .FirstOrDefaultAsync(item => item.Id == id && item.RoleId == null);
+        if (id == currentUserId)
+        {
+            throw new TeamMemberException(
+                "TEAM_MEMBER_DELETE_FORBIDDEN",
+                "Không thể xóa chính tài khoản đang đăng nhập.");
+        }
 
-        if (member is null)
+        var affectedRows = await _dbContext.Users
+            .Where(member => member.Id == id &&
+                             member.RoleId == null &&
+                             !member.IsDelete &&
+                             !(member.EmploymentStatus == EmploymentStatus.Working &&
+                               member.IsPublished))
+            .ExecuteUpdateAsync(setters => setters
+                .SetProperty(member => member.IsDelete, true));
+
+        if (affectedRows == 1)
+        {
+            return new Response.DeleteTeamMemberResponse { Id = id };
+        }
+
+        var memberExists = await _dbContext.Users
+            .AsNoTracking()
+            .AnyAsync(member => member.Id == id && member.RoleId == null && !member.IsDelete);
+
+        if (!memberExists)
         {
             throw new TeamMemberException("MEMBER_NOT_FOUND", "Không tìm thấy thành viên.");
         }
 
-        var isPubliclyVisible = member.EmploymentStatus == EmploymentStatus.Working && member.IsPublished;
-
-        if (isPubliclyVisible)
-        {
-            throw new TeamMemberException(
-                "TEAM_MEMBER_DELETE_FORBIDDEN",
-                "Không thể xóa thành viên đang hiển thị trên website.");
-        }
-
-        member.IsDelete = true;
-
-        try
-        {
-            await _dbContext.SaveChangesAsync();
-        }
-        catch (DbUpdateException exception)
-        {
-            throw new TeamMemberException("TEAM_MEMBER_DELETE_FAILED", "Không thể xóa thành viên.", exception);
-        }
-
-        return new Response.DeleteTeamMemberResponse { Id = member.Id };
+        throw new TeamMemberException(
+            "TEAM_MEMBER_DELETE_FORBIDDEN",
+            "Không thể xóa thành viên đang hiển thị trên website.");
     }
 
     public async Task<Response.FeaturedTeamMembersResponse> GetFeaturedMembersAsync()
@@ -751,7 +755,11 @@ public sealed class Service : IService
             IsPublished = member.IsPublished,
             DisplayOrder = member.DisplayOrder,
             CreatedAt = member.CreateAt,
-            UpdatedAt = member.UpdatedAt
+            UpdatedAt = member.UpdatedAt,
+            CanDelete = !(member.EmploymentStatus == EmploymentStatus.Working && member.IsPublished),
+            DeleteBlockedReason = member.EmploymentStatus == EmploymentStatus.Working && member.IsPublished
+                ? "PUBLIC_VISIBLE"
+                : null
         };
     }
 

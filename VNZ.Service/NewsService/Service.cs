@@ -32,33 +32,32 @@ public sealed class Service : IService
 
     public async Task<Response.DeleteNewsResponse> DeleteNewsAsync(Guid id)
     {
-        var article = await _dbContext.NewsArticles
-            .FirstOrDefaultAsync(item => item.Id == id);
+        var affectedRows = await _dbContext.NewsArticles
+            .Where(article => article.Id == id &&
+                              !article.IsDelete &&
+                              !(article.Status == NewsStatus.Published &&
+                                article.Published &&
+                                article.PublishAt.HasValue))
+            .ExecuteUpdateAsync(setters => setters
+                .SetProperty(article => article.IsDelete, true));
 
-        if (article is null)
+        if (affectedRows == 1)
+        {
+            return new Response.DeleteNewsResponse { Id = id };
+        }
+
+        var articleExists = await _dbContext.NewsArticles
+            .AsNoTracking()
+            .AnyAsync(article => article.Id == id && !article.IsDelete);
+
+        if (!articleExists)
         {
             throw new NewsException("NEWS_ARTICLE_NOT_FOUND", "Không tìm thấy bài viết.", "id");
         }
 
-        if (article.Status == NewsStatus.Published && article.Published && article.PublishAt.HasValue)
-        {
-            throw new NewsException(
-                "NEWS_DELETE_FORBIDDEN",
-                "Không thể xóa bài viết đang hiển thị trên website.");
-        }
-
-        article.IsDelete = true;
-
-        try
-        {
-            await _dbContext.SaveChangesAsync();
-        }
-        catch (DbUpdateException exception)
-        {
-            throw new NewsException("NEWS_ARTICLE_DELETE_FAILED", "Không thể xóa bài viết.", exception);
-        }
-
-        return new Response.DeleteNewsResponse { Id = article.Id };
+        throw new NewsException(
+            "NEWS_DELETE_FORBIDDEN",
+            "Không thể xóa bài viết đang hiển thị trên website.");
     }
 
     public async Task<Response.UploadContentImageResponse> UploadContentImageAsync(
@@ -727,7 +726,8 @@ public sealed class Service : IService
                 AuthorName = article.Creator!.FullName,
                 article.CreatedAt,
                 article.PublishAt,
-                article.Status
+                article.Status,
+                article.Published
             })
             .ToListAsync();
 
@@ -770,6 +770,14 @@ public sealed class Service : IService
                 CreatedAt = article.CreatedAt,
                 PublishAt = article.PublishAt,
                 Status = GetDisplayName(article.Status),
+                CanDelete = !(article.Status == NewsStatus.Published &&
+                              article.Published &&
+                              article.PublishAt.HasValue),
+                DeleteBlockedReason = article.Status == NewsStatus.Published &&
+                                      article.Published &&
+                                      article.PublishAt.HasValue
+                    ? "PUBLIC_VISIBLE"
+                    : null,
                 Categories = GetCategories(categoriesByArticleId, article.Id)
             })
             .ToList();
@@ -995,6 +1003,14 @@ public sealed class Service : IService
             UpdatedAt = ConvertUpdatedAtToVietnamDate(article.UpdatedAt),
             PublishAt = article.PublishAt,
             Status = GetDisplayName(article.Status),
+            CanDelete = !(article.Status == NewsStatus.Published &&
+                          article.Published &&
+                          article.PublishAt.HasValue),
+            DeleteBlockedReason = article.Status == NewsStatus.Published &&
+                                  article.Published &&
+                                  article.PublishAt.HasValue
+                ? "PUBLIC_VISIBLE"
+                : null,
             Categories = article.NewsArticleCategories
                 .OrderBy(link => link.NewsCategory.Name)
                 .ThenBy(link => link.NewsCategory.Id)

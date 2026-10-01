@@ -5,6 +5,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
 using Npgsql;
+using System.Security.Claims;
 using System.Text;
 using System.Text.Json.Serialization;
 
@@ -139,6 +140,26 @@ public static class ServiceCollectionExtensions
 
                 options.Events = new JwtBearerEvents
                 {
+                    OnTokenValidated = async context =>
+                    {
+                        var userId = context.Principal?.FindFirstValue(ClaimTypes.NameIdentifier);
+                        if (!Guid.TryParse(userId, out var parsedUserId))
+                        {
+                            context.Fail("Token không chứa định danh người dùng hợp lệ.");
+                            return;
+                        }
+
+                        var dbContext = context.HttpContext.RequestServices
+                            .GetRequiredService<AppDbContext>();
+                        var isActiveUser = await dbContext.Users
+                            .AsNoTracking()
+                            .AnyAsync(user => user.Id == parsedUserId && user.IsActive);
+
+                        if (!isActiveUser)
+                        {
+                            context.Fail("Tài khoản không còn hoạt động.");
+                        }
+                    },
                     OnChallenge = async context =>
                     {
                         context.HandleResponse();

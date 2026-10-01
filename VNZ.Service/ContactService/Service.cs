@@ -47,26 +47,17 @@ public class Service : IService
 
     public async Task<Response.DeleteContactResponse> DeleteContactAsync(Guid id)
     {
-        var contact = await _dbContext.ContactInquiries
-            .FirstOrDefaultAsync(item => item.Id == id);
+        var affectedRows = await _dbContext.ContactInquiries
+            .Where(contact => contact.Id == id && !contact.IsDelete)
+            .ExecuteUpdateAsync(setters => setters
+                .SetProperty(contact => contact.IsDelete, true));
 
-        if (contact is null)
+        if (affectedRows != 1)
         {
             throw new ContactException("CONTACT_NOT_FOUND", "Không tìm thấy yêu cầu liên hệ.", "id");
         }
 
-        contact.IsDelete = true;
-
-        try
-        {
-            await _dbContext.SaveChangesAsync();
-        }
-        catch (DbUpdateException exception)
-        {
-            throw new ContactException("CONTACT_DELETE_FAILED", "Không thể xóa liên hệ.", exception);
-        }
-
-        return new Response.DeleteContactResponse { Id = contact.Id };
+        return new Response.DeleteContactResponse { Id = id };
     }
 
     public async Task<Response.ContactListResponse> GetContactListAsync(

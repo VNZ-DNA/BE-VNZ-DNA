@@ -23,33 +23,28 @@ public sealed class Service : IService
 
     public async Task<Response.DeletePartnerResponse> DeletePartnerAsync(Guid id)
     {
-        var partner = await _dbContext.Partners
-            .FirstOrDefaultAsync(item => item.Id == id);
+        var affectedRows = await _dbContext.Partners
+            .Where(partner => partner.Id == id && !partner.IsDelete && !partner.IsPublished)
+            .ExecuteUpdateAsync(setters => setters
+                .SetProperty(partner => partner.IsDelete, true));
 
-        if (partner is null)
+        if (affectedRows == 1)
+        {
+            return new Response.DeletePartnerResponse { Id = id };
+        }
+
+        var partnerExists = await _dbContext.Partners
+            .AsNoTracking()
+            .AnyAsync(partner => partner.Id == id && !partner.IsDelete);
+
+        if (!partnerExists)
         {
             throw new PartnerException("PARTNER_NOT_FOUND", "Không tìm thấy Partner.");
         }
 
-        if (partner.IsPublished)
-        {
-            throw new PartnerException(
-                "PARTNER_DELETE_FORBIDDEN",
-                "Không thể xóa Partner đang hiển thị trên website.");
-        }
-
-        partner.IsDelete = true;
-
-        try
-        {
-            await _dbContext.SaveChangesAsync();
-        }
-        catch (DbUpdateException exception)
-        {
-            throw new PartnerException("PARTNER_DELETE_FAILED", "Không thể xóa Partner.", exception);
-        }
-
-        return new Response.DeletePartnerResponse { Id = partner.Id };
+        throw new PartnerException(
+            "PARTNER_DELETE_FORBIDDEN",
+            "Không thể xóa Partner đang hiển thị trên website.");
     }
 
     public async Task<Response.PartnerListItemResponse> CreatePartnerAsync(Request.CreatePartnerRequest request, Guid createdBy)
@@ -458,7 +453,9 @@ public sealed class Service : IService
             DisplayOrder = partner.DisplayOrder,
             CreatedBy = partner.CreatedBy,
             CreatedAt = partner.CreatedAt,
-            UpdatedAt = partner.UpdateAt
+            UpdatedAt = partner.UpdateAt,
+            CanDelete = !partner.IsPublished,
+            DeleteBlockedReason = partner.IsPublished ? "PUBLIC_VISIBLE" : null
         };
     }
 }
