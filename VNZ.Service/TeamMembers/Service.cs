@@ -8,6 +8,7 @@ using VNZ.Repository;
 using VNZ.Repository.Entity;
 using VNZ.Repository.Entity.Enum;
 using VNZ.Service.Exceptions;
+using VNZ.Service.TeamMembers;
 using MediaService = VNZ.Service.Utils.MediaService;
 
 namespace VNZ.Service.TeamMembers;
