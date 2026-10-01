@@ -59,6 +59,7 @@ public static class Response
         public string Closing { get; set; } = string.Empty;
         public string Signature { get; set; } = string.Empty;
         public string Footer { get; set; } = string.Empty;
+        public string FooterTagline { get; set; } = string.Empty;
     }
 
     public class EmailTemplateDeadlinePolicyResponse

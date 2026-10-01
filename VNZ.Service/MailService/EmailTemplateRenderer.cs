@@ -63,7 +63,8 @@ internal static class EmailTemplateDefaults
     public const string ContactNextStepsHeading = "Bước tiếp theo";
     public const string ContactClosing = "Chúng tôi mong muốn được tiếp tục lắng nghe, trao đổi để hiểu rõ hơn mục tiêu của Anh/Chị và cùng tìm ra hướng hợp tác phù hợp. Anh/Chị có thể trả lời trực tiếp email này nếu muốn bổ sung thông tin hoặc hẹn một buổi trao đổi.";
     public const string ContactSignature = "Đội ngũ VNZ Technology";
-    public const string ContactFooter = "VNZ Technology\nVietnamese Minds • Global Solutions";
+    public const string ContactFooter = "VNZ Technology";
+    public const string ContactFooterTagline = "Vietnamese Minds • Global Solutions";
 
     public const string DefaultInterviewLocationUrl =
         "https://www.google.com/maps/place/C%C3%94NG+TY+TNHH+KOKEN/@10.8210167,106.7842329,1018m/data=!3m2!1e3!4b1!4m6!3m5!1s0x3175277517c8d095:0xa5a0955a7ad81fc3!8m2!3d10.8210167!4d106.7842329!16s%2Fg%2F11svb4wcm6!18m1!1e1?entry=ttu&g_ep=EgoyMDI2MDkyMi4wIKXMDSoASAFQAw%3D%3D";
@@ -206,9 +207,6 @@ public sealed class EmailTemplateRenderer : IEmailTemplateRenderer
             "{{contact.fullName}}",
             encodedRecipientName,
             StringComparison.Ordinal);
-        var footerParts = EmailTemplateDefaults.ContactFooter.Split(
-            '\n',
-            StringSplitOptions.RemoveEmptyEntries);
         var proposal = RenderOptionalContactSection(EmailTemplateDefaults.ContactProposalHeading, data.ProposalHtml);
         var nextSteps = RenderOptionalContactSection(EmailTemplateDefaults.ContactNextStepsHeading, data.NextStepsHtml);
 
@@ -244,7 +242,7 @@ public sealed class EmailTemplateRenderer : IEmailTemplateRenderer
                     </tr>
                     <tr><td style="padding:0 40px;"><div style="height:1px;background:#dbe2ea;"></div></td></tr>
                     <tr>
-                        <td align="center" style="padding:18px 24px 22px;background:#f3f6f9;color:#64748b;font-size:12px;line-height:1.6;"><strong style="color:#334155;">{footerParts[0]}</strong><br>{footerParts[1].Replace("•", $"<span style=\"color:{EmailTemplateDefaults.PrimaryColor};\">&#8226;</span>", StringComparison.Ordinal)}</td>
+                        <td align="center" style="padding:18px 24px 22px;background:#f3f6f9;color:#64748b;font-size:12px;line-height:1.6;"><strong style="color:#334155;">{EmailTemplateDefaults.ContactFooter}</strong><br>{EmailTemplateDefaults.ContactFooterTagline.Replace("•", $"<span style=\"color:{EmailTemplateDefaults.PrimaryColor};\">&#8226;</span>", StringComparison.Ordinal)}</td>
                     </tr>
                 </table>
             </body>
