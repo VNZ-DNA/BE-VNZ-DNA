@@ -108,7 +108,16 @@ public sealed class EmailComposerTests
 
         Assert.Equal("contact-reply", schema.TemplateKey);
         Assert.Equal("greeting", schema.Blocks.Single(block => block.Key == "greeting").FixedCopyKey);
-        Assert.Equal("proposalHtml", schema.Blocks.Single(block => block.Key == "proposalHtml").Key);
+        Assert.Equal("bodyHeading", schema.Blocks.Single(block => block.Key == "body").FixedCopyKey);
+        Assert.Equal("proposalHeading", schema.Blocks.Single(block => block.Key == "proposalHtml").FixedCopyKey);
+        Assert.Equal("nextStepsHeading", schema.Blocks.Single(block => block.Key == "nextStepsHtml").FixedCopyKey);
+        Assert.Equal("VNZ Technology", schema.FixedCopy.Footer);
+        Assert.Equal("Vietnamese Minds • Global Solutions", schema.FixedCopy.FooterTagline);
+        var footerBlock = schema.Blocks.Single(block => block.Key == "footer");
+        Assert.Equal("footer", footerBlock.Type);
+        Assert.Null(footerBlock.FixedCopyKey);
+        Assert.Null(schema.Blocks.Single(block => block.Key == "body").Heading);
+        Assert.Contains("footerTagline", schemaJson, StringComparison.Ordinal);
         Assert.DoesNotContain("deadlinePolicy", schemaJson, StringComparison.Ordinal);
         Assert.DoesNotContain("templateVersion", schemaJson, StringComparison.Ordinal);
     }
