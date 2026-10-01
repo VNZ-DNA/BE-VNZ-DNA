@@ -50,7 +50,10 @@ public class AppDbContext : DbContext
                 .IsRequired();
             entity.Property(x => x.EmploymentStatus).HasConversion<string>().IsRequired();
             entity.Property(x => x.JobLevel).HasConversion<string>();
-            entity.HasIndex(x => x.Email).IsUnique();
+            entity.HasIndex(x => x.Email)
+                .HasDatabaseName("IX_User_Email_Active")
+                .IsUnique()
+                .HasFilter("\"IsDelete\" = FALSE");
             entity.HasOne(x => x.Role).WithMany(x => x.Users).HasForeignKey(x => x.RoleId).OnDelete(DeleteBehavior.Restrict);
             entity.HasOne(x => x.Creator).WithMany(x => x.CreatedUsers).HasForeignKey(x => x.CreatedBy).OnDelete(DeleteBehavior.Restrict);
         });

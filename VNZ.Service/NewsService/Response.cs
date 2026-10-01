@@ -66,6 +66,8 @@ public class Response
         public DateTimeOffset CreatedAt { get; set; }
         public DateTimeOffset? PublishAt { get; set; }
         public required string Status { get; set; }
+        public bool CanDelete { get; set; }
+        public string? DeleteBlockedReason { get; set; }
         public required List<NewsCategoryResponse> Categories { get; set; }
     }
 
@@ -81,6 +83,8 @@ public class Response
         public DateOnly? UpdatedAt { get; set; }
         public DateTimeOffset? PublishAt { get; set; }
         public required string Status { get; set; }
+        public bool CanDelete { get; set; }
+        public string? DeleteBlockedReason { get; set; }
         public required List<NewsCategoryResponse> Categories { get; set; }
         public required List<string> Actions { get; set; }
     }

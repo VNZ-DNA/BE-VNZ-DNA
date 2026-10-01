@@ -133,7 +133,8 @@ public class Service : IService
             .SingleOrDefaultAsync(x => x.RefreshToken == request.RefreshToken);
 
         var now = DateTimeOffset.UtcNow;
-        if (session is null || session.IsRevoked || session.ExpiresAt <= now || !session.User.IsActive)
+        if (session is null || session.User is null || session.IsRevoked ||
+            session.ExpiresAt <= now || !session.User.IsActive)
         {
             throw new AuthException(
                 "AUTH_INVALID_REFRESH_TOKEN",
@@ -206,6 +207,8 @@ public class Service : IService
             throw new ArgumentException("Vui lòng nhập email.");
         }
 
+        var email = request.Email.Trim().ToLowerInvariant();
+
         if (string.IsNullOrWhiteSpace(request.Password))
         {
             throw new ArgumentException("Vui lòng nhập mật khẩu.");
@@ -216,7 +219,7 @@ public class Service : IService
             throw new ArgumentException("Mật khẩu phải có ít nhất 6 ký tự.");
         }
 
-        var emailExist = await _dbContext.Users.AnyAsync(x => x.Email == request.Email);
+        var emailExist = await _dbContext.Users.AnyAsync(x => x.Email.ToLower() == email);
         if (emailExist)
         {
             throw new ArgumentException("Email đã tồn tại trong hệ thống.");
@@ -232,7 +235,7 @@ public class Service : IService
         {
             Id = Guid.NewGuid(),
             FullName = request.FullName,
-            Email = request.Email,
+            Email = email,
             PasswordHash = BCrypt.Net.BCrypt.HashPassword(request.Password),
             RoleId = role.Id,
             Role = role,

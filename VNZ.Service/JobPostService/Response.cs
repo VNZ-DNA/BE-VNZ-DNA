@@ -48,6 +48,8 @@ public class Response
         public int NumberOfPositions { get; set; }
         public required string Status { get; set; }
         public int PendingApplicationCount { get; set; }
+        public bool CanDelete { get; set; }
+        public string? DeleteBlockedReason { get; set; }
     }
 
     public class PublicJobPostDetailResponse
@@ -82,6 +84,8 @@ public class Response
         public string? Description { get; set; }
         public string? Requirements { get; set; }
         public bool CanEdit { get; set; }
+        public bool CanDelete { get; set; }
+        public string? DeleteBlockedReason { get; set; }
     }
 
     public class UpdateJobPostResponse

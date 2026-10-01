@@ -89,5 +89,7 @@ public static class Response
         public int? DisplayOrder { get; set; }
         public DateTimeOffset CreatedAt { get; set; }
         public DateTimeOffset? UpdatedAt { get; set; }
+        public bool CanDelete { get; set; }
+        public string? DeleteBlockedReason { get; set; }
     }
 }
