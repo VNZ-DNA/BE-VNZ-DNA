@@ -30,33 +30,28 @@ public sealed class Service : IService
 
     public async Task<Response.DeleteProductResponse> DeleteProductAsync(Guid id)
     {
-        var product = await _dbContext.Products
-            .FirstOrDefaultAsync(item => item.Id == id);
+        var affectedRows = await _dbContext.Products
+            .Where(product => product.Id == id && !product.IsDelete && !product.IsPublished)
+            .ExecuteUpdateAsync(setters => setters
+                .SetProperty(product => product.IsDelete, true));
 
-        if (product is null)
+        if (affectedRows == 1)
+        {
+            return new Response.DeleteProductResponse { Id = id };
+        }
+
+        var productExists = await _dbContext.Products
+            .AsNoTracking()
+            .AnyAsync(product => product.Id == id && !product.IsDelete);
+
+        if (!productExists)
         {
             throw new ProductException("PRODUCT_NOT_FOUND", "Không tìm thấy Product.");
         }
 
-        if (product.IsPublished)
-        {
-            throw new ProductException(
-                "PRODUCT_DELETE_FORBIDDEN",
-                "Không thể xóa Product đang hiển thị trên website.");
-        }
-
-        product.IsDelete = true;
-
-        try
-        {
-            await _dbContext.SaveChangesAsync();
-        }
-        catch (DbUpdateException exception)
-        {
-            throw new ProductException("PRODUCT_DELETE_FAILED", "Không thể xóa Product.", exception);
-        }
-
-        return new Response.DeleteProductResponse { Id = product.Id };
+        throw new ProductException(
+            "PRODUCT_DELETE_FORBIDDEN",
+            "Không thể xóa Product đang hiển thị trên website.");
     }
 
     public async Task<Response.ProductDetailResponse> CreateProductAsync(
@@ -815,7 +810,9 @@ public sealed class Service : IService
             IsPublished = product.IsPublished,
             DisplayOrder = product.DisplayOrder,
             CreatedAt = product.CreatedAt,
-            UpdatedAt = product.UpdatedAt
+            UpdatedAt = product.UpdatedAt,
+            CanDelete = !product.IsPublished,
+            DeleteBlockedReason = product.IsPublished ? "PUBLIC_VISIBLE" : null
         };
     }
 
@@ -887,7 +884,9 @@ public sealed class Service : IService
             DisplayOrder = product.DisplayOrder,
             CreatedBy = product.CreatedBy,
             CreatedAt = product.CreatedAt,
-            UpdatedAt = product.UpdatedAt
+            UpdatedAt = product.UpdatedAt,
+            CanDelete = !product.IsPublished,
+            DeleteBlockedReason = product.IsPublished ? "PUBLIC_VISIBLE" : null
         };
     }
 

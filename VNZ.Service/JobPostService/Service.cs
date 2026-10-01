@@ -20,37 +20,33 @@ public class Service : IService
 
     public async Task<Response.DeleteJobPostResponse> DeleteJobPostAsync(Guid id)
     {
-        var jobPost = await _dbContext.JobPosts
-            .FirstOrDefaultAsync(item => item.Id == id);
+        var nowUtc = DateTimeOffset.UtcNow;
+        var affectedRows = await _dbContext.JobPosts
+            .Where(jobPost => jobPost.Id == id &&
+                              !jobPost.IsDelete &&
+                              !(jobPost.Status == JobPostStatus.Open &&
+                                jobPost.ExpiredAt.HasValue &&
+                                jobPost.ExpiredAt.Value > nowUtc))
+            .ExecuteUpdateAsync(setters => setters
+                .SetProperty(jobPost => jobPost.IsDelete, true));
 
-        if (jobPost is null)
+        if (affectedRows == 1)
+        {
+            return new Response.DeleteJobPostResponse { Id = id };
+        }
+
+        var jobPostExists = await _dbContext.JobPosts
+            .AsNoTracking()
+            .AnyAsync(jobPost => jobPost.Id == id && !jobPost.IsDelete);
+
+        if (!jobPostExists)
         {
             throw new JobPostException("JOB_POST_NOT_FOUND", "Không tìm thấy tin tuyển dụng.");
         }
 
-        var isPubliclyVisible = jobPost.Status == JobPostStatus.Open &&
-            jobPost.ExpiredAt.HasValue &&
-            jobPost.ExpiredAt.Value > DateTimeOffset.UtcNow;
-
-        if (isPubliclyVisible)
-        {
-            throw new JobPostException(
-                "JOB_POST_DELETE_FORBIDDEN",
-                "Không thể xóa tin tuyển dụng đang hiển thị trên website.");
-        }
-
-        jobPost.IsDelete = true;
-
-        try
-        {
-            await _dbContext.SaveChangesAsync();
-        }
-        catch (DbUpdateException exception)
-        {
-            throw new JobPostException("JOB_POST_DELETE_FAILED", "Không thể xóa tin tuyển dụng.", exception);
-        }
-
-        return new Response.DeleteJobPostResponse { Id = jobPost.Id };
+        throw new JobPostException(
+            "JOB_POST_DELETE_FORBIDDEN",
+            "Không thể xóa tin tuyển dụng đang hiển thị trên website.");
     }
 
     public async Task<Response.CreateJobPostResponse> CreateJobPostAsync(
@@ -319,7 +315,15 @@ public class Service : IService
                 ExpiredDate = ConvertExpiredAtToDate(jobPost.ExpiredAt),
                 NumberOfPositions = jobPost.NumberOfPositions,
                 Status = GetDisplayName(jobPost.Status),
-                PendingApplicationCount = jobPost.PendingApplicationCount
+                PendingApplicationCount = jobPost.PendingApplicationCount,
+                CanDelete = !(jobPost.Status == JobPostStatus.Open &&
+                              jobPost.ExpiredAt.HasValue &&
+                              jobPost.ExpiredAt.Value > DateTimeOffset.UtcNow),
+                DeleteBlockedReason = jobPost.Status == JobPostStatus.Open &&
+                                      jobPost.ExpiredAt.HasValue &&
+                                      jobPost.ExpiredAt.Value > DateTimeOffset.UtcNow
+                    ? "PUBLIC_VISIBLE"
+                    : null
             })
             .ToList();
 
@@ -426,7 +430,15 @@ public class Service : IService
             ShortDescription = jobPost.ShortDescription,
             Description = jobPost.Description,
             Requirements = jobPost.Requirements,
-            CanEdit = canEdit
+            CanEdit = canEdit,
+            CanDelete = !(jobPost.Status == JobPostStatus.Open &&
+                          jobPost.ExpiredAt.HasValue &&
+                          jobPost.ExpiredAt.Value > DateTimeOffset.UtcNow),
+            DeleteBlockedReason = jobPost.Status == JobPostStatus.Open &&
+                                  jobPost.ExpiredAt.HasValue &&
+                                  jobPost.ExpiredAt.Value > DateTimeOffset.UtcNow
+                ? "PUBLIC_VISIBLE"
+                : null
         };
     }
 

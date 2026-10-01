@@ -52,10 +52,12 @@ public sealed class Service : IService
 
     public async Task<Response.DeleteJobApplicationResponse> DeleteJobApplicationAsync(Guid id)
     {
-        var application = await _dbContext.JobApplications
-            .FirstOrDefaultAsync(item => item.Id == id);
+        var affectedRows = await _dbContext.JobApplications
+            .Where(application => application.Id == id && !application.IsDelete)
+            .ExecuteUpdateAsync(setters => setters
+                .SetProperty(application => application.IsDelete, true));
 
-        if (application is null)
+        if (affectedRows != 1)
         {
             throw new JobApplicationException(
                 "JOB_APPLICATION_NOT_FOUND",
@@ -63,21 +65,7 @@ public sealed class Service : IService
                 "id");
         }
 
-        application.IsDelete = true;
-
-        try
-        {
-            await _dbContext.SaveChangesAsync();
-        }
-        catch (DbUpdateException exception)
-        {
-            throw new JobApplicationException(
-                "JOB_APPLICATION_DELETE_FAILED",
-                "Không thể xóa hồ sơ ứng viên.",
-                exception);
-        }
-
-        return new Response.DeleteJobApplicationResponse { Id = application.Id };
+        return new Response.DeleteJobApplicationResponse { Id = id };
     }
 
     public async Task<Response.CreateJobApplicationResponse> CreateAsync(Request.CreateJobApplicationRequest request)
@@ -350,7 +338,6 @@ public sealed class Service : IService
         Guid adminUserId)
     {
         var application = await _dbContext.JobApplications
-            .Include(item => item.JobPost)
             .SingleOrDefaultAsync(item => item.Id == id);
 
         if (application is null)
@@ -368,7 +355,7 @@ public sealed class Service : IService
                 "Hồ sơ ứng viên không còn ở trạng thái Chờ duyệt.");
         }
 
-        var positionTitle = application.JobPostSnapshot?.Title ?? application.JobPost.Title;
+        var positionTitle = GetJobPostSnapshotTitle(application);
         var deliveryResult = await _mailService.SendRejectionEmailAsync(
             new MailService.RejectionEmailMailContent
             {
@@ -461,7 +448,8 @@ public sealed class Service : IService
             query = query.Where(application =>
                 application.FullName.ToLower().Contains(searchLower) ||
                 application.Email.ToLower().Contains(searchLower) ||
-                application.JobPost.Title.ToLower().Contains(searchLower));
+                (application.JobPostSnapshot != null &&
+                 application.JobPostSnapshot.Title.ToLower().Contains(searchLower)));
         }
 
         if (statusFilter.HasValue)
@@ -476,7 +464,6 @@ public sealed class Service : IService
             .ThenByDescending(application => application.Id)
             .Skip((request.Page - 1) * request.PageSize)
             .Take(request.PageSize)
-            .Include(application => application.JobPost)
             .ToListAsync();
 
         var applications = applicationRows.Select(application => new Response.JobApplicationListItemResponse
@@ -485,7 +472,7 @@ public sealed class Service : IService
             FullName = application.FullName,
             Email = application.Email,
             JobPostId = application.JobPostId,
-            JobPostTitle = application.JobPost.Title,
+            JobPostTitle = GetJobPostSnapshotTitle(application),
             JobPostSnapshotTitle = application.JobPostSnapshot?.Title,
             Status = GetStatusLabel(application.Status),
             CvUrl = application.CvUrl,
@@ -531,7 +518,6 @@ public sealed class Service : IService
 
         var applications = await _dbContext.JobApplications
             .Where(application => applicationIds.Contains(application.Id))
-            .Include(application => application.JobPost)
             .ToListAsync();
 
         if (applications.Count != applicationIds.Count ||
@@ -557,7 +543,7 @@ public sealed class Service : IService
                 ApplicationId = application.Id,
                 To = application.Email,
                 ToName = application.FullName,
-                PositionTitle = application.JobPostSnapshot?.Title ?? application.JobPost.Title,
+                PositionTitle = GetJobPostSnapshotTitle(application),
                 InterviewAt = interviewAt,
                 DurationMinutes = normalizedContent.DurationMinutes,
                 InterviewMode = normalizedContent.InterviewMode,
@@ -793,7 +779,6 @@ public sealed class Service : IService
     {
         var application = await _dbContext.JobApplications
             .AsNoTracking()
-            .Include(item => item.JobPost)
             .SingleOrDefaultAsync(item => item.Id == id);
 
         if (application is null)
@@ -805,7 +790,7 @@ public sealed class Service : IService
         {
             Id = application.Id,
             JobPostId = application.JobPostId,
-            JobPostTitle = application.JobPost.Title,
+            JobPostTitle = GetJobPostSnapshotTitle(application),
             FullName = application.FullName,
             Email = application.Email,
             Phone = application.Phone,
@@ -848,6 +833,11 @@ public sealed class Service : IService
                 Skills = jobPost.Skills.ToList()
             }
         };
+    }
+
+    private static string GetJobPostSnapshotTitle(JobApplication application)
+    {
+        return application.JobPostSnapshot?.Title ?? string.Empty;
     }
 
     private static string? NormalizeOptional(string? value)
