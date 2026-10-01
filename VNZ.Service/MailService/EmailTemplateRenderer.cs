@@ -1,4 +1,5 @@
 using System.Net;
+using System.Globalization;
 
 namespace VNZ.Service.MailService;
 
@@ -6,6 +7,7 @@ public interface IEmailTemplateRenderer
 {
     RenderedEmail RenderInterview(InterviewEmailTemplateData data);
     RenderedEmail RenderContact(ContactEmailTemplateData data);
+    RenderedEmail RenderJobApplicationReceived(JobApplicationReceivedEmailTemplateData data);
 }
 
 public sealed class RenderedEmail
@@ -37,6 +39,13 @@ public sealed class ContactEmailTemplateData
     public string? NextStepsHtml { get; init; }
 }
 
+public sealed class JobApplicationReceivedEmailTemplateData
+{
+    public string CandidateName { get; init; } = string.Empty;
+    public string PositionTitle { get; init; } = string.Empty;
+    public DateTimeOffset ReceivedAt { get; init; }
+}
+
 internal static class EmailTemplateDefaults
 {
     public const string VnzLogoUrl = "https://be-vnz-dna-latest.onrender.com/images/logo-dark.png";
@@ -65,6 +74,18 @@ internal static class EmailTemplateDefaults
     public const string ContactSignature = "Đội ngũ VNZ Technology";
     public const string ContactFooter = "VNZ Technology";
     public const string ContactFooterTagline = "Vietnamese Minds • Global Solutions";
+
+    public const string JobApplicationReceivedSubject = "VNZ Technology đã nhận được hồ sơ ứng tuyển của bạn";
+    public const string JobApplicationReceivedEyebrow = "THÔNG BÁO TIẾP NHẬN HỒ SƠ";
+    public const string JobApplicationReceivedGreetingTemplate = "Thân chào {{candidate.fullName}},";
+    public const string JobApplicationReceivedOpening = "Cảm ơn bạn đã tin tưởng và dành thời gian ứng tuyển tại VNZ Technology.";
+    public const string JobApplicationReceivedConfirmation = "Chúng tôi xác nhận đã nhận được hồ sơ ứng tuyển của bạn cho vị trí:";
+    public const string JobApplicationReceivedPositionLabel = "Vị trí ứng tuyển";
+    public const string JobApplicationReceivedTimeLabel = "Thời gian tiếp nhận";
+    public const string JobApplicationReceivedReviewCopy = "Hồ sơ của bạn đã được ghi nhận và sẽ được bộ phận tuyển dụng xem xét cẩn thận. Nếu hồ sơ phù hợp với yêu cầu của vị trí, VNZ Technology sẽ chủ động liên hệ để thông báo đến bạn về bước tiếp theo.";
+    public const string JobApplicationReceivedInboxCopy = "Trong thời gian chờ đợi, bạn vui lòng kiểm tra hộp thư đến và thư mục thư rác để không bỏ lỡ thông tin từ chúng tôi.";
+    public const string JobApplicationReceivedClosing = "Chúc bạn một ngày tốt lành và cảm ơn bạn đã quan tâm đến cơ hội tại VNZ Technology.";
+    public const string JobApplicationReceivedSignature = "Đội ngũ VNZ Technology";
 
     public const string DefaultInterviewLocationUrl =
         "https://www.google.com/maps/place/C%C3%94NG+TY+TNHH+KOKEN/@10.8210167,106.7842329,1018m/data=!3m2!1e3!4b1!4m6!3m5!1s0x3175277517c8d095:0xa5a0955a7ad81fc3!8m2!3d10.8210167!4d106.7842329!16s%2Fg%2F11svb4wcm6!18m1!1e1?entry=ttu&g_ep=EgoyMDI2MDkyMi4wIKXMDSoASAFQAw%3D%3D";
@@ -252,6 +273,69 @@ public sealed class EmailTemplateRenderer : IEmailTemplateRenderer
         return new RenderedEmail
         {
             Subject = data.Subject,
+            HtmlBody = html
+        };
+    }
+
+    public RenderedEmail RenderJobApplicationReceived(JobApplicationReceivedEmailTemplateData data)
+    {
+        ArgumentNullException.ThrowIfNull(data);
+
+        var encodedCandidateName = WebUtility.HtmlEncode(data.CandidateName);
+        var encodedPositionTitle = WebUtility.HtmlEncode(data.PositionTitle);
+        var receivedAt = data.ReceivedAt
+            .ToOffset(VietnamOffset)
+            .ToString("dd/MM/yyyy HH:mm", CultureInfo.InvariantCulture);
+
+        var greeting = EmailTemplateDefaults.JobApplicationReceivedGreetingTemplate.Replace(
+            "{{candidate.fullName}}",
+            encodedCandidateName,
+            StringComparison.Ordinal);
+
+        var html = $"""
+            <!DOCTYPE html>
+            <html lang="vi">
+            <head>
+                <meta charset="UTF-8">
+                <meta name="viewport" content="width=device-width, initial-scale=1.0">
+                <title>{EmailTemplateDefaults.JobApplicationReceivedSubject}</title>
+            </head>
+            <body style="margin:0;padding:32px 12px;background:#eef2f6;font-family:{EmailTemplateDefaults.FontFamily};color:#243447;font-size:14px;line-height:1.85;">
+                <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width:{EmailTemplateDefaults.ContentMaxWidthPx}px;margin:0 auto;background:#ffffff;border-collapse:separate;border-spacing:0;border-radius:6px;">
+                    <tr>
+                        <td align="center" style="padding:36px 40px 24px;"><img src="{EmailTemplateDefaults.VnzLogoUrl}" width="200" alt="VNZ Technology" style="display:block;width:200px;max-width:100%;height:auto;border:0;"></td>
+                    </tr>
+                    <tr><td style="padding:0 40px;"><div style="height:1px;background:#dbe2ea;"></div></td></tr>
+                    <tr>
+                        <td style="padding:28px 40px 36px;">
+                            <p style="margin:0 0 8px;color:{EmailTemplateDefaults.PrimaryColor};font-size:11px;font-weight:700;letter-spacing:1.2px;">{EmailTemplateDefaults.JobApplicationReceivedEyebrow}</p>
+                            <p style="margin:0 0 16px;font-size:14px;">{greeting}</p>
+                            <p style="margin:0 0 16px;">{EmailTemplateDefaults.JobApplicationReceivedOpening}</p>
+                            <p style="margin:0 0 12px;">{EmailTemplateDefaults.JobApplicationReceivedConfirmation}</p>
+                            <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="border-collapse:collapse;font-size:14px;line-height:1.6;">
+                                <tr>
+                                    <td width="38%" style="padding:12px 14px;background:#f3f6f9;border-bottom:1px solid #dfe5ec;color:#64748b;">{EmailTemplateDefaults.JobApplicationReceivedPositionLabel}</td>
+                                    <td style="padding:12px 14px;border-bottom:1px solid #dfe5ec;">{encodedPositionTitle}</td>
+                                </tr>
+                                <tr>
+                                    <td width="38%" style="padding:12px 14px;background:#f3f6f9;color:#64748b;">{EmailTemplateDefaults.JobApplicationReceivedTimeLabel}</td>
+                                    <td style="padding:12px 14px;color:#e83e00;font-weight:700;">{receivedAt}</td>
+                                </tr>
+                            </table>
+                            <p style="margin:22px 0 16px;">{EmailTemplateDefaults.JobApplicationReceivedReviewCopy}</p>
+                            <p style="margin:0 0 16px;">{EmailTemplateDefaults.JobApplicationReceivedInboxCopy}</p>
+                            <p style="margin:0 0 16px;">{EmailTemplateDefaults.JobApplicationReceivedClosing}</p>
+                            <p style="margin:0;">Trân trọng,<br><strong style="color:#243447;">{EmailTemplateDefaults.JobApplicationReceivedSignature}</strong></p>
+                        </td>
+                    </tr>
+                </table>
+            </body>
+            </html>
+            """;
+
+        return new RenderedEmail
+        {
+            Subject = EmailTemplateDefaults.JobApplicationReceivedSubject,
             HtmlBody = html
         };
     }

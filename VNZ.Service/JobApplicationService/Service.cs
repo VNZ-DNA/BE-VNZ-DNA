@@ -190,6 +190,35 @@ public sealed class Service : IService
                 exception);
         }
 
+        try
+        {
+            var renderedEmail = _emailTemplateRenderer.RenderJobApplicationReceived(
+                new MailService.JobApplicationReceivedEmailTemplateData
+                {
+                    CandidateName = application.FullName,
+                    PositionTitle = application.JobPostSnapshot?.Title ?? string.Empty,
+                    ReceivedAt = application.CreatedAt
+                });
+
+            await _mailService.SendAsync(new MailService.MailContent
+            {
+                To = application.Email,
+                ToName = application.FullName,
+                Subject = renderedEmail.Subject,
+                Body = renderedEmail.HtmlBody,
+                IdempotencyKey = $"job-application-received-{application.Id}",
+                IsHtmlBody = true,
+                Tag = "job-application-received"
+            });
+        }
+        catch (Exception exception)
+        {
+            _logger.LogError(
+                "Job application receipt email failed. ApplicationId: {ApplicationId}, ErrorType: {ErrorType}",
+                application.Id,
+                exception.GetType().Name);
+        }
+
         return new Response.CreateJobApplicationResponse
         {
             Id = application.Id,
