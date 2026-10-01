@@ -2,6 +2,11 @@ namespace VNZ.Service.PartnerService;
 
 public class Response
 {
+    public class DeletePartnerResponse
+    {
+        public Guid Id { get; set; }
+    }
+
     public class PublicPartnerListResponse
     {
         public List<PublicPartnerListItemResponse> Items { get; set; } = new();

@@ -30,6 +30,37 @@ public sealed class Service : IService
         _richTextService = richTextService;
     }
 
+    public async Task<Response.DeleteNewsResponse> DeleteNewsAsync(Guid id)
+    {
+        var article = await _dbContext.NewsArticles
+            .FirstOrDefaultAsync(item => item.Id == id);
+
+        if (article is null)
+        {
+            throw new NewsException("NEWS_ARTICLE_NOT_FOUND", "Không tìm thấy bài viết.", "id");
+        }
+
+        if (article.Status == NewsStatus.Published && article.Published && article.PublishAt.HasValue)
+        {
+            throw new NewsException(
+                "NEWS_DELETE_FORBIDDEN",
+                "Không thể xóa bài viết đang hiển thị trên website.");
+        }
+
+        article.IsDelete = true;
+
+        try
+        {
+            await _dbContext.SaveChangesAsync();
+        }
+        catch (DbUpdateException exception)
+        {
+            throw new NewsException("NEWS_ARTICLE_DELETE_FAILED", "Không thể xóa bài viết.", exception);
+        }
+
+        return new Response.DeleteNewsResponse { Id = article.Id };
+    }
+
     public async Task<Response.UploadContentImageResponse> UploadContentImageAsync(
         Request.UploadContentImageRequest request)
     {
@@ -601,34 +632,46 @@ public sealed class Service : IService
                 "search");
         }
 
-        NewsStatus? statusFilter = null;
-        if (!string.IsNullOrWhiteSpace(request.Status))
+        var statusFilters = new HashSet<NewsStatus>();
+        if (request.Status is not null)
         {
-            var status = request.Status.Trim();
-
-            var statusParsed = Enum.TryParse<NewsStatus>(
-                status,
-                ignoreCase: false,
-                out var parsedStatus);
-
-            if (!statusParsed)
+            foreach (var statusValue in request.Status)
             {
-                throw new NewsException(
-                    "NEWS_QUERY_INVALID",
-                    "Trạng thái lọc không hợp lệ.",
-                    "status");
-            }
+                var status = statusValue?.Trim();
+                var parsedStatus = default(NewsStatus);
+                var statusParsed = !string.IsNullOrWhiteSpace(status) &&
+                    Enum.TryParse<NewsStatus>(status, ignoreCase: false, out parsedStatus);
 
-            var statusDefined = Enum.IsDefined(parsedStatus);
-            if (!statusDefined)
+                if (!statusParsed || !Enum.IsDefined(parsedStatus))
+                {
+                    throw new NewsException(
+                        "NEWS_QUERY_INVALID",
+                        "Trạng thái lọc không hợp lệ.",
+                        "status");
+                }
+
+                statusFilters.Add(parsedStatus);
+            }
+        }
+
+        var categoryIds = new HashSet<Guid>();
+        if (request.CategoryId is not null)
+        {
+            foreach (var categoryIdValue in request.CategoryId)
             {
-                throw new NewsException(
-                    "NEWS_QUERY_INVALID",
-                    "Trạng thái lọc không hợp lệ.",
-                    "status");
-            }
+                var isCategoryIdValid = Guid.TryParse(categoryIdValue, out var categoryId) &&
+                    categoryId != Guid.Empty;
 
-            statusFilter = parsedStatus;
+                if (!isCategoryIdValid)
+                {
+                    throw new NewsException(
+                        "NEWS_QUERY_INVALID",
+                        "Danh mục lọc không hợp lệ.",
+                        "categoryId");
+                }
+
+                categoryIds.Add(categoryId);
+            }
         }
 
         var query = _dbContext.NewsArticles
@@ -642,19 +685,34 @@ public sealed class Service : IService
                 article.Title.ToLower().Contains(searchLower));
         }
 
-        if (statusFilter.HasValue)
+        if (statusFilters.Count > 0)
         {
             query = query.Where(article =>
-                article.Status == statusFilter.Value);
+                statusFilters.Contains(article.Status));
         }
 
-        if (request.CategoryId.HasValue)
+        if (categoryIds.Count > 0)
         {
             query = query.Where(article => article.NewsArticleCategories
-                .Any(link => link.NewsCategoryId == request.CategoryId.Value));
+                .Any(link => categoryIds.Contains(link.NewsCategoryId)));
         }
 
         var totalItems = await query.CountAsync();
+        var totalPages = totalItems == 0
+            ? 0
+            : (int)Math.Ceiling(totalItems / (double)request.PageSize);
+
+        if (request.Page > totalPages)
+        {
+            return new Response.PagedNewsListResponse
+            {
+                Items = new List<Response.NewsListItemResponse>(),
+                Page = request.Page,
+                PageSize = request.PageSize,
+                TotalItems = totalItems,
+                TotalPages = totalPages
+            };
+        }
 
         var articleRows = await query
             .OrderByDescending(article => article.CreatedAt)
@@ -722,9 +780,7 @@ public sealed class Service : IService
             Page = request.Page,
             PageSize = request.PageSize,
             TotalItems = totalItems,
-            TotalPages = totalItems == 0
-                ? 0
-                : (int)Math.Ceiling(totalItems / (double)request.PageSize)
+            TotalPages = totalPages
         };
     }
 

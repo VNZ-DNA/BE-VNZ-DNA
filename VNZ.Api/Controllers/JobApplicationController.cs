@@ -18,6 +18,17 @@ public sealed class JobApplicationController : ControllerBase
         _jobApplicationService = jobApplicationService;
     }
 
+    [HttpDelete("{id:guid}")]
+    public async Task<IActionResult> DeleteJobApplication(Guid id)
+    {
+        var data = await _jobApplicationService.DeleteJobApplicationAsync(id);
+
+        return Ok(ResponseBuilder.SuccessResponse(
+            data,
+            "Xóa hồ sơ ứng viên thành công.",
+            HttpContext.TraceIdentifier));
+    }
+
     [HttpGet]
     public async Task<IActionResult> GetJobApplicationList([FromQuery] Request.GetJobApplicationListRequest request)
     {

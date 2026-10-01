@@ -45,6 +45,30 @@ public class Service : IService
         _richTextService = richTextService;
     }
 
+    public async Task<Response.DeleteContactResponse> DeleteContactAsync(Guid id)
+    {
+        var contact = await _dbContext.ContactInquiries
+            .FirstOrDefaultAsync(item => item.Id == id);
+
+        if (contact is null)
+        {
+            throw new ContactException("CONTACT_NOT_FOUND", "Không tìm thấy yêu cầu liên hệ.", "id");
+        }
+
+        contact.IsDelete = true;
+
+        try
+        {
+            await _dbContext.SaveChangesAsync();
+        }
+        catch (DbUpdateException exception)
+        {
+            throw new ContactException("CONTACT_DELETE_FAILED", "Không thể xóa liên hệ.", exception);
+        }
+
+        return new Response.DeleteContactResponse { Id = contact.Id };
+    }
+
     public async Task<Response.ContactListResponse> GetContactListAsync(
         Request.GetContactListRequest request)
     {

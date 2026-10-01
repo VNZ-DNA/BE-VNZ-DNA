@@ -27,6 +27,39 @@ public sealed class Service : IService
         _mediaService = mediaService;
     }
 
+    public async Task<Response.DeleteTeamMemberResponse> DeleteTeamMemberAsync(Guid id)
+    {
+        var member = await _dbContext.Users
+            .FirstOrDefaultAsync(item => item.Id == id && item.RoleId == null);
+
+        if (member is null)
+        {
+            throw new TeamMemberException("MEMBER_NOT_FOUND", "Không tìm thấy thành viên.");
+        }
+
+        var isPubliclyVisible = member.EmploymentStatus == EmploymentStatus.Working && member.IsPublished;
+
+        if (isPubliclyVisible)
+        {
+            throw new TeamMemberException(
+                "TEAM_MEMBER_DELETE_FORBIDDEN",
+                "Không thể xóa thành viên đang hiển thị trên website.");
+        }
+
+        member.IsDelete = true;
+
+        try
+        {
+            await _dbContext.SaveChangesAsync();
+        }
+        catch (DbUpdateException exception)
+        {
+            throw new TeamMemberException("TEAM_MEMBER_DELETE_FAILED", "Không thể xóa thành viên.", exception);
+        }
+
+        return new Response.DeleteTeamMemberResponse { Id = member.Id };
+    }
+
     public async Task<Response.FeaturedTeamMembersResponse> GetFeaturedMembersAsync()
     {
         var query = _dbContext.Users
