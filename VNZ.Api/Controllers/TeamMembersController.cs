@@ -18,6 +18,17 @@ public sealed class TeamMembersController : ControllerBase
         _teamMemberService = teamMemberService;
     }
 
+    [HttpDelete("{id:guid}")]
+    public async Task<IActionResult> DeleteMember(Guid id)
+    {
+        var data = await _teamMemberService.DeleteTeamMemberAsync(id);
+
+        return Ok(ResponseBuilder.SuccessResponse(
+            data,
+            "Xóa thành viên thành công.",
+            HttpContext.TraceIdentifier));
+    }
+
     [HttpGet]
     public async Task<IActionResult> GetMemberList(
         [FromQuery] TeamMemberService.Request.GetTeamMemberListRequest request)

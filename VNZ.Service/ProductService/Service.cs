@@ -28,6 +28,37 @@ public sealed class Service : IService
         _richTextService = richTextService;
     }
 
+    public async Task<Response.DeleteProductResponse> DeleteProductAsync(Guid id)
+    {
+        var product = await _dbContext.Products
+            .FirstOrDefaultAsync(item => item.Id == id);
+
+        if (product is null)
+        {
+            throw new ProductException("PRODUCT_NOT_FOUND", "Không tìm thấy Product.");
+        }
+
+        if (product.IsPublished)
+        {
+            throw new ProductException(
+                "PRODUCT_DELETE_FORBIDDEN",
+                "Không thể xóa Product đang hiển thị trên website.");
+        }
+
+        product.IsDelete = true;
+
+        try
+        {
+            await _dbContext.SaveChangesAsync();
+        }
+        catch (DbUpdateException exception)
+        {
+            throw new ProductException("PRODUCT_DELETE_FAILED", "Không thể xóa Product.", exception);
+        }
+
+        return new Response.DeleteProductResponse { Id = product.Id };
+    }
+
     public async Task<Response.ProductDetailResponse> CreateProductAsync(
         Request.CreateProductRequest request,
         Guid createdBy)

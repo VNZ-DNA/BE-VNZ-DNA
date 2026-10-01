@@ -4,6 +4,11 @@ namespace VNZ.Service.ProductService;
 
 public class Response
 {
+    public class DeleteProductResponse
+    {
+        public Guid Id { get; set; }
+    }
+
     public class PublicProductListResponse
     {
         public List<PublicProductListItemResponse> Items { get; set; } = new();

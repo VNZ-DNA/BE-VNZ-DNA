@@ -18,6 +18,41 @@ public class Service : IService
         _dbContext = dbContext;
     }
 
+    public async Task<Response.DeleteJobPostResponse> DeleteJobPostAsync(Guid id)
+    {
+        var jobPost = await _dbContext.JobPosts
+            .FirstOrDefaultAsync(item => item.Id == id);
+
+        if (jobPost is null)
+        {
+            throw new JobPostException("JOB_POST_NOT_FOUND", "Không tìm thấy tin tuyển dụng.");
+        }
+
+        var isPubliclyVisible = jobPost.Status == JobPostStatus.Open &&
+            jobPost.ExpiredAt.HasValue &&
+            jobPost.ExpiredAt.Value > DateTimeOffset.UtcNow;
+
+        if (isPubliclyVisible)
+        {
+            throw new JobPostException(
+                "JOB_POST_DELETE_FORBIDDEN",
+                "Không thể xóa tin tuyển dụng đang hiển thị trên website.");
+        }
+
+        jobPost.IsDelete = true;
+
+        try
+        {
+            await _dbContext.SaveChangesAsync();
+        }
+        catch (DbUpdateException exception)
+        {
+            throw new JobPostException("JOB_POST_DELETE_FAILED", "Không thể xóa tin tuyển dụng.", exception);
+        }
+
+        return new Response.DeleteJobPostResponse { Id = jobPost.Id };
+    }
+
     public async Task<Response.CreateJobPostResponse> CreateJobPostAsync(
         Request.CreateJobPostRequest request,
         Guid createdBy)

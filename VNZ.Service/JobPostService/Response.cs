@@ -2,6 +2,11 @@ namespace VNZ.Service.JobPostService;
 
 public class Response
 {
+    public class DeleteJobPostResponse
+    {
+        public Guid Id { get; set; }
+    }
+
     public class CreateJobPostResponse
     {
         public Guid Id { get; set; }

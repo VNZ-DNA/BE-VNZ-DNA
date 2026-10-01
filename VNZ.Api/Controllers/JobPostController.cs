@@ -18,6 +18,17 @@ public class JobPostController : ControllerBase
         _jobPostService = jobPostService;
     }
 
+    [HttpDelete("{id:guid}")]
+    public async Task<IActionResult> DeleteJobPost(Guid id)
+    {
+        var data = await _jobPostService.DeleteJobPostAsync(id);
+
+        return Ok(ResponseBuilder.SuccessResponse(
+            data,
+            "Xóa tin tuyển dụng thành công.",
+            HttpContext.TraceIdentifier));
+    }
+
     [HttpPost]
     public async Task<IActionResult> CreateJobPost(
         [FromBody] Request.CreateJobPostRequest request)

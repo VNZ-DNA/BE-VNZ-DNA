@@ -18,6 +18,17 @@ public sealed class ProductsController : ControllerBase
         _productService = productService;
     }
 
+    [HttpDelete("{id:guid}")]
+    public async Task<IActionResult> DeleteProduct(Guid id)
+    {
+        var data = await _productService.DeleteProductAsync(id);
+
+        return Ok(ResponseBuilder.SuccessResponse(
+            data,
+            "Xóa Product thành công.",
+            HttpContext.TraceIdentifier));
+    }
+
     [HttpPost]
     [Consumes("multipart/form-data")]
     public async Task<IActionResult> CreateProduct(

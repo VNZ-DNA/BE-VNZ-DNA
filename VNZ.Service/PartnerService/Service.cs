@@ -21,6 +21,37 @@ public sealed class Service : IService
         _mediaService = mediaService;
     }
 
+    public async Task<Response.DeletePartnerResponse> DeletePartnerAsync(Guid id)
+    {
+        var partner = await _dbContext.Partners
+            .FirstOrDefaultAsync(item => item.Id == id);
+
+        if (partner is null)
+        {
+            throw new PartnerException("PARTNER_NOT_FOUND", "Không tìm thấy Partner.");
+        }
+
+        if (partner.IsPublished)
+        {
+            throw new PartnerException(
+                "PARTNER_DELETE_FORBIDDEN",
+                "Không thể xóa Partner đang hiển thị trên website.");
+        }
+
+        partner.IsDelete = true;
+
+        try
+        {
+            await _dbContext.SaveChangesAsync();
+        }
+        catch (DbUpdateException exception)
+        {
+            throw new PartnerException("PARTNER_DELETE_FAILED", "Không thể xóa Partner.", exception);
+        }
+
+        return new Response.DeletePartnerResponse { Id = partner.Id };
+    }
+
     public async Task<Response.PartnerListItemResponse> CreatePartnerAsync(Request.CreatePartnerRequest request, Guid createdBy)
     {
         ArgumentNullException.ThrowIfNull(request);

@@ -31,6 +31,7 @@ public class AppDbContext : DbContext
         {
             entity.ToTable("Role");
             entity.HasKey(x => x.Id);
+            entity.Property(x => x.IsDelete).HasDefaultValue(false);
             entity.Property(x => x.Type).HasMaxLength(100).IsRequired();
             entity.HasIndex(x => x.Type).IsUnique();
         });
@@ -39,6 +40,8 @@ public class AppDbContext : DbContext
         {
             entity.ToTable("User");
             entity.HasKey(x => x.Id);
+            entity.Property(x => x.IsDelete).HasDefaultValue(false);
+            entity.HasQueryFilter(x => !x.IsDelete);
             entity.Property(x => x.FullName).HasMaxLength(200).IsRequired();
             entity.Property(x => x.DisplayName).HasMaxLength(100);
             entity.Property(x => x.Email).HasMaxLength(320).IsRequired();
@@ -56,6 +59,8 @@ public class AppDbContext : DbContext
         {
             entity.ToTable("News_Article");
             entity.HasKey(x => x.Id);
+            entity.Property(x => x.IsDelete).HasDefaultValue(false);
+            entity.HasQueryFilter(x => !x.IsDelete);
             entity.Property(x => x.Title).HasMaxLength(300).IsRequired();
             entity.Property(x => x.ReadingTimeMinutes).HasDefaultValue(1);
             entity.Property(x => x.Status).HasConversion<string>().IsRequired();
@@ -75,6 +80,7 @@ public class AppDbContext : DbContext
         {
             entity.ToTable("News_Category");
             entity.HasKey(x => x.Id);
+            entity.Property(x => x.IsDelete).HasDefaultValue(false);
             entity.Property(x => x.Name).HasMaxLength(150).IsRequired();
             entity.HasIndex(x => x.Name).IsUnique();
         });
@@ -83,6 +89,7 @@ public class AppDbContext : DbContext
         {
             entity.ToTable("News_Article_Category");
             entity.HasKey(x => x.Id);
+            entity.Property(x => x.IsDelete).HasDefaultValue(false);
             entity.HasIndex(x => new { x.NewsArticleId, x.NewsCategoryId }).IsUnique();
             entity.HasOne(x => x.NewsArticle).WithMany(x => x.NewsArticleCategories).HasForeignKey(x => x.NewsArticleId).OnDelete(DeleteBehavior.Cascade);
             entity.HasOne(x => x.NewsCategory).WithMany(x => x.NewsArticleCategories).HasForeignKey(x => x.NewsCategoryId).OnDelete(DeleteBehavior.Cascade);
@@ -92,6 +99,7 @@ public class AppDbContext : DbContext
         {
             entity.ToTable("Department");
             entity.HasKey(x => x.Id);
+            entity.Property(x => x.IsDelete).HasDefaultValue(false);
             entity.Property(x => x.Name).HasMaxLength(150).IsRequired();
             entity.HasIndex(x => x.Name).IsUnique();
         });
@@ -100,6 +108,8 @@ public class AppDbContext : DbContext
         {
             entity.ToTable("Job_Post");
             entity.HasKey(x => x.Id);
+            entity.Property(x => x.IsDelete).HasDefaultValue(false);
+            entity.HasQueryFilter(x => !x.IsDelete);
             entity.Property(x => x.Title).HasMaxLength(300).IsRequired();
             entity.Property(x => x.Status).HasConversion<string>().IsRequired();
             entity.Property(x => x.EmploymentType).HasConversion<string>();
@@ -114,6 +124,8 @@ public class AppDbContext : DbContext
         {
             entity.ToTable("Job_Application");
             entity.HasKey(x => x.Id);
+            entity.Property(x => x.IsDelete).HasDefaultValue(false);
+            entity.HasQueryFilter(x => !x.IsDelete);
             entity.Property(x => x.FullName).HasMaxLength(200).IsRequired();
             entity.Property(x => x.Email).HasMaxLength(320).IsRequired();
             entity.Property(x => x.Availability).HasMaxLength(100);
@@ -130,6 +142,8 @@ public class AppDbContext : DbContext
         {
             entity.ToTable("Contact_Inquiry");
             entity.HasKey(x => x.Id);
+            entity.Property(x => x.IsDelete).HasDefaultValue(false);
+            entity.HasQueryFilter(x => !x.IsDelete);
             entity.Property(x => x.InquiryTopic).HasConversion<string>().IsRequired();
             entity.Property(x => x.FullName).HasMaxLength(200).IsRequired();
             entity.Property(x => x.Email).HasMaxLength(320).IsRequired();
@@ -151,6 +165,8 @@ public class AppDbContext : DbContext
         {
             entity.ToTable("Partner");
             entity.HasKey(x => x.Id);
+            entity.Property(x => x.IsDelete).HasDefaultValue(false);
+            entity.HasQueryFilter(x => !x.IsDelete);
             entity.Property(x => x.Name).HasMaxLength(200).IsRequired();
             entity.HasOne(x => x.Creator).WithMany(x => x.Partners).HasForeignKey(x => x.CreatedBy).OnDelete(DeleteBehavior.Restrict);
         });
@@ -159,6 +175,8 @@ public class AppDbContext : DbContext
         {
             entity.ToTable("Product");
             entity.HasKey(x => x.Id);
+            entity.Property(x => x.IsDelete).HasDefaultValue(false);
+            entity.HasQueryFilter(x => !x.IsDelete);
             entity.Property(x => x.Name).HasMaxLength(200).IsRequired();
             entity.Property(x => x.Status).HasConversion<string>().IsRequired();
             entity.Property(x => x.WordmarkUrl).HasColumnType("text");
@@ -171,6 +189,7 @@ public class AppDbContext : DbContext
         {
             entity.ToTable("UserSession");
             entity.HasKey(x => x.Id);
+            entity.Property(x => x.IsDelete).HasDefaultValue(false);
             entity.Property(x => x.RefreshToken).IsRequired();
             entity.Property(x => x.CreatedAt).IsRequired();
             entity.Property(x => x.ExpiresAt).IsRequired();

@@ -2,6 +2,11 @@ namespace VNZ.Service.NewsService;
 
 public class Response
 {
+    public class DeleteNewsResponse
+    {
+        public Guid Id { get; set; }
+    }
+
     public class UploadContentImageResponse
     {
         public required string Url { get; set; }
