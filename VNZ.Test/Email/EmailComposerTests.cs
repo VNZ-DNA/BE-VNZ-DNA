@@ -89,6 +89,7 @@ public sealed class EmailComposerTests
         Assert.Equal("interview-invitation", schema.TemplateKey);
         Assert.Equal("Thân chào {{candidate.fullName}},", schema.FixedCopy.Greeting);
         Assert.Equal("14:00", schema.DeadlinePolicy.Time);
+        Assert.Equal("HH:mm 'ngày' dd/MM/yyyy", schema.DeadlinePolicy.DisplayFormat);
         Assert.Equal(2, schema.DeadlinePolicy.DaysBeforeInterview);
         Assert.Contains("{{deadline}}", schema.FixedCopy.ConfirmationCopy);
         Assert.Equal("greeting", schema.Blocks.Single(block => block.Key == "greeting").FixedCopyKey);

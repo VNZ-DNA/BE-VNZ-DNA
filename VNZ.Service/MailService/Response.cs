@@ -66,6 +66,7 @@ public static class Response
         public string Timezone { get; set; } = string.Empty;
         public int DaysBeforeInterview { get; set; }
         public string Time { get; set; } = string.Empty;
+        public string DisplayFormat { get; set; } = string.Empty;
     }
 
     public class InterviewTemplateSchemaResponse
