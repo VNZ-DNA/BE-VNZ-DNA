@@ -82,7 +82,8 @@ public static class EmailTemplateSchemaProvider
                 NextStepsHeading = EmailTemplateDefaults.ContactNextStepsHeading,
                 Closing = EmailTemplateDefaults.ContactClosing,
                 Signature = EmailTemplateDefaults.ContactSignature,
-                Footer = EmailTemplateDefaults.ContactFooter
+                Footer = EmailTemplateDefaults.ContactFooter,
+                FooterTagline = EmailTemplateDefaults.ContactFooterTagline
             },
             Blocks = new List<Response.EmailTemplateBlockResponse>
             {
@@ -95,26 +96,30 @@ public static class EmailTemplateSchemaProvider
                 {
                     Key = "body",
                     Type = "rich-text",
-                    Heading = EmailTemplateDefaults.ContactBodyHeading,
+                    FixedCopyKey = "bodyHeading",
                     Required = true
                 },
                 new Response.EmailTemplateBlockResponse
                 {
                     Key = "proposalHtml",
                     Type = "rich-text",
-                    Heading = EmailTemplateDefaults.ContactProposalHeading,
+                    FixedCopyKey = "proposalHeading",
                     Required = false
                 },
                 new Response.EmailTemplateBlockResponse
                 {
                     Key = "nextStepsHtml",
                     Type = "rich-text",
-                    Heading = EmailTemplateDefaults.ContactNextStepsHeading,
+                    FixedCopyKey = "nextStepsHeading",
                     Required = false
                 },
                 CreateFixedTextBlock("closing", "text", "closing"),
                 CreateFixedTextBlock("signature", "text", "signature"),
-                CreateFixedTextBlock("footer", "text", "footer")
+                new Response.EmailTemplateBlockResponse
+                {
+                    Key = "footer",
+                    Type = "footer"
+                }
             },
             RichTextPolicy = CreateRichTextPolicy()
         };
