@@ -58,7 +58,8 @@ public static class EmailTemplateSchemaProvider
             {
                 Timezone = "Asia/Ho_Chi_Minh",
                 DaysBeforeInterview = 2,
-                Time = "14:00"
+                Time = "14:00",
+                DisplayFormat = "HH:mm 'ngày' dd/MM/yyyy"
             },
             RichTextPolicy = CreateRichTextPolicy()
         };
