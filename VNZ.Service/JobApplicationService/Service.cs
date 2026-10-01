@@ -50,6 +50,36 @@ public sealed class Service : IService
         _richTextService = richTextService;
     }
 
+    public async Task<Response.DeleteJobApplicationResponse> DeleteJobApplicationAsync(Guid id)
+    {
+        var application = await _dbContext.JobApplications
+            .FirstOrDefaultAsync(item => item.Id == id);
+
+        if (application is null)
+        {
+            throw new JobApplicationException(
+                "JOB_APPLICATION_NOT_FOUND",
+                "Không tìm thấy hồ sơ ứng viên.",
+                "id");
+        }
+
+        application.IsDelete = true;
+
+        try
+        {
+            await _dbContext.SaveChangesAsync();
+        }
+        catch (DbUpdateException exception)
+        {
+            throw new JobApplicationException(
+                "JOB_APPLICATION_DELETE_FAILED",
+                "Không thể xóa hồ sơ ứng viên.",
+                exception);
+        }
+
+        return new Response.DeleteJobApplicationResponse { Id = application.Id };
+    }
+
     public async Task<Response.CreateJobApplicationResponse> CreateAsync(Request.CreateJobApplicationRequest request)
     {
         ArgumentNullException.ThrowIfNull(request);

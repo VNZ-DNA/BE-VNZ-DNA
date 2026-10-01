@@ -17,6 +17,17 @@ public class ContactsController : ControllerBase
         _contactService = contactService;
     }
 
+    [HttpDelete("{id:guid}")]
+    public async Task<IActionResult> DeleteContact(Guid id)
+    {
+        var data = await _contactService.DeleteContactAsync(id);
+
+        return Ok(ResponseBuilder.SuccessResponse(
+            data,
+            "Xóa liên hệ thành công.",
+            HttpContext.TraceIdentifier));
+    }
+
     [HttpGet]
     public async Task<IActionResult> GetContactList(
         [FromQuery] ContactService.Request.GetContactListRequest request)

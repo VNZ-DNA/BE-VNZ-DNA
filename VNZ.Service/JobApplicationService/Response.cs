@@ -4,6 +4,11 @@ namespace VNZ.Service.JobApplicationService;
 
 public static class Response
 {
+    public class DeleteJobApplicationResponse
+    {
+        public Guid Id { get; set; }
+    }
+
     public class CreateJobApplicationResponse
     {
         public Guid Id { get; set; }

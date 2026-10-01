@@ -2,6 +2,11 @@ namespace VNZ.Service.TeamMembers;
 
 public static class Response
 {
+    public class DeleteTeamMemberResponse
+    {
+        public Guid Id { get; set; }
+    }
+
     public class FeaturedTeamMembersResponse
     {
         public int Total { get; set; }

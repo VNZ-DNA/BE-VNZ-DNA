@@ -19,6 +19,17 @@ public sealed class NewsController : ControllerBase
         _newsService = newsService;
     }
 
+    [HttpDelete("{id:guid}")]
+    public async Task<IActionResult> DeleteNews(Guid id)
+    {
+        var data = await _newsService.DeleteNewsAsync(id);
+
+        return Ok(ResponseBuilder.SuccessResponse(
+            data,
+            "Xóa bài viết thành công.",
+            HttpContext.TraceIdentifier));
+    }
+
     [HttpPost("content-images")]
     [Consumes("multipart/form-data")]
     public async Task<IActionResult> UploadContentImage(
