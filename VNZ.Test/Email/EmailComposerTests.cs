@@ -78,6 +78,26 @@ public sealed class EmailComposerTests
     }
 
     [Fact]
+    public void RenderJobApplicationReceived_UsesSavedValuesAndVietnamTime()
+    {
+        var renderer = new EmailTemplateRenderer();
+
+        var rendered = renderer.RenderJobApplicationReceived(new JobApplicationReceivedEmailTemplateData
+        {
+            CandidateName = "<Nguyen Minh Anh>",
+            PositionTitle = "Backend <Engineer>",
+            ReceivedAt = new DateTimeOffset(2026, 10, 1, 2, 30, 0, TimeSpan.Zero)
+        });
+
+        Assert.Equal("VNZ Technology đã nhận được hồ sơ ứng tuyển của bạn", rendered.Subject);
+        Assert.Contains("&lt;Nguyen Minh Anh&gt;", rendered.HtmlBody);
+        Assert.Contains("Backend &lt;Engineer&gt;", rendered.HtmlBody);
+        Assert.Contains("01/10/2026 09:30", rendered.HtmlBody);
+        Assert.Contains("THÔNG BÁO TIẾP NHẬN HỒ SƠ", rendered.HtmlBody);
+        Assert.DoesNotContain("<Nguyen Minh Anh>", rendered.HtmlBody);
+    }
+
+    [Fact]
     public void InterviewTemplateSchema_ReturnsFixedCopyBlocksAndDeadlinePolicy()
     {
         var schema = EmailTemplateSchemaProvider.GetInterviewSchema();
