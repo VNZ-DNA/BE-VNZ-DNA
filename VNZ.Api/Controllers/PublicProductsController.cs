@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using VNZ.Service.Models;
+using VNZ.Service.Localization;
 using ProductService = VNZ.Service.ProductService;
 
 namespace VNZ.Api.Controllers;
@@ -20,7 +21,8 @@ public sealed class PublicProductsController : ControllerBase
     [HttpGet]
     public async Task<IActionResult> GetPublicProductList()
     {
-        var data = await _productService.GetPublicProductListAsync();
+        var lang = LocaleResolver.Resolve(Request.Query["lang"].ToArray());
+        var data = await _productService.GetPublicProductListAsync(lang);
 
         return Ok(ResponseBuilder.SuccessResponse(
             data,

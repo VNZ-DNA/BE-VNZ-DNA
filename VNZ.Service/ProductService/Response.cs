@@ -49,6 +49,7 @@ public class Response
         public Guid? CreatedBy { get; set; }
         public DateTimeOffset CreatedAt { get; set; }
         public DateTimeOffset? UpdatedAt { get; set; }
+        public ProductTranslationsResponse? Translations { get; set; }
     }
 
     public class ProductContentResponse
@@ -69,6 +70,16 @@ public class Response
     {
         public Guid Id { get; set; }
         public string? Title { get; set; }
+    }
+
+    public class ProductTranslationsResponse
+    {
+        public ProductEnglishTranslationResponse? En { get; set; }
+    }
+
+    public class ProductEnglishTranslationResponse
+    {
+        public ProductContentResponse? Content { get; set; }
     }
 
     public class PagedProductListResponse

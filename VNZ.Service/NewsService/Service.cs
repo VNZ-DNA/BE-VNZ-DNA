@@ -1,10 +1,13 @@
 using System.ComponentModel.DataAnnotations;
+using System.Text.Json;
 using System.Text.RegularExpressions;
 using Microsoft.EntityFrameworkCore;
 using VNZ.Repository;
 using VNZ.Repository.Entity;
 using VNZ.Repository.Entity.Enum;
+using VNZ.Repository.Entity.Json;
 using VNZ.Service.Exceptions;
+using VNZ.Service.Localization;
 using MediaService = VNZ.Service.Utils.MediaService;
 using RichTextService = VNZ.Service.Utils.RichTextService;
 
@@ -74,38 +77,44 @@ public sealed class Service : IService
                 "status");
         }
 
-        // 2. Validate dữ liệu bắt buộc theo trạng thái đích.
+        // 2. Normalize and validate the Vietnamese and English payloads.
         var title = request.Title?.Trim();
         var summary = _richTextService.SanitizeNewsSummary(request.Summary?.Trim());
         var content = SanitizeNewsContent(request.Content?.Trim());
+        var translations = SanitizeNewsTranslations(request.Translations);
+        var english = translations?.En;
         var requiredFields = new List<string>();
 
-        if (string.IsNullOrWhiteSpace(title))
+        if (title is not null && title.Length > 300)
         {
             requiredFields.Add("title");
         }
-        else if (ContainsHtmlTag(title))
+        else if (!string.IsNullOrWhiteSpace(title) && ContainsHtmlTag(title))
         {
             requiredFields.Add("title");
         }
 
         if (status == NewsStatus.Published)
         {
-            if (string.IsNullOrWhiteSpace(summary))
-            {
-                requiredFields.Add("summary");
-            }
+            AddRequiredFieldIfMissing(requiredFields, title, "title");
+            AddRequiredFieldIfMissing(requiredFields, summary, "summary");
+            AddRequiredFieldIfMissing(requiredFields, content, "content");
+            AddRequiredFieldIfMissing(requiredFields, english?.Title, "translations.en.title");
+            AddRequiredFieldIfMissing(requiredFields, english?.Summary, "translations.en.summary");
+            AddRequiredFieldIfMissing(requiredFields, english?.Content, "translations.en.content");
 
-            if (string.IsNullOrWhiteSpace(content))
+            if (english?.Title is not null && ContainsHtmlTag(english.Title))
             {
-                requiredFields.Add("content");
+                throw BilingualSchemaInvalid("translations.en.title");
             }
         }
 
         if (requiredFields.Count > 0)
         {
             throw new NewsException(
-                "NEWS_VALIDATION_ERROR",
+                requiredFields.Any(field => field.StartsWith("translations.en.", StringComparison.Ordinal))
+                    ? "BILINGUAL_CONTENT_REQUIRED"
+                    : "NEWS_VALIDATION_ERROR",
                 "Thông tin bài viết không hợp lệ.",
                 requiredFields.ToArray());
         }
@@ -117,6 +126,15 @@ public sealed class Service : IService
                 "NEWS_CONTENT_TOO_SHORT",
                 "Nội dung bài viết phải có ít nhất 300 ký tự.",
                 "content");
+        }
+
+        if (status == NewsStatus.Published &&
+            !HasMinimumPublishedContentLength(english!.Content!))
+        {
+            throw new NewsException(
+                "NEWS_CONTENT_TOO_SHORT",
+                "Nội dung tiếng Anh của bài viết phải có ít nhất 300 ký tự.",
+                "translations.en.content");
         }
 
         var categoryIds = request.CategoryIds ?? new List<Guid>();
@@ -149,7 +167,7 @@ public sealed class Service : IService
         var categories = await _dbContext.NewsCategories
             .AsNoTracking()
             .Where(category => categoryIds.Contains(category.Id))
-            .OrderBy(category => category.Name)
+            .OrderBy(category => category.Code)
             .ThenBy(category => category.Id)
             .ToListAsync();
 
@@ -180,7 +198,7 @@ public sealed class Service : IService
         var article = new NewsArticle
         {
             Id = Guid.NewGuid(),
-            Title = title!,
+            Title = title,
             Summary = summary,
             Content = content,
             ImageUrl = imageUrl,
@@ -190,7 +208,8 @@ public sealed class Service : IService
             CreatedBy = createdBy,
             CreatedAt = nowUtc,
             UpdatedAt = null,
-            PublishAt = status == NewsStatus.Published ? nowUtc : null
+            PublishAt = status == NewsStatus.Published ? nowUtc : null,
+            Translations = translations
         };
 
         var categoryLinks = categories
@@ -230,15 +249,17 @@ public sealed class Service : IService
             AuthorName = creator.FullName,
             CreatedAt = article.CreatedAt,
             UpdatedAt = null,
+            UpdatedAtUtc = article.UpdatedAt,
             PublishAt = article.PublishAt,
             Status = GetDisplayName(article.Status),
             Categories = categories
                 .Select(category => new Response.NewsCategoryResponse
                 {
                     Id = category.Id,
-                    Name = category.Name
+                    Name = category.Code
                 })
-            .ToList()
+            .ToList(),
+            Translations = ToTranslationsResponse(article.Translations)
         };
     }
 
@@ -252,6 +273,7 @@ public sealed class Service : IService
         var article = await _dbContext.NewsArticles
             .Include(item => item.Creator)
             .Include(item => item.NewsArticleCategories)
+            .ThenInclude(item => item.NewsCategory)
             .SingleOrDefaultAsync(item => item.Id == id);
 
         if (article is null)
@@ -261,6 +283,8 @@ public sealed class Service : IService
                 "Không tìm thấy bài viết.",
                 "id");
         }
+
+        EnsureExpectedUpdatedAt(request.ExpectedUpdatedAt, article.UpdatedAt);
 
         if (article.Status == NewsStatus.Closed)
         {
@@ -306,6 +330,63 @@ public sealed class Service : IService
         }
 
         // 3. Validate nội dung theo trạng thái đích.
+        // Closing a Published News is a state-only operation. Do not bind or
+        // replace content, translations, categories, or media from a sparse
+        // Close request.
+        if (targetStatus == NewsStatus.Closed)
+        {
+            var closeNowUtc = VNZ.Service.Utils.DateTimeOffsetPrecision.UtcNowMicrosecond();
+            article.Status = NewsStatus.Closed;
+            article.Published = false;
+            article.UpdatedAt = closeNowUtc;
+
+            try
+            {
+                await using var transaction = await _dbContext.Database.BeginTransactionAsync();
+                await _dbContext.SaveChangesAsync();
+                await transaction.CommitAsync();
+            }
+            catch (DbUpdateConcurrencyException)
+            {
+                throw new NewsException(
+                    "CONTENT_CONFLICT",
+                    "BÃ i viáº¿t Ä‘Ã£ Ä‘Æ°á»£c cáº­p nháº­t bá»Ÿi má»™t yÃªu cáº§u khÃ¡c.",
+                    "expectedUpdatedAt");
+            }
+            catch (DbUpdateException exception)
+            {
+                throw new NewsException(
+                    "NEWS_ARTICLE_UPDATE_FAILED",
+                    "KhÃ´ng thá»ƒ cáº­p nháº­t bÃ i viáº¿t.",
+                    exception);
+            }
+
+            return new Response.UpdateNewsResponse
+            {
+                Id = article.Id,
+                Title = article.Title,
+                Summary = article.Summary,
+                Content = article.Content,
+                ImageUrl = article.ImageUrl,
+                AuthorName = article.Creator.FullName,
+                CreatedAt = article.CreatedAt,
+                UpdatedAt = ConvertUpdatedAtToVietnamDate(article.UpdatedAt),
+                UpdatedAtUtc = article.UpdatedAt,
+                PublishAt = article.PublishAt,
+                Status = article.Status.ToString(),
+                Categories = article.NewsArticleCategories
+                    .OrderBy(link => link.NewsCategory.Code)
+                    .ThenBy(link => link.NewsCategory.Id)
+                    .Select(link => new Response.NewsCategoryResponse
+                    {
+                        Id = link.NewsCategory.Id,
+                        Name = link.NewsCategory.Code
+                    })
+                    .ToList(),
+                Translations = ToTranslationsResponse(article.Translations)
+            };
+        }
+
         var imageAction = string.IsNullOrWhiteSpace(request.Action)
             ? null
             : request.Action.Trim();
@@ -332,34 +413,40 @@ public sealed class Service : IService
         var title = request.Title?.Trim();
         var summary = _richTextService.SanitizeNewsSummary(request.Summary?.Trim());
         var content = SanitizeNewsContent(request.Content?.Trim());
+        var translations = SanitizeNewsTranslations(request.Translations);
+        var english = translations?.En;
         var requiredFields = new List<string>();
 
-        if (string.IsNullOrWhiteSpace(title))
+        if (title is not null && title.Length > 300)
         {
             requiredFields.Add("title");
         }
-        else if (ContainsHtmlTag(title))
+        else if (!string.IsNullOrWhiteSpace(title) && ContainsHtmlTag(title))
         {
             requiredFields.Add("title");
         }
 
         if (targetStatus == NewsStatus.Published)
         {
-            if (string.IsNullOrWhiteSpace(summary))
-            {
-                requiredFields.Add("summary");
-            }
+            AddRequiredFieldIfMissing(requiredFields, title, "title");
+            AddRequiredFieldIfMissing(requiredFields, summary, "summary");
+            AddRequiredFieldIfMissing(requiredFields, content, "content");
+            AddRequiredFieldIfMissing(requiredFields, english?.Title, "translations.en.title");
+            AddRequiredFieldIfMissing(requiredFields, english?.Summary, "translations.en.summary");
+            AddRequiredFieldIfMissing(requiredFields, english?.Content, "translations.en.content");
 
-            if (string.IsNullOrWhiteSpace(content))
+            if (english?.Title is not null && ContainsHtmlTag(english.Title))
             {
-                requiredFields.Add("content");
+                throw BilingualSchemaInvalid("translations.en.title");
             }
         }
 
         if (requiredFields.Count > 0)
         {
             throw new NewsException(
-                "NEWS_VALIDATION_ERROR",
+                requiredFields.Any(field => field.StartsWith("translations.en.", StringComparison.Ordinal))
+                    ? "BILINGUAL_CONTENT_REQUIRED"
+                    : "NEWS_VALIDATION_ERROR",
                 "Thông tin cập nhật bài viết không hợp lệ.",
                 requiredFields.ToArray());
         }
@@ -371,6 +458,15 @@ public sealed class Service : IService
                 "NEWS_CONTENT_TOO_SHORT",
                 "Nội dung bài viết phải có ít nhất 300 ký tự.",
                 "content");
+        }
+
+        if (targetStatus == NewsStatus.Published &&
+            !HasMinimumPublishedContentLength(english!.Content!))
+        {
+            throw new NewsException(
+                "NEWS_CONTENT_TOO_SHORT",
+                "Nội dung tiếng Anh của bài viết phải có ít nhất 300 ký tự.",
+                "translations.en.content");
         }
 
         var categoryIds = request.CategoryIds ?? new List<Guid>();
@@ -398,7 +494,7 @@ public sealed class Service : IService
         var categories = await _dbContext.NewsCategories
             .AsNoTracking()
             .Where(category => categoryIds.Contains(category.Id))
-            .OrderBy(category => category.Name)
+            .OrderBy(category => category.Code)
             .ThenBy(category => category.Id)
             .ToListAsync();
 
@@ -427,7 +523,7 @@ public sealed class Service : IService
         }
 
         // 4. Áp dụng trạng thái và thời gian xuất bản theo transition hợp lệ.
-        var nowUtc = DateTimeOffset.UtcNow;
+        var nowUtc = VNZ.Service.Utils.DateTimeOffsetPrecision.UtcNowMicrosecond();
         var publishAt = article.PublishAt;
 
         if (article.Status == NewsStatus.Draft && targetStatus == NewsStatus.Draft)
@@ -439,7 +535,7 @@ public sealed class Service : IService
             publishAt = nowUtc;
         }
 
-        article.Title = title!;
+        article.Title = title;
         article.Summary = summary;
         article.Content = content;
         article.ImageUrl = imageUrl;
@@ -448,6 +544,7 @@ public sealed class Service : IService
         article.Published = targetStatus == NewsStatus.Published;
         article.PublishAt = publishAt;
         article.UpdatedAt = nowUtc;
+        article.Translations = translations;
 
         var newCategoryLinks = categories
             .Select(category => new NewsArticleCategory
@@ -468,6 +565,13 @@ public sealed class Service : IService
             await _dbContext.SaveChangesAsync();
             await transaction.CommitAsync();
         }
+        catch (DbUpdateConcurrencyException)
+        {
+            throw new NewsException(
+                "CONTENT_CONFLICT",
+                "Bài viết đã được cập nhật bởi một yêu cầu khác.",
+                "expectedUpdatedAt");
+        }
         catch (DbUpdateException exception)
         {
             throw new NewsException(
@@ -487,15 +591,17 @@ public sealed class Service : IService
             AuthorName = article.Creator.FullName,
             CreatedAt = article.CreatedAt,
             UpdatedAt = ConvertUpdatedAtToVietnamDate(article.UpdatedAt),
+            UpdatedAtUtc = article.UpdatedAt,
             PublishAt = article.PublishAt,
             Status = GetDisplayName(article.Status),
             Categories = categories
                 .Select(category => new Response.NewsCategoryResponse
                 {
                     Id = category.Id,
-                    Name = category.Name
+                    Name = category.Code
                 })
-                .ToList()
+                .ToList(),
+            Translations = ToTranslationsResponse(article.Translations)
         };
     }
 
@@ -557,6 +663,125 @@ public sealed class Service : IService
         {
             return _richTextService.Sanitize(value, allowLinks: true);
         }
+    }
+
+    private NewsTranslations? SanitizeNewsTranslations(
+        Request.NewsTranslationsRequest? translations)
+    {
+        if (translations is null)
+        {
+            return null;
+        }
+
+        if (translations.En is null)
+        {
+            return new NewsTranslations();
+        }
+
+        var english = translations.En;
+        var title = english.Title?.Trim();
+
+        if (title is not null && title.Length > 300)
+        {
+            throw BilingualSchemaInvalid("translations.en.title");
+        }
+
+        if (!string.IsNullOrWhiteSpace(title) && ContainsHtmlTag(title))
+        {
+            throw BilingualSchemaInvalid("translations.en.title");
+        }
+
+        string? summary;
+        string? content;
+
+        try
+        {
+            summary = _richTextService.SanitizeNewsSummary(english.Summary?.Trim());
+            content = SanitizeNewsContent(english.Content?.Trim());
+        }
+        catch (NewsException exception) when (exception.Code == "NEWS_CONTENT_INVALID")
+        {
+            throw BilingualSchemaInvalid("translations.en.content");
+        }
+
+        return new NewsTranslations
+        {
+            En = new NewsEnglishTranslation
+            {
+                Title = title,
+                Summary = summary,
+                Content = content
+            }
+        };
+    }
+
+    private static NewsException BilingualSchemaInvalid(params string[] fields)
+    {
+        return new NewsException(
+            "BILINGUAL_SCHEMA_INVALID",
+            "Cấu trúc nội dung tiếng Anh không hợp lệ.",
+            fields);
+    }
+
+    private static void AddRequiredFieldIfMissing(
+        ICollection<string> fields,
+        string? value,
+        string field)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            fields.Add(field);
+        }
+    }
+
+    private static void EnsureExpectedUpdatedAt(
+        DateTimeOffset? expectedUpdatedAt,
+        DateTimeOffset? actualUpdatedAt)
+    {
+        if (expectedUpdatedAt.HasValue && expectedUpdatedAt != actualUpdatedAt)
+        {
+            throw new NewsException(
+                "CONTENT_CONFLICT",
+                "Bài viết đã được cập nhật bởi một yêu cầu khác.",
+                "expectedUpdatedAt");
+        }
+    }
+
+    private static NewsEnglishTranslation RequireNewsEnglish(
+        NewsTranslations? translations)
+    {
+        var english = translations?.En;
+        var missingFields = new List<string>();
+
+        AddRequiredFieldIfMissing(missingFields, english?.Title, "translations.en.title");
+        AddRequiredFieldIfMissing(missingFields, english?.Summary, "translations.en.summary");
+        AddRequiredFieldIfMissing(missingFields, english?.Content, "translations.en.content");
+
+        if (missingFields.Count > 0)
+        {
+            throw new LocalizationException(
+                "PUBLIC_TRANSLATION_MISSING",
+                "Bản dịch tiếng Anh của nội dung public đang bị thiếu.",
+                missingFields.ToArray());
+        }
+
+        return english!;
+    }
+
+    private static string RequirePublicNewsValue(
+        string? value,
+        string field,
+        Guid articleId)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            throw new LocalizationException(
+                "PUBLIC_TRANSLATION_MISSING",
+                "Nội dung public đang thiếu dữ liệu bắt buộc.",
+                $"{articleId}.{field}");
+        }
+
+        return value;
     }
 
     private static bool ContainsHtmlTag(string value)
@@ -639,7 +864,7 @@ public sealed class Service : IService
         {
             var searchLower = search.ToLower();
             query = query.Where(article =>
-                article.Title.ToLower().Contains(searchLower));
+                (article.Title ?? string.Empty).ToLower().Contains(searchLower));
         }
 
         if (statusFilter.HasValue)
@@ -684,7 +909,7 @@ public sealed class Service : IService
             {
                 ArticleId = link.NewsArticleId,
                 CategoryId = link.NewsCategoryId,
-                CategoryName = link.NewsCategory.Name
+                CategoryName = link.NewsCategory.Code
             })
             .ToListAsync();
 
@@ -733,6 +958,8 @@ public sealed class Service : IService
     {
         ArgumentNullException.ThrowIfNull(request);
 
+        var lang = LocaleResolver.Resolve(request.Lang);
+
         // 1. Validate phân trang public theo convention chung của các API list.
         if (request.Page < 1 || request.PageSize < 1 || request.PageSize > 100)
         {
@@ -765,20 +992,51 @@ public sealed class Service : IService
         var totalItems = await query.CountAsync();
 
         // 3. Lấy trang hiện tại với thứ tự publish mới nhất trước.
-        var articleRows = await query
-            .OrderByDescending(article => article.PublishAt)
-            .ThenByDescending(article => article.Id)
-            .Skip((request.Page - 1) * request.PageSize)
-            .Take(request.PageSize)
-            .Select(article => new
+        List<PublicNewsRow> articleRows;
+
+        try
+        {
+            articleRows = (await query
+                .OrderByDescending(article => article.PublishAt)
+                .ThenByDescending(article => article.Id)
+                .Skip((request.Page - 1) * request.PageSize)
+                .Take(request.PageSize)
+                .Select(article => new PublicNewsRow
+                {
+                    Id = article.Id,
+                    Title = article.Title,
+                    Summary = article.Summary,
+                    Content = article.Content,
+                    Translations = article.Translations,
+                    PublishAt = article.PublishAt,
+                    ReadingTimeMinutes = article.ReadingTimeMinutes
+                })
+                .ToListAsync());
+        }
+        catch (JsonException) when (lang == LocaleResolver.English)
+        {
+            throw new LocalizationException(
+                "PUBLIC_TRANSLATION_MISSING",
+                "Báº£n dá»‹ch tiáº¿ng Anh cá»§a News khÃ´ng há»£p lá»‡.",
+                "translations.en");
+        }
+
+        foreach (var article in articleRows)
+        {
+            if (lang == LocaleResolver.English)
             {
-                article.Id,
-                article.Title,
-                article.Summary,
-                article.PublishAt,
-                article.ReadingTimeMinutes
-            })
-            .ToListAsync();
+                _ = RequireNewsEnglish(article.Translations);
+                _ = RequirePublicNewsValue(article.Title, "title", article.Id);
+                _ = RequirePublicNewsValue(article.Summary, "summary", article.Id);
+                _ = RequirePublicNewsValue(article.Content, "content", article.Id);
+            }
+            else
+            {
+                _ = RequirePublicNewsValue(article.Title, "title", article.Id);
+                _ = RequirePublicNewsValue(article.Summary, "summary", article.Id);
+                _ = RequirePublicNewsValue(article.Content, "content", article.Id);
+            }
+        }
 
         var articleIds = articleRows
             .Select(article => article.Id)
@@ -791,7 +1049,7 @@ public sealed class Service : IService
             {
                 ArticleId = link.NewsArticleId,
                 CategoryId = link.NewsCategoryId,
-                CategoryName = link.NewsCategory.Name
+                CategoryName = link.NewsCategory.Code
             })
             .ToListAsync();
 
@@ -814,8 +1072,13 @@ public sealed class Service : IService
             .Select(article => new Response.PublicNewsListItemResponse
             {
                 Id = article.Id,
-                Title = article.Title,
-                Summary = _richTextService.SanitizeNewsSummary(article.Summary),
+                Title = lang == LocaleResolver.English
+                    ? RequireNewsEnglish(article.Translations).Title!
+                    : RequirePublicNewsValue(article.Title, "title", article.Id),
+                Summary = _richTextService.SanitizeNewsSummary(
+                    lang == LocaleResolver.English
+                        ? RequireNewsEnglish(article.Translations).Summary
+                        : article.Summary),
                 PublishAt = article.PublishAt!.Value,
                 ReadingTimeMinutes = article.ReadingTimeMinutes,
                 Categories = GetCategories(categoriesByArticleId, article.Id)
@@ -836,8 +1099,12 @@ public sealed class Service : IService
         };
     }
 
-    public async Task<Response.PublicNewsDetailResponse> GetPublicNewsDetailAsync(string id)
+    public async Task<Response.PublicNewsDetailResponse> GetPublicNewsDetailAsync(
+        string id,
+        string? lang = null)
     {
+        var resolvedLang = LocaleResolver.Resolve(lang);
+
         // 1. Validate UUID tại Service để Controller chỉ chịu trách nhiệm nhận route.
         if (!Guid.TryParse(id, out var newsArticleId))
         {
@@ -848,7 +1115,11 @@ public sealed class Service : IService
         }
 
         // 2. Chỉ đọc bài có đầy đủ điều kiện hiển thị public cùng toàn bộ danh mục.
-        var article = await _dbContext.NewsArticles
+        NewsArticle? article;
+
+        try
+        {
+            article = await _dbContext.NewsArticles
             .AsNoTracking()
             .Include(item => item.NewsArticleCategories)
             .ThenInclude(item => item.NewsCategory)
@@ -857,6 +1128,14 @@ public sealed class Service : IService
                 item.Status == NewsStatus.Published &&
                 item.Published &&
                 item.PublishAt != null);
+        }
+        catch (JsonException) when (resolvedLang == LocaleResolver.English)
+        {
+            throw new LocalizationException(
+                "PUBLIC_TRANSLATION_MISSING",
+                "Báº£n dá»‹ch tiáº¿ng Anh cá»§a News khÃ´ng há»£p lá»‡.",
+                "translations.en");
+        }
 
         if (article is null)
         {
@@ -865,23 +1144,38 @@ public sealed class Service : IService
                 "Không tìm thấy bài viết công khai.");
         }
 
+        var english = resolvedLang == LocaleResolver.English
+            ? RequireNewsEnglish(article.Translations)
+            : null;
+
+        if (resolvedLang == LocaleResolver.Vietnamese || resolvedLang == LocaleResolver.English)
+        {
+            _ = RequirePublicNewsValue(article.Title, "title", article.Id);
+            _ = RequirePublicNewsValue(article.Summary, "summary", article.Id);
+            _ = RequirePublicNewsValue(article.Content, "content", article.Id);
+        }
+
         // 3. Nội dung legacy được sanitize khi đọc để FE chỉ nhận HTML an toàn.
         return new Response.PublicNewsDetailResponse
         {
             Id = article.Id,
-            Title = article.Title,
-            Summary = _richTextService.SanitizeNewsSummary(article.Summary),
-            Content = SafeNormalizeNewsContent(article.Content),
+            Title = resolvedLang == LocaleResolver.English
+                ? english!.Title!
+                : RequirePublicNewsValue(article.Title, "title", article.Id),
+            Summary = _richTextService.SanitizeNewsSummary(
+                resolvedLang == LocaleResolver.English ? english!.Summary : article.Summary),
+            Content = SafeNormalizeNewsContent(
+                resolvedLang == LocaleResolver.English ? english!.Content : article.Content),
             ImageUrl = article.ImageUrl,
             PublishAt = article.PublishAt!.Value,
             ReadingTimeMinutes = article.ReadingTimeMinutes,
             Categories = article.NewsArticleCategories
-                .OrderBy(link => link.NewsCategory.Name)
+                .OrderBy(link => link.NewsCategory.Code)
                 .ThenBy(link => link.NewsCategory.Id)
                 .Select(link => new Response.NewsCategoryResponse
                 {
                     Id = link.NewsCategory.Id,
-                    Name = link.NewsCategory.Name
+                    Name = link.NewsCategory.Code
                 })
                 .ToList()
         };
@@ -937,18 +1231,20 @@ public sealed class Service : IService
             AuthorName = article.Creator.FullName,
             CreatedAt = article.CreatedAt,
             UpdatedAt = ConvertUpdatedAtToVietnamDate(article.UpdatedAt),
+            UpdatedAtUtc = article.UpdatedAt,
             PublishAt = article.PublishAt,
             Status = GetDisplayName(article.Status),
             Categories = article.NewsArticleCategories
-                .OrderBy(link => link.NewsCategory.Name)
+                .OrderBy(link => link.NewsCategory.Code)
                 .ThenBy(link => link.NewsCategory.Id)
                 .Select(link => new Response.NewsCategoryResponse
                 {
                     Id = link.NewsCategory.Id,
-                    Name = link.NewsCategory.Name
+                    Name = link.NewsCategory.Code
                 })
                 .ToList(),
-            Actions = actions
+            Actions = actions,
+            Translations = ToTranslationsResponse(article.Translations)
         };
     }
 
@@ -956,12 +1252,12 @@ public sealed class Service : IService
     {
         return await _dbContext.NewsCategories
             .AsNoTracking()
-            .OrderBy(category => category.Name)
+            .OrderBy(category => category.Code)
             .ThenBy(category => category.Id)
             .Select(category => new Response.NewsCategoryResponse
             {
                 Id = category.Id,
-                Name = category.Name
+                Name = category.Code
             })
             .ToListAsync();
     }
@@ -969,12 +1265,29 @@ public sealed class Service : IService
     private static string GetDisplayName<TEnum>(TEnum value)
         where TEnum : struct, Enum
     {
-        var member = typeof(TEnum).GetMember(value.ToString()).Single();
+        // Enum/system values are stable API keys. FE owns the VI/EN labels.
+        return value.ToString();
+    }
 
-        return member.GetCustomAttributes(typeof(DisplayAttribute), inherit: false)
-            .OfType<DisplayAttribute>()
-            .SingleOrDefault()?
-            .GetName() ?? value.ToString();
+    private static Response.NewsTranslationsResponse? ToTranslationsResponse(
+        NewsTranslations? translations)
+    {
+        if (translations is null)
+        {
+            return null;
+        }
+
+        return new Response.NewsTranslationsResponse
+        {
+            En = translations.En is null
+                ? null
+                : new Response.NewsEnglishTranslationResponse
+                {
+                    Title = translations.En.Title,
+                    Summary = translations.En.Summary,
+                    Content = translations.En.Content
+                }
+        };
     }
 
     private static List<Response.NewsCategoryResponse> GetCategories(
@@ -998,5 +1311,16 @@ public sealed class Service : IService
 
         var updatedAtInVietnam = updatedAt.Value.ToOffset(VietnamUtcOffset);
         return DateOnly.FromDateTime(updatedAtInVietnam.DateTime);
+    }
+
+    private sealed class PublicNewsRow
+    {
+        public Guid Id { get; init; }
+        public string? Title { get; init; }
+        public string? Summary { get; init; }
+        public string? Content { get; init; }
+        public NewsTranslations? Translations { get; init; }
+        public DateTimeOffset? PublishAt { get; init; }
+        public int ReadingTimeMinutes { get; init; }
     }
 }

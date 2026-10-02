@@ -1,9 +1,12 @@
 using System.ComponentModel.DataAnnotations;
+using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using VNZ.Repository;
 using VNZ.Repository.Entity;
 using VNZ.Repository.Entity.Enum;
+using VNZ.Repository.Entity.Json;
 using VNZ.Service.Exceptions;
+using VNZ.Service.Localization;
 
 namespace VNZ.Service.JobPostService;
 
@@ -42,8 +45,10 @@ public class Service : IService
         }
 
         var title = request.Title?.Trim();
+        var translations = SanitizeJobPostTranslations(request.Translations);
+        var english = translations?.En;
 
-        if (string.IsNullOrWhiteSpace(title) || title.Length > 300)
+        if (title is not null && title.Length > 300)
         {
             throw new JobPostException(
                 "JOB_POST_VALIDATION_FAILED",
@@ -53,7 +58,15 @@ public class Service : IService
 
         var isPublishing = request.Action == JobPostAction.Publish;
         var expiredAt = ConvertExpiredDateToUtc(request.ExpiredDate);
-        var nowUtc = DateTimeOffset.UtcNow;
+        var nowUtc = VNZ.Service.Utils.DateTimeOffsetPrecision.UtcNowMicrosecond();
+
+        if (request.NumberOfPositions.HasValue && request.NumberOfPositions.Value < 1)
+        {
+            throw new JobPostException(
+                "JOB_POST_VALIDATION_FAILED",
+                "Số lượng vị trí phải lớn hơn 0.",
+                "numberOfPositions");
+        }
 
         if (isPublishing)
         {
@@ -79,11 +92,6 @@ public class Service : IService
                 requiredFields.Add("numberOfPositions");
             }
 
-            if (request.Skills is null || request.Skills.Count == 0)
-            {
-                requiredFields.Add("skills");
-            }
-
             if (string.IsNullOrWhiteSpace(request.ShortDescription))
             {
                 requiredFields.Add("shortDescription");
@@ -99,10 +107,34 @@ public class Service : IService
                 requiredFields.Add("requirements");
             }
 
+            AddRequiredFieldIfMissing(requiredFields, title, "title");
+
+            if (string.IsNullOrWhiteSpace(english?.Title))
+            {
+                requiredFields.Add("translations.en.title");
+            }
+
+            if (string.IsNullOrWhiteSpace(english?.ShortDescription))
+            {
+                requiredFields.Add("translations.en.shortDescription");
+            }
+
+            if (string.IsNullOrWhiteSpace(english?.Description))
+            {
+                requiredFields.Add("translations.en.description");
+            }
+
+            if (string.IsNullOrWhiteSpace(english?.Requirements))
+            {
+                requiredFields.Add("translations.en.requirements");
+            }
+
             if (requiredFields.Count > 0)
             {
                 throw new JobPostException(
-                    "JOB_POST_VALIDATION_FAILED",
+                    requiredFields.Any(field => field.StartsWith("translations.en.", StringComparison.Ordinal))
+                        ? "BILINGUAL_CONTENT_REQUIRED"
+                        : "JOB_POST_VALIDATION_FAILED",
                     "Vui lòng nhập đầy đủ thông tin để đăng tin.",
                     requiredFields.ToArray());
             }
@@ -135,14 +167,8 @@ public class Service : IService
             .Select(skill => skill.Trim())
             .ToList() ?? new List<string>();
 
-        if (isPublishing && skills.Count == 0)
-        {
-            throw new JobPostException(
-                "JOB_POST_VALIDATION_FAILED",
-                "Danh sách kỹ năng phải có ít nhất một giá trị.",
-                "skills");
-        }
-
+        // Skills are optional by the bilingual contract; null/empty is stored
+        // as an empty array for both Draft and Published records.
         var jobPost = new JobPost
         {
             Id = Guid.NewGuid(),
@@ -158,7 +184,8 @@ public class Service : IService
             Skills = skills,
             ShortDescription = request.ShortDescription?.Trim(),
             Description = request.Description?.Trim(),
-            Requirements = request.Requirements?.Trim()
+            Requirements = request.Requirements?.Trim(),
+            Translations = translations
         };
 
         await using var transaction = await _dbContext.Database.BeginTransactionAsync();
@@ -244,7 +271,7 @@ public class Service : IService
             var searchLower = search.ToLower();
 
             jobPostsQuery = jobPostsQuery.Where(jobPost =>
-                jobPost.Title.ToLower().Contains(searchLower));
+                (jobPost.Title ?? string.Empty).ToLower().Contains(searchLower));
         }
 
         if (statusFilter.HasValue)
@@ -302,8 +329,9 @@ public class Service : IService
         };
     }
 
-    public async Task<List<Response.PublicJobPostListItemResponse>> GetPublicJobPostListAsync()
+    public async Task<List<Response.PublicJobPostListItemResponse>> GetPublicJobPostListAsync(string? lang = null)
     {
+        var resolvedLang = LocaleResolver.Resolve(lang);
         var nowUtc = DateTimeOffset.UtcNow;
 
         try
@@ -319,24 +347,51 @@ public class Service : IService
                 .ThenByDescending(jobPost => jobPost.Id)
                 .ToListAsync();
 
+            if (resolvedLang == LocaleResolver.English)
+            {
+                foreach (var jobPost in jobPosts)
+                {
+                    RequireJobPostVietnamese(
+                        jobPost.Title,
+                        jobPost.ShortDescription,
+                        jobPost.Description,
+                        jobPost.Requirements);
+                }
+            }
+
             return jobPosts
                 .Select(jobPost => new Response.PublicJobPostListItemResponse
                 {
                     Id = jobPost.Id,
-                    Title = jobPost.Title,
-                    Department = jobPost.Department?.Name,
+                    Title = resolvedLang == LocaleResolver.English
+                        ? RequireJobPostEnglish(jobPost.Translations).Title!
+                        : jobPost.Title!,
+                    Department = jobPost.Department?.Code,
                     EmploymentType = jobPost.EmploymentType.HasValue
-                        ? GetDisplayName(jobPost.EmploymentType.Value)
+                        ? jobPost.EmploymentType.Value.ToString()
                         : null,
                     JobLevel = jobPost.JobLevel.HasValue
-                        ? GetDisplayName(jobPost.JobLevel.Value)
+                        ? jobPost.JobLevel.Value.ToString()
                         : null,
                     NumberOfPositions = jobPost.NumberOfPositions,
                     Skills = new List<string>(jobPost.Skills),
-                    ShortDescription = jobPost.ShortDescription,
+                    ShortDescription = resolvedLang == LocaleResolver.English
+                        ? RequireJobPostEnglish(jobPost.Translations).ShortDescription!
+                        : jobPost.ShortDescription,
                     ExpiredDate = ConvertExpiredAtToDate(jobPost.ExpiredAt)!.Value
                 })
                 .ToList();
+        }
+        catch (LocalizationException)
+        {
+            throw;
+        }
+        catch (JsonException)
+        {
+            throw new LocalizationException(
+                "PUBLIC_TRANSLATION_MISSING",
+                "Báº£n dá»‹ch tiáº¿ng Anh cá»§a vá»‹ trÃ­ tuyá»ƒn dá»¥ng khÃ´ng há»£p lá»‡.",
+                new[] { "translations.en" });
         }
         catch (Exception exception) when (exception is not OperationCanceledException)
         {
@@ -379,7 +434,7 @@ public class Service : IService
             UpdatedAt = jobPost.UpdatedAt,
             Status = GetDisplayName(jobPost.Status),
             ExpiredDate = ConvertExpiredAtToDate(jobPost.ExpiredAt),
-            Department = jobPost.Department?.Name,
+            Department = jobPost.Department?.Code,
             EmploymentType = jobPost.EmploymentType.HasValue
                 ? GetDisplayName(jobPost.EmploymentType.Value)
                 : null,
@@ -391,12 +446,16 @@ public class Service : IService
             ShortDescription = jobPost.ShortDescription,
             Description = jobPost.Description,
             Requirements = jobPost.Requirements,
-            CanEdit = canEdit
+            CanEdit = canEdit,
+            Translations = ToTranslationsResponse(jobPost.Translations)
         };
     }
 
-    public async Task<Response.PublicJobPostDetailResponse> GetPublicJobPostDetailAsync(Guid id)
+    public async Task<Response.PublicJobPostDetailResponse> GetPublicJobPostDetailAsync(
+        Guid id,
+        string? lang = null)
     {
+        var resolvedLang = LocaleResolver.Resolve(lang);
         var nowUtc = DateTimeOffset.UtcNow;
 
         try
@@ -413,7 +472,7 @@ public class Service : IService
                     jobPost.Title,
                     Department = jobPost.Department == null
                         ? null
-                        : jobPost.Department.Name,
+                        : jobPost.Department.Code,
                     jobPost.EmploymentType,
                     jobPost.JobLevel,
                     jobPost.NumberOfPositions,
@@ -421,6 +480,7 @@ public class Service : IService
                     jobPost.ShortDescription,
                     jobPost.Description,
                     jobPost.Requirements,
+                    jobPost.Translations,
                     jobPost.ExpiredAt
                 })
                 .SingleOrDefaultAsync();
@@ -433,24 +493,52 @@ public class Service : IService
                     "id");
             }
 
+            if (resolvedLang == LocaleResolver.English)
+            {
+                RequireJobPostVietnamese(
+                    jobPost.Title,
+                    jobPost.ShortDescription,
+                    jobPost.Description,
+                    jobPost.Requirements);
+            }
+
             return new Response.PublicJobPostDetailResponse
             {
                 Id = jobPost.Id,
-                Title = jobPost.Title,
+                Title = resolvedLang == LocaleResolver.English
+                    ? RequireJobPostEnglish(jobPost.Translations).Title!
+                    : jobPost.Title!,
                 Department = jobPost.Department,
                 EmploymentType = jobPost.EmploymentType.HasValue
-                    ? GetDisplayName(jobPost.EmploymentType.Value)
+                    ? jobPost.EmploymentType.Value.ToString()
                     : null,
                 JobLevel = jobPost.JobLevel.HasValue
-                    ? GetDisplayName(jobPost.JobLevel.Value)
+                    ? jobPost.JobLevel.Value.ToString()
                     : null,
                 NumberOfPositions = jobPost.NumberOfPositions,
                 Skills = new List<string>(jobPost.Skills),
-                ShortDescription = jobPost.ShortDescription,
-                Description = jobPost.Description,
-                Requirements = jobPost.Requirements,
+                ShortDescription = resolvedLang == LocaleResolver.English
+                    ? RequireJobPostEnglish(jobPost.Translations).ShortDescription!
+                    : jobPost.ShortDescription,
+                Description = resolvedLang == LocaleResolver.English
+                    ? RequireJobPostEnglish(jobPost.Translations).Description!
+                    : jobPost.Description,
+                Requirements = resolvedLang == LocaleResolver.English
+                    ? RequireJobPostEnglish(jobPost.Translations).Requirements!
+                    : jobPost.Requirements,
                 ExpiredDate = ConvertExpiredAtToDate(jobPost.ExpiredAt)!.Value
             };
+        }
+        catch (LocalizationException)
+        {
+            throw;
+        }
+        catch (JsonException)
+        {
+            throw new LocalizationException(
+                "PUBLIC_TRANSLATION_MISSING",
+                "Báº£n dá»‹ch tiáº¿ng Anh cá»§a vá»‹ trÃ­ tuyá»ƒn dá»¥ng khÃ´ng há»£p lá»‡.",
+                new[] { "translations.en" });
         }
         catch (JobPostException)
         {
@@ -491,6 +579,8 @@ public class Service : IService
                 "Không tìm thấy tin tuyển dụng.");
         }
 
+        EnsureExpectedUpdatedAt(request.ExpectedUpdatedAt, jobPost.UpdatedAt);
+
         if (jobPost.Status == JobPostStatus.Closed)
         {
             throw new JobPostException(
@@ -505,7 +595,7 @@ public class Service : IService
                 "Tin tuyển dụng đã hết hạn, không được chỉnh sửa.");
         }
 
-        var nowUtc = DateTimeOffset.UtcNow;
+        var nowUtc = VNZ.Service.Utils.DateTimeOffsetPrecision.UtcNowMicrosecond();
         var expiredAt = ConvertExpiredDateToUtc(request.ExpiredDate);
 
         if (jobPost.Status == JobPostStatus.Open &&
@@ -544,7 +634,18 @@ public class Service : IService
         }
 
         var title = request.Title?.Trim();
-        if (string.IsNullOrWhiteSpace(title) || title.Length > 300)
+        var translations = SanitizeJobPostTranslations(request.Translations);
+        var english = translations?.En;
+
+        if (request.NumberOfPositions.HasValue && request.NumberOfPositions.Value < 1)
+        {
+            throw new JobPostException(
+                "JOB_POST_VALIDATION_ERROR",
+                "Số lượng vị trí phải lớn hơn 0.",
+                "numberOfPositions");
+        }
+
+        if (title is not null && title.Length > 300)
         {
             throw new JobPostException(
                 "JOB_POST_VALIDATION_ERROR",
@@ -579,11 +680,6 @@ public class Service : IService
                 requiredFields.Add("numberOfPositions");
             }
 
-            if (skills.Count == 0)
-            {
-                requiredFields.Add("skills");
-            }
-
             if (string.IsNullOrWhiteSpace(request.ShortDescription))
             {
                 requiredFields.Add("shortDescription");
@@ -604,10 +700,18 @@ public class Service : IService
                 requiredFields.Add("expiredDate");
             }
 
+            AddRequiredFieldIfMissing(requiredFields, title, "title");
+            AddRequiredFieldIfMissing(requiredFields, english?.Title, "translations.en.title");
+            AddRequiredFieldIfMissing(requiredFields, english?.ShortDescription, "translations.en.shortDescription");
+            AddRequiredFieldIfMissing(requiredFields, english?.Description, "translations.en.description");
+            AddRequiredFieldIfMissing(requiredFields, english?.Requirements, "translations.en.requirements");
+
             if (requiredFields.Count > 0)
             {
                 throw new JobPostException(
-                    "JOB_POST_VALIDATION_ERROR",
+                    requiredFields.Any(field => field.StartsWith("translations.en.", StringComparison.Ordinal))
+                        ? "BILINGUAL_CONTENT_REQUIRED"
+                        : "JOB_POST_VALIDATION_ERROR",
                     "Vui lòng nhập đầy đủ thông tin để lưu tin đang tuyển.",
                     requiredFields.ToArray());
             }
@@ -637,6 +741,7 @@ public class Service : IService
             ? JobPostStatus.Open
             : JobPostStatus.Draft;
         jobPost.UpdatedAt = nowUtc;
+        jobPost.Translations = translations;
 
         await SaveJobPostUpdateAsync();
         return ToUpdateResponse(jobPost);
@@ -676,6 +781,110 @@ public class Service : IService
             .ToList();
     }
 
+    private static JobPostTranslations? SanitizeJobPostTranslations(
+        Request.JobPostTranslationsRequest? translations)
+    {
+        if (translations is null)
+        {
+            return null;
+        }
+
+        if (translations.En is null)
+        {
+            return new JobPostTranslations();
+        }
+
+        var english = translations.En;
+        var title = english.Title?.Trim();
+
+        if (title is not null && title.Length > 300)
+        {
+            throw new JobPostException(
+                "BILINGUAL_SCHEMA_INVALID",
+                "Cấu trúc nội dung tiếng Anh không hợp lệ.",
+                "translations.en.title");
+        }
+
+        return new JobPostTranslations
+        {
+            En = new JobPostEnglishTranslation
+            {
+                Title = title,
+                ShortDescription = english.ShortDescription?.Trim(),
+                Description = english.Description?.Trim(),
+                Requirements = english.Requirements?.Trim()
+            }
+        };
+    }
+
+    private static void AddRequiredFieldIfMissing(
+        ICollection<string> fields,
+        string? value,
+        string field)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            fields.Add(field);
+        }
+    }
+
+    private static void EnsureExpectedUpdatedAt(
+        DateTimeOffset? expectedUpdatedAt,
+        DateTimeOffset? actualUpdatedAt)
+    {
+        if (expectedUpdatedAt.HasValue && expectedUpdatedAt != actualUpdatedAt)
+        {
+            throw new JobPostException(
+                "CONTENT_CONFLICT",
+                "Tin tuyển dụng đã được cập nhật bởi một yêu cầu khác.",
+                "expectedUpdatedAt");
+        }
+    }
+
+    private static JobPostEnglishTranslation RequireJobPostEnglish(
+        JobPostTranslations? translations)
+    {
+        var english = translations?.En;
+        var missingFields = new List<string>();
+
+        AddRequiredFieldIfMissing(missingFields, english?.Title, "translations.en.title");
+        AddRequiredFieldIfMissing(missingFields, english?.ShortDescription, "translations.en.shortDescription");
+        AddRequiredFieldIfMissing(missingFields, english?.Description, "translations.en.description");
+        AddRequiredFieldIfMissing(missingFields, english?.Requirements, "translations.en.requirements");
+
+        if (missingFields.Count > 0)
+        {
+            throw new LocalizationException(
+                "PUBLIC_TRANSLATION_MISSING",
+                "Bản dịch tiếng Anh của vị trí tuyển dụng đang bị thiếu.",
+                missingFields.ToArray());
+        }
+
+        return english!;
+    }
+
+    private static void RequireJobPostVietnamese(
+        string? title,
+        string? shortDescription,
+        string? description,
+        string? requirements)
+    {
+        var missingFields = new List<string>();
+
+        AddRequiredFieldIfMissing(missingFields, title, "title");
+        AddRequiredFieldIfMissing(missingFields, shortDescription, "shortDescription");
+        AddRequiredFieldIfMissing(missingFields, description, "description");
+        AddRequiredFieldIfMissing(missingFields, requirements, "requirements");
+
+        if (missingFields.Count > 0)
+        {
+            throw new LocalizationException(
+                "PUBLIC_TRANSLATION_MISSING",
+                "Báº£n dá»‹ch tiáº¿ng Viá»‡t cá»§a vá»‹ trÃ­ tuyá»ƒn dá»¥ng Ä‘ang bá»‹ thiáº¿u.",
+                missingFields.ToArray());
+        }
+    }
+
     private static DateTimeOffset? ConvertExpiredDateToUtc(DateOnly? expiredDate)
     {
         if (!expiredDate.HasValue)
@@ -711,6 +920,13 @@ public class Service : IService
             await _dbContext.SaveChangesAsync();
             await transaction.CommitAsync();
         }
+        catch (DbUpdateConcurrencyException)
+        {
+            throw new JobPostException(
+                "CONTENT_CONFLICT",
+                "Tin tuyển dụng đã được cập nhật bởi một yêu cầu khác.",
+                "expectedUpdatedAt");
+        }
         catch (DbUpdateException exception)
         {
             throw new JobPostException(
@@ -730,7 +946,7 @@ public class Service : IService
             UpdatedAt = jobPost.UpdatedAt,
             Status = GetDisplayName(jobPost.Status),
             ExpiredDate = ConvertExpiredAtToDate(jobPost.ExpiredAt),
-            Department = jobPost.Department?.Name,
+            Department = jobPost.Department?.Code,
             EmploymentType = jobPost.EmploymentType.HasValue
                 ? GetDisplayName(jobPost.EmploymentType.Value)
                 : null,
@@ -741,18 +957,37 @@ public class Service : IService
             Skills = new List<string>(jobPost.Skills),
             ShortDescription = jobPost.ShortDescription,
             Description = jobPost.Description,
-            Requirements = jobPost.Requirements
+            Requirements = jobPost.Requirements,
+            Translations = ToTranslationsResponse(jobPost.Translations)
+        };
+    }
+
+    private static Response.JobPostTranslationsResponse? ToTranslationsResponse(
+        JobPostTranslations? translations)
+    {
+        if (translations is null)
+        {
+            return null;
+        }
+
+        return new Response.JobPostTranslationsResponse
+        {
+            En = translations.En is null
+                ? null
+                : new Response.JobPostEnglishTranslationResponse
+                {
+                    Title = translations.En.Title,
+                    ShortDescription = translations.En.ShortDescription,
+                    Description = translations.En.Description,
+                    Requirements = translations.En.Requirements
+                }
         };
     }
 
     private static string GetDisplayName<TEnum>(TEnum value)
         where TEnum : struct, Enum
     {
-        var member = typeof(TEnum).GetMember(value.ToString()).Single();
-
-        return member.GetCustomAttributes(typeof(DisplayAttribute), inherit: false)
-            .OfType<DisplayAttribute>()
-            .SingleOrDefault()?
-            .GetName() ?? value.ToString();
+        // Enum/system values are stable API keys. FE owns the VI/EN labels.
+        return value.ToString();
     }
 }

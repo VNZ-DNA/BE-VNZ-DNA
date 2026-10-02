@@ -12,6 +12,7 @@ public class Request
         public IFormFile? Wordmark { get; set; }
         public string? ProductUrl { get; set; }
         public ProductContentRequest? Content { get; set; }
+        public ProductTranslationsRequest? Translations { get; set; }
     }
 
     public class UpdateProductRequest
@@ -23,8 +24,10 @@ public class Request
         public string? WordmarkAction { get; set; }
         public string? ProductUrl { get; set; }
         public ProductContentRequest? Content { get; set; }
-        public ProductStatus Status { get; set; }
+        public ProductStatus? Status { get; set; }
         public bool? IsPublished { get; set; }
+        public DateTimeOffset? ExpectedUpdatedAt { get; set; }
+        public ProductTranslationsRequest? Translations { get; set; }
     }
 
     public class ProductContentRequest
@@ -58,5 +61,15 @@ public class Request
     public class ReorderProductsRequest
     {
         public List<Guid>? OrderedProductIds { get; set; }
+    }
+
+    public class ProductTranslationsRequest
+    {
+        public ProductEnglishTranslationRequest? En { get; set; }
+    }
+
+    public class ProductEnglishTranslationRequest
+    {
+        public ProductContentRequest? Content { get; set; }
     }
 }

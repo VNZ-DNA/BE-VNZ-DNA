@@ -1,11 +1,22 @@
+using System.Text.Json;
+using System.Text.Json.Serialization;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using VNZ.Repository.Entity;
 using VNZ.Repository.Entity.Enum;
+using VNZ.Repository.Entity.Json;
 
 namespace VNZ.Repository;
 
 public class AppDbContext : DbContext
 {
+    private static readonly JsonSerializerOptions TypedJsonOptions = new()
+    {
+        PropertyNameCaseInsensitive = true,
+        UnmappedMemberHandling = JsonUnmappedMemberHandling.Disallow,
+        Converters = { new JsonStringEnumConverter() }
+    };
+
     public AppDbContext(DbContextOptions<AppDbContext> options) : base(options)
     {
     }
@@ -56,7 +67,15 @@ public class AppDbContext : DbContext
         {
             entity.ToTable("News_Article");
             entity.HasKey(x => x.Id);
-            entity.Property(x => x.Title).HasMaxLength(300).IsRequired();
+            entity.Property(x => x.Title).HasMaxLength(300);
+            entity.Property(x => x.UpdatedAt).IsConcurrencyToken();
+            entity.Property(x => x.Translations)
+                .HasConversion(new ValueConverter<NewsTranslations?, string?>(
+                    value => value == null ? null : JsonSerializer.Serialize(value, TypedJsonOptions),
+                    value => value == null || value == ""
+                        ? null
+                        : JsonSerializer.Deserialize<NewsTranslations>(value, TypedJsonOptions)))
+                .HasColumnType("jsonb");
             entity.Property(x => x.ReadingTimeMinutes).HasDefaultValue(1);
             entity.Property(x => x.Status).HasConversion<string>().IsRequired();
             entity.HasIndex(x => x.Status);
@@ -75,7 +94,9 @@ public class AppDbContext : DbContext
         {
             entity.ToTable("News_Category");
             entity.HasKey(x => x.Id);
+            entity.Property(x => x.Code).HasMaxLength(100).IsRequired();
             entity.Property(x => x.Name).HasMaxLength(150).IsRequired();
+            entity.HasIndex(x => x.Code).IsUnique();
             entity.HasIndex(x => x.Name).IsUnique();
         });
 
@@ -92,7 +113,9 @@ public class AppDbContext : DbContext
         {
             entity.ToTable("Department");
             entity.HasKey(x => x.Id);
+            entity.Property(x => x.Code).HasMaxLength(100).IsRequired();
             entity.Property(x => x.Name).HasMaxLength(150).IsRequired();
+            entity.HasIndex(x => x.Code).IsUnique();
             entity.HasIndex(x => x.Name).IsUnique();
         });
 
@@ -100,7 +123,15 @@ public class AppDbContext : DbContext
         {
             entity.ToTable("Job_Post");
             entity.HasKey(x => x.Id);
-            entity.Property(x => x.Title).HasMaxLength(300).IsRequired();
+            entity.Property(x => x.Title).HasMaxLength(300);
+            entity.Property(x => x.UpdatedAt).IsConcurrencyToken();
+            entity.Property(x => x.Translations)
+                .HasConversion(new ValueConverter<JobPostTranslations?, string?>(
+                    value => value == null ? null : JsonSerializer.Serialize(value, TypedJsonOptions),
+                    value => value == null || value == ""
+                        ? null
+                        : JsonSerializer.Deserialize<JobPostTranslations>(value, TypedJsonOptions)))
+                .HasColumnType("jsonb");
             entity.Property(x => x.Status).HasConversion<string>().IsRequired();
             entity.Property(x => x.EmploymentType).HasConversion<string>();
             entity.Property(x => x.JobLevel).HasConversion<string>();
@@ -162,7 +193,15 @@ public class AppDbContext : DbContext
             entity.Property(x => x.Name).HasMaxLength(200).IsRequired();
             entity.Property(x => x.Status).HasConversion<string>().IsRequired();
             entity.Property(x => x.WordmarkUrl).HasColumnType("text");
+            entity.Property(x => x.UpdatedAt).IsConcurrencyToken();
             entity.Property(x => x.Content).HasColumnType("jsonb");
+            entity.Property(x => x.Translations)
+                .HasConversion(new ValueConverter<ProductTranslations?, string?>(
+                    value => value == null ? null : JsonSerializer.Serialize(value, TypedJsonOptions),
+                    value => value == null || value == ""
+                        ? null
+                        : JsonSerializer.Deserialize<ProductTranslations>(value, TypedJsonOptions)))
+                .HasColumnType("jsonb");
             entity.Property(x => x.Images).HasColumnType("jsonb");
             entity.HasOne(x => x.Creator).WithMany(x => x.Products).HasForeignKey(x => x.CreatedBy).OnDelete(DeleteBehavior.Restrict);
         });

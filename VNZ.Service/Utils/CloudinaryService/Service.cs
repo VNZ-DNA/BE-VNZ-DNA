@@ -8,7 +8,7 @@ using VNZ.Service.Exceptions;
 
 namespace VNZ.Service.Utils.CloudinaryService;
 
-public class Service : MediaService.IService
+public class Service : MediaService.IService, MediaService.IAssetCleanupService
 {
     private const long MaxFileBytes = 5 * 1024 * 1024;
 
@@ -131,6 +131,36 @@ public class Service : MediaService.IService
             Width = uploadResult.Width,
             Height = uploadResult.Height
         };
+    }
+
+    public async Task DeleteImageAsync(string publicId)
+    {
+        if (string.IsNullOrWhiteSpace(publicId))
+        {
+            return;
+        }
+
+        try
+        {
+            var destroyResult = await _cloudinary.DestroyAsync(new DeletionParams(publicId));
+
+            if (!string.Equals(destroyResult.Result, "ok", StringComparison.OrdinalIgnoreCase) &&
+                !string.Equals(destroyResult.Result, "not found", StringComparison.OrdinalIgnoreCase))
+            {
+                _logger.LogWarning(
+                    "Cloudinary cleanup did not complete. Result: {Result}",
+                    destroyResult.Result);
+            }
+        }
+        catch (Exception exception)
+        {
+            // Cleanup must not hide the original database failure. The orphan
+            // is logged for the media reconciliation job to handle later.
+            _logger.LogWarning(
+                exception,
+                "Cloudinary cleanup failed for public id {PublicId}",
+                publicId);
+        }
     }
 
     private static async Task<string> ValidateImageAsync(IFormFile? file)

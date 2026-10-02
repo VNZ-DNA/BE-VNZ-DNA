@@ -47,6 +47,8 @@ public class GlobalExceptionHandlerMiddleware : IMiddleware
             JobPostException jobPostStatusException => GetJobPostStatusCode(jobPostStatusException.Code),
             NewsException newsStatusException => GetNewsStatusCode(newsStatusException.Code),
             ProductException productStatusException => GetProductStatusCode(productStatusException.Code),
+            BilingualSchemaException => HttpStatusCode.BadRequest,
+            LocalizationException localizationStatusException => GetLocalizationStatusCode(localizationStatusException.Code),
             PartnerException partnerStatusException => GetPartnerStatusCode(partnerStatusException.Code),
             TeamMemberException teamMemberStatusException => GetTeamMemberStatusCode(teamMemberStatusException.Code),
             ContactException contactStatusException => GetContactStatusCode(contactStatusException.Code),
@@ -101,6 +103,9 @@ public class GlobalExceptionHandlerMiddleware : IMiddleware
             JobPostException jobPostPayloadException => (jobPostPayloadException.Code, jobPostPayloadException.Message),
             NewsException newsPayloadException => (newsPayloadException.Code, newsPayloadException.Message),
             ProductException productPayloadException => (productPayloadException.Code, productPayloadException.Message),
+            BilingualSchemaException bilingualSchemaPayloadException =>
+                ("BILINGUAL_SCHEMA_INVALID", bilingualSchemaPayloadException.Message),
+            LocalizationException localizationPayloadException => (localizationPayloadException.Code, localizationPayloadException.Message),
             PartnerException partnerPayloadException => (partnerPayloadException.Code, partnerPayloadException.Message),
             TeamMemberException teamMemberPayloadException => (teamMemberPayloadException.Code, teamMemberPayloadException.Message),
             ContactException contactPayloadException => (contactPayloadException.Code, contactPayloadException.Message),
@@ -193,6 +198,10 @@ public class GlobalExceptionHandlerMiddleware : IMiddleware
                                 ? newsException.Fields
                                 : exception is ProductException productException
                                     ? productException.Fields
+                                : exception is BilingualSchemaException bilingualSchemaException
+                                    ? bilingualSchemaException.Fields
+                                : exception is LocalizationException localizationException
+                                    ? localizationException.Fields
                                 : exception is PartnerException partnerException
                                     ? partnerException.Fields
                                 : exception is TeamMemberException teamMemberException
@@ -243,10 +252,13 @@ public class GlobalExceptionHandlerMiddleware : IMiddleware
             "JOB_POST_INVALID_PAGINATION" or
             "JOB_POST_INVALID_SEARCH" or
             "JOB_POST_INVALID_STATUS_FILTER" => HttpStatusCode.BadRequest,
+            "BILINGUAL_CONTENT_REQUIRED" or
+            "BILINGUAL_SCHEMA_INVALID" => HttpStatusCode.BadRequest,
             "JOB_POST_NOT_FOUND" => HttpStatusCode.NotFound,
             "DEPARTMENT_NOT_FOUND" => HttpStatusCode.NotFound,
             "JOB_POST_CLOSED" or
-            "JOB_POST_EXPIRED" => HttpStatusCode.Conflict,
+            "JOB_POST_EXPIRED" or
+            "CONTENT_CONFLICT" => HttpStatusCode.Conflict,
             
             "PUBLIC_JOB_POST_NOT_AVAILABLE" => HttpStatusCode.NotFound,
             "JOB_POST_CREATE_FAILED" => HttpStatusCode.InternalServerError,
@@ -272,10 +284,13 @@ public class GlobalExceptionHandlerMiddleware : IMiddleware
             "NEWS_STATUS_INVALID" or
             "NEWS_CATEGORY_REQUIRED" or
             "NEWS_CATEGORY_INVALID" => HttpStatusCode.BadRequest,
+            "BILINGUAL_CONTENT_REQUIRED" or
+            "BILINGUAL_SCHEMA_INVALID" => HttpStatusCode.BadRequest,
             "NEWS_ARTICLE_NOT_FOUND" or
             "NEWS_PUBLIC_ARTICLE_NOT_FOUND" => HttpStatusCode.NotFound,
             "NEWS_ARTICLE_CLOSED" or
-            "NEWS_STATUS_TRANSITION_INVALID" => HttpStatusCode.Conflict,
+            "NEWS_STATUS_TRANSITION_INVALID" or
+            "CONTENT_CONFLICT" => HttpStatusCode.Conflict,
             "NEWS_LIST_READ_FAILED" or
             "NEWS_PUBLIC_LIST_FAILED" or
             "NEWS_PUBLIC_ARTICLE_FAILED" or
@@ -298,15 +313,28 @@ public class GlobalExceptionHandlerMiddleware : IMiddleware
             "PRODUCT_IMAGE_ACTION_INVALID" or
             "PRODUCT_IMAGES_INVALID" or
             "PRODUCT_IMAGES_REQUIRED" => HttpStatusCode.BadRequest,
+            "BILINGUAL_CONTENT_REQUIRED" or
+            "BILINGUAL_SCHEMA_INVALID" => HttpStatusCode.BadRequest,
             "PRODUCT_NOT_FOUND" => HttpStatusCode.NotFound,
             "PRODUCT_ORDER_CONFLICT" or
             "PRODUCT_PUBLISHED_CANNOT_EDIT" or
             "PRODUCT_IN_PROGRESS_CANNOT_PUBLISH" or
-            "PRODUCT_DELETE_FORBIDDEN" => HttpStatusCode.Conflict,
+            "PRODUCT_DELETE_FORBIDDEN" or
+            "CONTENT_CONFLICT" => HttpStatusCode.Conflict,
             "PRODUCT_LIST_READ_FAILED" or
             "PRODUCT_CREATE_FAILED" or
             "PRODUCT_ORDER_UPDATE_FAILED" or
             "PRODUCT_OPERATION_FAILED" => HttpStatusCode.InternalServerError,
+            _ => HttpStatusCode.InternalServerError
+        };
+    }
+
+    private static HttpStatusCode GetLocalizationStatusCode(string code)
+    {
+        return code switch
+        {
+            "LANGUAGE_NOT_SUPPORTED" => HttpStatusCode.BadRequest,
+            "PUBLIC_TRANSLATION_MISSING" => HttpStatusCode.InternalServerError,
             _ => HttpStatusCode.InternalServerError
         };
     }

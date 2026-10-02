@@ -17,6 +17,7 @@ public class Request
         public string? Requirements { get; set; }
         public DateOnly? ExpiredDate { get; set; }
         public JobPostAction? Action { get; set; }
+        public JobPostTranslationsRequest? Translations { get; set; }
     }
 
     public class GetJobPostListRequest
@@ -40,5 +41,20 @@ public class Request
         public string? Requirements { get; set; }
         public DateOnly? ExpiredDate { get; set; }
         public JobPostAction? Action { get; set; }
+        public DateTimeOffset? ExpectedUpdatedAt { get; set; }
+        public JobPostTranslationsRequest? Translations { get; set; }
+    }
+
+    public class JobPostTranslationsRequest
+    {
+        public JobPostEnglishTranslationRequest? En { get; set; }
+    }
+
+    public class JobPostEnglishTranslationRequest
+    {
+        public string? Title { get; set; }
+        public string? ShortDescription { get; set; }
+        public string? Description { get; set; }
+        public string? Requirements { get; set; }
     }
 }

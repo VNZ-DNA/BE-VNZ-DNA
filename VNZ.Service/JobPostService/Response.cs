@@ -37,7 +37,7 @@ public class Response
     public class JobPostListItemResponse
     {
         public Guid Id { get; set; }
-        public required string Title { get; set; }
+        public string? Title { get; set; }
         public string? ShortDescription { get; set; }
         public DateOnly? ExpiredDate { get; set; }
         public int NumberOfPositions { get; set; }
@@ -63,7 +63,7 @@ public class Response
     public class JobPostDetailResponse
     {
         public Guid Id { get; set; }
-        public required string Title { get; set; }
+        public string? Title { get; set; }
         public string? CreatedByName { get; set; }
         public DateTimeOffset? UpdatedAt { get; set; }
         public required string Status { get; set; }
@@ -77,12 +77,13 @@ public class Response
         public string? Description { get; set; }
         public string? Requirements { get; set; }
         public bool CanEdit { get; set; }
+        public JobPostTranslationsResponse? Translations { get; set; }
     }
 
     public class UpdateJobPostResponse
     {
         public Guid Id { get; set; }
-        public required string Title { get; set; }
+        public string? Title { get; set; }
         public string? CreatedByName { get; set; }
         public DateTimeOffset? UpdatedAt { get; set; }
         public required string Status { get; set; }
@@ -92,6 +93,20 @@ public class Response
         public string? JobLevel { get; set; }
         public int NumberOfPositions { get; set; }
         public required List<string> Skills { get; set; }
+        public string? ShortDescription { get; set; }
+        public string? Description { get; set; }
+        public string? Requirements { get; set; }
+        public JobPostTranslationsResponse? Translations { get; set; }
+    }
+
+    public class JobPostTranslationsResponse
+    {
+        public JobPostEnglishTranslationResponse? En { get; set; }
+    }
+
+    public class JobPostEnglishTranslationResponse
+    {
+        public string? Title { get; set; }
         public string? ShortDescription { get; set; }
         public string? Description { get; set; }
         public string? Requirements { get; set; }
