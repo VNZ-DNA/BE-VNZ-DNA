@@ -58,6 +58,12 @@ public static class Response
         public int TotalPages { get; set; }
     }
 
+    public class TeamMemberFilterOptionsResponse
+    {
+        public required List<string> Positions { get; set; }
+        public required List<string> JobLevels { get; set; }
+    }
+
     public class OrderableTeamMemberResponse
     {
         public Guid Id { get; set; }

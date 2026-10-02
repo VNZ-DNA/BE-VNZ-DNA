@@ -168,7 +168,9 @@ public sealed class Service : IService
         ValidateListRequest(request);
 
         var search = request.Search?.Trim();
-        var status = ParseEmploymentStatus(request.Status);
+        var statuses = ParseEmploymentStatuses(request.Status);
+        var positions = NormalizePositions(request.Position);
+        var jobLevels = ParseJobLevels(request.JobLevel);
 
         try
         {
@@ -181,13 +183,26 @@ public sealed class Service : IService
                 var normalizedSearch = search.ToLowerInvariant();
                 query = query.Where(member =>
                     member.FullName.ToLower().Contains(normalizedSearch) ||
-                    member.Email.ToLower().Contains(normalizedSearch) ||
-                    (member.Position != null && member.Position.ToLower().Contains(normalizedSearch)));
+                    member.Email.ToLower().Contains(normalizedSearch));
             }
 
-            if (status.HasValue)
+            if (statuses.Count > 0)
             {
-                query = query.Where(member => member.EmploymentStatus == status.Value);
+                query = query.Where(member => statuses.Contains(member.EmploymentStatus));
+            }
+
+            if (positions.Count > 0)
+            {
+                query = query.Where(member =>
+                    member.Position != null &&
+                    positions.Contains(member.Position.Trim().ToLower()));
+            }
+
+            if (jobLevels.Count > 0)
+            {
+                query = query.Where(member =>
+                    member.JobLevel.HasValue &&
+                    jobLevels.Contains(member.JobLevel.Value));
             }
 
             var total = await query.CountAsync();
@@ -220,6 +235,43 @@ public sealed class Service : IService
         }
     }
 
+    public async Task<Response.TeamMemberFilterOptionsResponse> GetFilterOptionsAsync()
+    {
+        try
+        {
+            var rawPositions = await _dbContext.Users
+                .AsNoTracking()
+                .Where(member => member.RoleId == null && member.Position != null)
+                .Select(member => member.Position!)
+                .ToListAsync();
+
+            var positions = rawPositions
+                .Select(position => position.Trim())
+                .Where(position => position.Length > 0)
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .OrderBy(position => position, StringComparer.OrdinalIgnoreCase)
+                .ToList();
+
+            var jobLevels = Enum.GetValues<JobLevel>()
+                .Select(GetDisplayName)
+                .ToList();
+
+            return new Response.TeamMemberFilterOptionsResponse
+            {
+                Positions = positions,
+                JobLevels = jobLevels
+            };
+        }
+        catch (Exception exception) when (exception is not TeamMemberException &&
+                                          exception is not OperationCanceledException)
+        {
+            throw new TeamMemberException(
+                "MEMBER_FILTER_OPTIONS_READ_FAILED",
+                "Không thể đọc options bộ lọc thành viên.",
+                exception);
+        }
+    }
+
     public async Task<List<Response.OrderableTeamMemberResponse>> GetOrderableMembersAsync()
     {
         var orderableMembers = await _dbContext.Users
@@ -247,7 +299,7 @@ public sealed class Service : IService
             fields.Add("page");
         }
 
-        if (request.PageSize < 1 || request.PageSize > 100)
+        if (request.PageSize is not (10 or 20 or 50))
         {
             fields.Add("pageSize");
         }
@@ -257,11 +309,25 @@ public sealed class Service : IService
             fields.Add("search");
         }
 
-        if (!string.IsNullOrWhiteSpace(request.Status) &&
-            !string.Equals(request.Status.Trim(), nameof(EmploymentStatus.Working), StringComparison.OrdinalIgnoreCase) &&
-            !string.Equals(request.Status.Trim(), nameof(EmploymentStatus.Resigned), StringComparison.OrdinalIgnoreCase))
+        if (request.Position is not null && request.Position.Any(position =>
+                !string.IsNullOrWhiteSpace(position) && position.Trim().Length > 200))
+        {
+            fields.Add("position");
+        }
+
+        if (request.Status is not null && request.Status.Any(status =>
+                !string.IsNullOrWhiteSpace(status) &&
+                !string.Equals(status.Trim(), nameof(EmploymentStatus.Working), StringComparison.OrdinalIgnoreCase) &&
+                !string.Equals(status.Trim(), nameof(EmploymentStatus.Resigned), StringComparison.OrdinalIgnoreCase)))
         {
             fields.Add("status");
+        }
+
+        if (request.JobLevel is not null && request.JobLevel.Any(jobLevel =>
+                !string.IsNullOrWhiteSpace(jobLevel) &&
+                !TryParseEnumValue<JobLevel>(jobLevel.Trim(), out _)))
+        {
+            fields.Add("jobLevel");
         }
 
         if (fields.Count > 0)
@@ -273,16 +339,62 @@ public sealed class Service : IService
         }
     }
 
-    private static EmploymentStatus? ParseEmploymentStatus(string? status)
+    private static List<EmploymentStatus> ParseEmploymentStatuses(List<string>? statuses)
     {
-        if (string.IsNullOrWhiteSpace(status))
+        if (statuses is null)
         {
-            return null;
+            return [];
         }
 
-        return string.Equals(status.Trim(), nameof(EmploymentStatus.Working), StringComparison.OrdinalIgnoreCase)
-            ? EmploymentStatus.Working
-            : EmploymentStatus.Resigned;
+        return statuses
+            .Where(status => !string.IsNullOrWhiteSpace(status))
+            .Select(status => string.Equals(
+                status.Trim(),
+                nameof(EmploymentStatus.Working),
+                StringComparison.OrdinalIgnoreCase)
+                ? EmploymentStatus.Working
+                : EmploymentStatus.Resigned)
+            .Distinct()
+            .ToList();
+    }
+
+    private static List<string> NormalizePositions(List<string>? positions)
+    {
+        if (positions is null)
+        {
+            return [];
+        }
+
+        return positions
+            .Where(position => !string.IsNullOrWhiteSpace(position))
+            .Select(position => position.Trim().ToLowerInvariant())
+            .Distinct()
+            .ToList();
+    }
+
+    private static List<JobLevel> ParseJobLevels(List<string>? jobLevels)
+    {
+        if (jobLevels is null)
+        {
+            return [];
+        }
+
+        var parsedJobLevels = new List<JobLevel>();
+        foreach (var jobLevel in jobLevels)
+        {
+            if (string.IsNullOrWhiteSpace(jobLevel) ||
+                !TryParseEnumValue<JobLevel>(jobLevel.Trim(), out var parsedJobLevel))
+            {
+                continue;
+            }
+
+            if (!parsedJobLevels.Contains(parsedJobLevel))
+            {
+                parsedJobLevels.Add(parsedJobLevel);
+            }
+        }
+
+        return parsedJobLevels;
     }
 
     public async Task<List<Response.OrderableTeamMemberResponse>> ReorderMembersAsync(
