@@ -6,6 +6,7 @@ public interface IService
     Task<List<Response.PublicTeamMemberResponse>> GetPublicMemberListAsync();
     Task<Response.PublicTeamMemberDetailResponse> GetPublicMemberByIdAsync(Guid id);
     Task<Response.PagedTeamMemberListResponse> GetMemberListAsync(Request.GetTeamMemberListRequest request);
+    Task<Response.TeamMemberFilterOptionsResponse> GetFilterOptionsAsync();
     Task<List<Response.OrderableTeamMemberResponse>> GetOrderableMembersAsync();
     Task<List<Response.OrderableTeamMemberResponse>> ReorderMembersAsync(Request.ReorderTeamMembersRequest request);
     Task<Response.TeamMemberResponse> GetMemberByIdAsync(Guid id);
