@@ -114,6 +114,125 @@ public class GetProductListTests
         Assert.Equal(unpublishedOlder.Id, response.Items[3].Id);
     }
 
+    [Fact]
+    public async Task GetProductListAsync_FiltersMultipleStatusesWithOrAndPublicationStatusWithAnd()
+    {
+        var options = new DbContextOptionsBuilder<AppDbContext>()
+            .UseInMemoryDatabase(Guid.NewGuid().ToString())
+            .Options;
+
+        await using var dbContext = new ProductListTestDbContext(options);
+
+        var completedUnpublished = CreateProduct(
+            "Completed unpublished",
+            ProductStatus.Completed,
+            isPublished: false,
+            displayOrder: null,
+            createdAt: DateTimeOffset.UtcNow);
+        var inProgressUnpublished = CreateProduct(
+            "In progress unpublished",
+            ProductStatus.InProgress,
+            isPublished: false,
+            displayOrder: null,
+            createdAt: DateTimeOffset.UtcNow.AddMinutes(-1));
+        var completedPublished = CreateProduct(
+            "Completed published",
+            ProductStatus.Completed,
+            isPublished: true,
+            displayOrder: 1,
+            createdAt: DateTimeOffset.UtcNow.AddMinutes(-2));
+
+        dbContext.Products.AddRange(completedUnpublished, inProgressUnpublished, completedPublished);
+        await dbContext.SaveChangesAsync();
+
+        var service = new ProductService(
+            dbContext,
+            new VNZ.Test.TestMediaService(),
+            new VNZ.Service.Utils.RichTextService.Service());
+
+        var response = await service.GetProductListAsync(new Request.GetProductListRequest
+        {
+            Status = [nameof(ProductStatus.Completed), nameof(ProductStatus.InProgress)],
+            IsPublished = false,
+            PageSize = 10
+        });
+
+        Assert.Equal(2, response.Total);
+        Assert.Equal(2, response.Items.Count);
+        Assert.All(response.Items, item => Assert.False(item.IsPublished));
+        Assert.Contains(response.Items, item => item.Id == completedUnpublished.Id);
+        Assert.Contains(response.Items, item => item.Id == inProgressUnpublished.Id);
+        Assert.DoesNotContain(response.Items, item => item.Id == completedPublished.Id);
+    }
+
+    [Theory]
+    [InlineData(10)]
+    [InlineData(20)]
+    [InlineData(50)]
+    public async Task GetProductListAsync_AcceptsSupportedPageSizes(int pageSize)
+    {
+        var options = new DbContextOptionsBuilder<AppDbContext>()
+            .UseInMemoryDatabase(Guid.NewGuid().ToString())
+            .Options;
+
+        await using var dbContext = new ProductListTestDbContext(options);
+        var service = new ProductService(
+            dbContext,
+            new VNZ.Test.TestMediaService(),
+            new VNZ.Service.Utils.RichTextService.Service());
+
+        var response = await service.GetProductListAsync(new Request.GetProductListRequest
+        {
+            PageSize = pageSize
+        });
+
+        Assert.Equal(pageSize, response.PageSize);
+    }
+
+    [Fact]
+    public async Task GetProductListAsync_RejectsUnsupportedPageSize()
+    {
+        var options = new DbContextOptionsBuilder<AppDbContext>()
+            .UseInMemoryDatabase(Guid.NewGuid().ToString())
+            .Options;
+
+        await using var dbContext = new ProductListTestDbContext(options);
+        var service = new ProductService(
+            dbContext,
+            new VNZ.Test.TestMediaService(),
+            new VNZ.Service.Utils.RichTextService.Service());
+
+        var exception = await Assert.ThrowsAsync<VNZ.Service.Exceptions.ProductException>(() =>
+            service.GetProductListAsync(new Request.GetProductListRequest
+            {
+                PageSize = 25
+            }));
+
+        Assert.Equal("PRODUCT_LIST_QUERY_INVALID", exception.Code);
+    }
+
+    [Fact]
+    public async Task GetProductListAsync_RejectsUnknownStatusFilter()
+    {
+        var options = new DbContextOptionsBuilder<AppDbContext>()
+            .UseInMemoryDatabase(Guid.NewGuid().ToString())
+            .Options;
+
+        await using var dbContext = new ProductListTestDbContext(options);
+        var service = new ProductService(
+            dbContext,
+            new VNZ.Test.TestMediaService(),
+            new VNZ.Service.Utils.RichTextService.Service());
+
+        var exception = await Assert.ThrowsAsync<VNZ.Service.Exceptions.ProductException>(() =>
+            service.GetProductListAsync(new Request.GetProductListRequest
+            {
+                Status = ["Unknown"]
+            }));
+
+        Assert.Equal("PRODUCT_LIST_QUERY_INVALID", exception.Code);
+    }
+
     private static Product CreateProduct(
         string name,
         ProductStatus status,

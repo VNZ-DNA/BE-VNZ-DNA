@@ -280,7 +280,7 @@ public sealed class Service : IService
         ValidateRequest(request);
 
         var search = request.Search?.Trim();
-        var status = ParseProductStatus(request.Status);
+        var statuses = ParseProductStatuses(request.Status);
 
         try
         {
@@ -295,9 +295,14 @@ public sealed class Service : IService
                     product.Name.ToLower().Contains(normalizedSearch));
             }
 
-            if (status.HasValue)
+            if (statuses.Count > 0)
             {
-                query = query.Where(product => product.Status == status.Value);
+                query = query.Where(product => statuses.Contains(product.Status));
+            }
+
+            if (request.IsPublished.HasValue)
+            {
+                query = query.Where(product => product.IsPublished == request.IsPublished.Value);
             }
 
             var total = await query.CountAsync();
@@ -586,7 +591,7 @@ public sealed class Service : IService
             fields.Add("page");
         }
 
-        if (request.PageSize < 1 || request.PageSize > 100)
+        if (request.PageSize is not (10 or 20 or 50))
         {
             fields.Add("pageSize");
         }
@@ -596,9 +601,10 @@ public sealed class Service : IService
             fields.Add("search");
         }
 
-        if (!string.IsNullOrWhiteSpace(request.Status) &&
-            !string.Equals(request.Status.Trim(), nameof(ProductStatus.InProgress), StringComparison.OrdinalIgnoreCase) &&
-            !string.Equals(request.Status.Trim(), nameof(ProductStatus.Completed), StringComparison.OrdinalIgnoreCase))
+        if (request.Status is not null && request.Status.Any(status =>
+                !string.IsNullOrWhiteSpace(status) &&
+                !string.Equals(status.Trim(), nameof(ProductStatus.InProgress), StringComparison.OrdinalIgnoreCase) &&
+                !string.Equals(status.Trim(), nameof(ProductStatus.Completed), StringComparison.OrdinalIgnoreCase)))
         {
             fields.Add("status");
         }
@@ -612,16 +618,23 @@ public sealed class Service : IService
         }
     }
 
-    private static ProductStatus? ParseProductStatus(string? status)
+    private static List<ProductStatus> ParseProductStatuses(List<string>? statuses)
     {
-        if (string.IsNullOrWhiteSpace(status))
+        if (statuses is null)
         {
-            return null;
+            return [];
         }
 
-        return string.Equals(status.Trim(), nameof(ProductStatus.InProgress), StringComparison.OrdinalIgnoreCase)
-            ? ProductStatus.InProgress
-            : ProductStatus.Completed;
+        return statuses
+            .Where(status => !string.IsNullOrWhiteSpace(status))
+            .Select(status => string.Equals(
+                status.Trim(),
+                nameof(ProductStatus.InProgress),
+                StringComparison.OrdinalIgnoreCase)
+                ? ProductStatus.InProgress
+                : ProductStatus.Completed)
+            .Distinct()
+            .ToList();
     }
 
     private static void ValidateUpdateRequest(
