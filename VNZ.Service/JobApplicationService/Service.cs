@@ -414,7 +414,7 @@ public sealed class Service : IService
     {
         ArgumentNullException.ThrowIfNull(request);
 
-        if (request.Page < 1 || request.PageSize < 1 || request.PageSize > 100)
+        if (request.Page < 1 || request.PageSize is not (10 or 20 or 50))
         {
             throw new ArgumentException("Thông tin phân trang không hợp lệ.");
         }
@@ -425,21 +425,35 @@ public sealed class Service : IService
             throw new ArgumentException("Từ khóa tìm kiếm không được vượt quá 300 ký tự.");
         }
 
-        JobApplicationStatus? statusFilter = null;
+        var statusFilters = new List<JobApplicationStatus>();
 
-        if (!string.IsNullOrWhiteSpace(request.Status))
+        var rawStatusFilters = request.Status?
+            .Where(status => !string.IsNullOrWhiteSpace(status))
+            .Select(status => status.Trim())
+            .Distinct(StringComparer.Ordinal)
+            .ToList() ?? [];
+
+        foreach (var rawStatus in rawStatusFilters)
         {
-            if (!Enum.TryParse<JobApplicationStatus>(request.Status.Trim(), ignoreCase: false, out var parsedStatus) ||
+            if (!Enum.TryParse<JobApplicationStatus>(rawStatus, ignoreCase: false, out var parsedStatus) ||
                 !Enum.IsDefined(parsedStatus))
             {
                 throw new ArgumentException("Trạng thái lọc không hợp lệ.");
             }
 
-            statusFilter = parsedStatus;
+            statusFilters.Add(parsedStatus);
+        }
+
+        var jobPostIds = request.JobPostId?.Distinct().ToList() ?? [];
+
+        if (jobPostIds.Any(id => id == Guid.Empty))
+        {
+            throw new ArgumentException("Vị trí ứng tuyển không hợp lệ.");
         }
 
         var query = _dbContext.JobApplications
             .AsNoTracking()
+            .Include(application => application.JobPost)
             .AsQueryable();
 
         if (!string.IsNullOrWhiteSpace(search))
@@ -447,14 +461,17 @@ public sealed class Service : IService
             var searchLower = search.ToLower();
             query = query.Where(application =>
                 application.FullName.ToLower().Contains(searchLower) ||
-                application.Email.ToLower().Contains(searchLower) ||
-                (application.JobPostSnapshot != null &&
-                 application.JobPostSnapshot.Title.ToLower().Contains(searchLower)));
+                application.Email.ToLower().Contains(searchLower));
         }
 
-        if (statusFilter.HasValue)
+        if (statusFilters.Count > 0)
         {
-            query = query.Where(application => application.Status == statusFilter.Value);
+            query = query.Where(application => statusFilters.Contains(application.Status));
+        }
+
+        if (jobPostIds.Count > 0)
+        {
+            query = query.Where(application => jobPostIds.Contains(application.JobPostId));
         }
 
         var total = await query.CountAsync();
@@ -488,6 +505,26 @@ public sealed class Service : IService
             PageSize = request.PageSize,
             Total = total,
             TotalPages = total == 0 ? 0 : (int)Math.Ceiling(total / (double)request.PageSize)
+        };
+    }
+
+    public async Task<Response.JobApplicationFilterOptionsResponse> GetJobApplicationFilterOptionsAsync()
+    {
+        var jobPosts = await _dbContext.JobPosts
+            .AsNoTracking()
+            .Where(jobPost => jobPost.Applications.Any(application => !application.IsDelete))
+            .OrderBy(jobPost => jobPost.Title)
+            .ThenBy(jobPost => jobPost.Id)
+            .Select(jobPost => new Response.JobApplicationFilterOptionResponse
+            {
+                Id = jobPost.Id,
+                Title = jobPost.Title
+            })
+            .ToListAsync();
+
+        return new Response.JobApplicationFilterOptionsResponse
+        {
+            JobPosts = jobPosts
         };
     }
 
@@ -779,6 +816,7 @@ public sealed class Service : IService
     {
         var application = await _dbContext.JobApplications
             .AsNoTracking()
+            .Include(item => item.JobPost)
             .SingleOrDefaultAsync(item => item.Id == id);
 
         if (application is null)
@@ -790,7 +828,7 @@ public sealed class Service : IService
         {
             Id = application.Id,
             JobPostId = application.JobPostId,
-            JobPostTitle = GetJobPostSnapshotTitle(application),
+            JobPostTitle = application.JobPost?.Title ?? GetJobPostSnapshotTitle(application),
             FullName = application.FullName,
             Email = application.Email,
             Phone = application.Phone,
@@ -837,7 +875,7 @@ public sealed class Service : IService
 
     private static string GetJobPostSnapshotTitle(JobApplication application)
     {
-        return application.JobPostSnapshot?.Title ?? string.Empty;
+        return application.JobPostSnapshot?.Title ?? application.JobPost?.Title ?? string.Empty;
     }
 
     private static string? NormalizeOptional(string? value)

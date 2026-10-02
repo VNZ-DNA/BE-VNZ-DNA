@@ -40,6 +40,17 @@ public sealed class JobApplicationController : ControllerBase
             HttpContext.TraceIdentifier));
     }
 
+    [HttpGet("filter-options")]
+    public async Task<IActionResult> GetJobApplicationFilterOptions()
+    {
+        var data = await _jobApplicationService.GetJobApplicationFilterOptionsAsync();
+
+        return Ok(ResponseBuilder.SuccessResponse(
+            data,
+            "Lấy dữ liệu bộ lọc hồ sơ ứng viên thành công.",
+            HttpContext.TraceIdentifier));
+    }
+
     [HttpGet("{id:guid}")]
     public async Task<IActionResult> GetJobApplicationById(Guid id)
     {
