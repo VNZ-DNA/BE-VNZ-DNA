@@ -3,6 +3,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 using VNZ.Repository;
 using VNZ.Repository.Entity;
 using VNZ.Repository.Entity.Enum;
+using VNZ.Repository.Entity.Json;
 using VNZ.Service.JobApplicationService;
 using VNZ.Service.MailService;
 using Xunit;
@@ -65,6 +66,34 @@ public class GetJobApplicationFilterTests
         Assert.Contains(response.Items, item => item.Id == matchingName.Id);
         Assert.Contains(response.Items, item => item.Id == matchingEmail.Id);
         Assert.DoesNotContain(response.Items, item => item.Id == positionOnlyMatch.Id);
+    }
+
+    [Fact]
+    public async Task GetJobApplicationListAsync_FallsBackToJobPostTitleWhenSnapshotTitleIsEmpty()
+    {
+        var options = new DbContextOptionsBuilder<AppDbContext>()
+            .UseInMemoryDatabase(Guid.NewGuid().ToString())
+            .Options;
+
+        await using var dbContext = new VNZ.Test.TeamMembers.TestAppDbContext(options);
+        var jobPost = CreateJobPost("Backend Developer", JobPostStatus.Closed);
+        var application = CreateApplication(
+            jobPost,
+            "Khanh Linh",
+            "khanh.linh@example.com",
+            JobApplicationStatus.Pending);
+        application.JobPostSnapshot = new JobPostSnapshot { Title = string.Empty };
+
+        dbContext.JobPosts.Add(jobPost);
+        dbContext.JobApplications.Add(application);
+        await dbContext.SaveChangesAsync();
+
+        var service = CreateService(dbContext);
+
+        var response = await service.GetJobApplicationListAsync(
+            new Request.GetJobApplicationListRequest { PageSize = 10 });
+
+        Assert.Equal("Backend Developer", Assert.Single(response.Items).JobPostTitle);
     }
 
     [Fact]
