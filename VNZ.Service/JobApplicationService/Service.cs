@@ -875,7 +875,11 @@ public sealed class Service : IService
 
     private static string GetJobPostSnapshotTitle(JobApplication application)
     {
-        return application.JobPostSnapshot?.Title ?? application.JobPost?.Title ?? string.Empty;
+        var snapshotTitle = application.JobPostSnapshot?.Title;
+
+        return !string.IsNullOrWhiteSpace(snapshotTitle)
+            ? snapshotTitle
+            : application.JobPost?.Title ?? string.Empty;
     }
 
     private static string? NormalizeOptional(string? value)
