@@ -246,13 +246,18 @@ public class Service : IService
                 "search");
         }
 
-        // 3. Parse status filter từ string sang enum C#.
-        JobPostStatus? statusFilter = null;
+        // 3. Parse các filter multi-select trước khi query database.
+        var statusFilters = new List<JobPostStatus>();
+        var statuses = request.Status?
+            .Where(status => !string.IsNullOrWhiteSpace(status))
+            .Select(status => status.Trim())
+            .Distinct(StringComparer.Ordinal)
+            .ToList() ?? [];
 
-        if (!string.IsNullOrWhiteSpace(request.Status))
+        foreach (var status in statuses)
         {
             var isValidStatus = Enum.TryParse<JobPostStatus>(
-                request.Status,
+                status,
                 ignoreCase: false,
                 out var parsedStatus);
 
@@ -264,7 +269,63 @@ public class Service : IService
                     "status");
             }
 
-            statusFilter = parsedStatus;
+            if (!statusFilters.Contains(parsedStatus))
+            {
+                statusFilters.Add(parsedStatus);
+            }
+        }
+
+        var departmentIds = new List<Guid>();
+        var departmentIdValues = request.DepartmentId?
+            .Where(departmentId => !string.IsNullOrWhiteSpace(departmentId))
+            .Select(departmentId => departmentId.Trim())
+            .Distinct(StringComparer.Ordinal)
+            .ToList() ?? [];
+
+        foreach (var departmentIdValue in departmentIdValues)
+        {
+            var isValidDepartmentId = Guid.TryParse(departmentIdValue, out var departmentId);
+
+            if (!isValidDepartmentId || departmentId == Guid.Empty)
+            {
+                throw new JobPostException(
+                    "JOB_POST_INVALID_DEPARTMENT_FILTER",
+                    "Phòng ban lọc không hợp lệ.",
+                    "departmentId");
+            }
+
+            if (!departmentIds.Contains(departmentId))
+            {
+                departmentIds.Add(departmentId);
+            }
+        }
+
+        var jobLevelFilters = new List<JobLevel>();
+        var jobLevels = request.JobLevel?
+            .Where(jobLevel => !string.IsNullOrWhiteSpace(jobLevel))
+            .Select(jobLevel => jobLevel.Trim())
+            .Distinct(StringComparer.Ordinal)
+            .ToList() ?? [];
+
+        foreach (var jobLevel in jobLevels)
+        {
+            var isValidJobLevel = Enum.TryParse<JobLevel>(
+                jobLevel,
+                ignoreCase: false,
+                out var parsedJobLevel);
+
+            if (!isValidJobLevel || !Enum.IsDefined(parsedJobLevel))
+            {
+                throw new JobPostException(
+                    "JOB_POST_INVALID_JOB_LEVEL_FILTER",
+                    "Cấp bậc lọc không hợp lệ.",
+                    "jobLevel");
+            }
+
+            if (!jobLevelFilters.Contains(parsedJobLevel))
+            {
+                jobLevelFilters.Add(parsedJobLevel);
+            }
         }
 
         // 4. Bắt đầu query danh sách JobPost.
@@ -278,10 +339,24 @@ public class Service : IService
                 jobPost.Title.ToLower().Contains(searchLower));
         }
 
-        if (statusFilter.HasValue)
+        if (statusFilters.Count > 0)
         {
             jobPostsQuery = jobPostsQuery.Where(jobPost =>
-                jobPost.Status == statusFilter.Value);
+                statusFilters.Contains(jobPost.Status));
+        }
+
+        if (departmentIds.Count > 0)
+        {
+            jobPostsQuery = jobPostsQuery.Where(jobPost =>
+                jobPost.DepartmentId.HasValue &&
+                departmentIds.Contains(jobPost.DepartmentId.Value));
+        }
+
+        if (jobLevelFilters.Count > 0)
+        {
+            jobPostsQuery = jobPostsQuery.Where(jobPost =>
+                jobPost.JobLevel.HasValue &&
+                jobLevelFilters.Contains(jobPost.JobLevel.Value));
         }
 
         // 5. Đếm tổng sau filter, sau đó lấy đúng trang cần xem.
