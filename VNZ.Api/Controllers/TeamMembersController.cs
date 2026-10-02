@@ -43,6 +43,16 @@ public sealed class TeamMembersController : ControllerBase
         return Ok(ResponseBuilder.SuccessResponse(data, "Lấy danh sách thành viên thành công.", HttpContext.TraceIdentifier));
     }
 
+    [HttpGet("filter-options")]
+    public async Task<IActionResult> GetFilterOptions()
+    {
+        var data = await _teamMemberService.GetFilterOptionsAsync();
+        return Ok(ResponseBuilder.SuccessResponse(
+            data,
+            "Lấy options bộ lọc thành viên thành công.",
+            HttpContext.TraceIdentifier));
+    }
+
     [HttpGet("display-order")]
     public async Task<IActionResult> GetOrderableMembers()
     {
