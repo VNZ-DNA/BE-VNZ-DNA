@@ -96,19 +96,29 @@ public class Service : IService
                 "search");
         }
 
-        // 3. Map the optional UI status label to the domain enum.
-        ContactStatus? statusFilter = null;
-        if (!string.IsNullOrWhiteSpace(request.Status))
-        {
-            var status = request.Status.Trim();
+        // 3. Map các filter multi-select từ UI sang giá trị domain.
+        var statusFilters = new List<ContactStatus>();
+        var statuses = request.Status?
+            .Where(status => !string.IsNullOrWhiteSpace(status))
+            .Select(status => status.Trim())
+            .Distinct(StringComparer.Ordinal)
+            .ToList() ?? [];
 
+        foreach (var status in statuses)
+        {
             if (status == "Chưa liên hệ")
             {
-                statusFilter = ContactStatus.NotContacted;
+                if (!statusFilters.Contains(ContactStatus.NotContacted))
+                {
+                    statusFilters.Add(ContactStatus.NotContacted);
+                }
             }
             else if (status == "Đã liên hệ")
             {
-                statusFilter = ContactStatus.Contacted;
+                if (!statusFilters.Contains(ContactStatus.Contacted))
+                {
+                    statusFilters.Add(ContactStatus.Contacted);
+                }
             }
             else
             {
@@ -117,7 +127,31 @@ public class Service : IService
                     "Thông tin truy vấn không hợp lệ.",
                     "status");
             }
+        }
 
+        var isReadFilters = new List<bool>();
+        var isReadValues = request.IsRead?
+            .Where(isRead => !string.IsNullOrWhiteSpace(isRead))
+            .Select(isRead => isRead.Trim())
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList() ?? [];
+
+        foreach (var isReadValue in isReadValues)
+        {
+            var isValidIsRead = bool.TryParse(isReadValue, out var isRead);
+
+            if (!isValidIsRead)
+            {
+                throw new ContactException(
+                    "CONTACT_QUERY_INVALID",
+                    "Thông tin truy vấn không hợp lệ.",
+                    "isRead");
+            }
+
+            if (!isReadFilters.Contains(isRead))
+            {
+                isReadFilters.Add(isRead);
+            }
         }
 
         // 4. Apply filters before counting and paging the live ContactInquiry data.
@@ -135,10 +169,16 @@ public class Service : IService
                 contact.Email.ToLower().Contains(searchLower));
         }
 
-        if (statusFilter.HasValue)
+        if (statusFilters.Count > 0)
         {
             query = query.Where(contact =>
-                contact.ContactStatus == statusFilter.Value);
+                statusFilters.Contains(contact.ContactStatus));
+        }
+
+        if (isReadFilters.Count > 0)
+        {
+            query = query.Where(contact =>
+                isReadFilters.Contains(contact.IsRead));
         }
 
         var totalItems = await query.CountAsync();
