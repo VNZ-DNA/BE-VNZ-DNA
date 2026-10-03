@@ -236,6 +236,7 @@ public class GlobalExceptionHandlerMiddleware : IMiddleware
         {
             "JOB_POST_INVALID_ACTION" or
             "JOB_POST_INVALID_REQUEST" or
+            "JOB_POST_INVALID_RICH_TEXT" or
             "JOB_POST_INVALID_STATUS" or
             "JOB_POST_VALIDATION_FAILED" or
             "JOB_POST_VALIDATION_ERROR" or
