@@ -10,5 +10,9 @@ public interface IService
 
     string? SanitizeNewsContent(string? value);
 
+    string? SanitizeJobPost(string? value);
+
+    bool ContainsHtmlTag(string? value);
+
     string ToPlainText(string value);
 }

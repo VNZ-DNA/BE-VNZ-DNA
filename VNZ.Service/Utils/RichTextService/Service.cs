@@ -36,6 +36,14 @@ public sealed class Service : IService
         new[] { "p", "br", "strong", "em", "u", "s", "ul", "ol", "li", "blockquote", "a" },
         StringComparer.OrdinalIgnoreCase);
 
+    private static readonly HashSet<string> JobPostRejectedMediaTags = new(
+        new[]
+        {
+            "img", "figure", "figcaption", "picture", "source", "track",
+            "video", "audio", "iframe", "embed", "object"
+        },
+        StringComparer.OrdinalIgnoreCase);
+
     private static readonly Regex TagTokenRegex = new(
         @"<!--.*?-->|</?[A-Za-z][^>]*>",
         RegexOptions.Compiled | RegexOptions.Singleline | RegexOptions.CultureInvariant);
@@ -168,6 +176,39 @@ public sealed class Service : IService
         }
 
         return sanitized;
+    }
+
+    public string? SanitizeJobPost(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return null;
+        }
+
+        foreach (Match tokenMatch in TagTokenRegex.Matches(value))
+        {
+            var tagMatch = TagRegex.Match(tokenMatch.Value);
+
+            if (!tagMatch.Success)
+            {
+                continue;
+            }
+
+            var tagName = tagMatch.Groups["name"].Value;
+
+            if (JobPostRejectedMediaTags.Contains(tagName))
+            {
+                throw new RichTextValidationException(
+                    "Nội dung tuyển dụng không hỗ trợ ảnh hoặc media inline.");
+            }
+        }
+
+        return Sanitize(value, allowLinks: true);
+    }
+
+    public bool ContainsHtmlTag(string? value)
+    {
+        return !string.IsNullOrWhiteSpace(value) && TagTokenRegex.IsMatch(value);
     }
 
     public string ToPlainText(string value)
