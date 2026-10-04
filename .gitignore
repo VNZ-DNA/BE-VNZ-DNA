@@ -13,3 +13,6 @@ appsettings.Local.json
 **/appsettings.Development.json
 
 docs/
+.agents/
+.codex/
+AGENTS.md/
