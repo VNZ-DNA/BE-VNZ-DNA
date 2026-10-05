@@ -628,96 +628,151 @@ public sealed class Service : IService
     {
         ArgumentNullException.ThrowIfNull(request);
 
-        await using var transaction = await _dbContext.Database.BeginTransactionAsync();
+        if (request.IsPublished.HasValue)
+        {
+            ValidateStatusRequest(request);
+            return await UpdatePublishStateAsync(id, request.IsPublished.Value);
+        }
+
+        return await UpdateProfileAsync(id, request);
+    }
+
+    private async Task<Response.TeamMemberResponse> UpdatePublishStateAsync(
+        Guid id,
+        bool isPublished)
+    {
+        await using var transaction = await _dbContext.Database
+            .BeginTransactionAsync(IsolationLevel.Serializable);
+
+        var member = await FindMemberAsync(id);
+
+        if (isPublished)
+        {
+            ValidatePublishableMember(member);
+        }
+
+        if (member.IsPublished == isPublished)
+        {
+            await transaction.CommitAsync();
+            return ToResponse(member);
+        }
+
+        var now = DateTimeOffset.UtcNow;
+        var publishedMembers = await GetPublishedMembersAsync(member.Id);
+        NormalizePublishedDisplayOrders(publishedMembers, now);
+
+        if (isPublished)
+        {
+            member.IsPublished = true;
+            member.DisplayOrder = publishedMembers.Count + 1;
+        }
+        else
+        {
+            member.IsPublished = false;
+            member.DisplayOrder = null;
+        }
+
+        member.UpdatedAt = now;
+
+        await _dbContext.SaveChangesAsync();
+        await transaction.CommitAsync();
+
+        return ToResponse(member);
+    }
+
+    private async Task<Response.TeamMemberResponse> UpdateProfileAsync(
+        Guid id,
+        Request.UpdateTeamMemberRequest request)
+    {
+        await using var transaction = await _dbContext.Database
+            .BeginTransactionAsync(IsolationLevel.Serializable);
+
         var member = await FindMemberAsync(id);
 
         if (member.IsPublished)
         {
-            if (request.IsPublished != false)
-            {
-                throw new ConflictException(
-                    "Thành viên đang được đăng chỉ có thể chuyển sang trạng thái chưa đăng.");
-            }
-
-            var remainingPublishedMembers = await _dbContext.Users
-                .Where(x => x.RoleId == null &&
-                            x.IsPublished &&
-                            x.EmploymentStatus == EmploymentStatus.Working &&
-                            x.Id != member.Id)
-                .OrderBy(x => x.DisplayOrder)
-                .ThenByDescending(x => x.CreateAt)
-                .ThenByDescending(x => x.Id)
-                .ToListAsync();
-
-            var now = DateTimeOffset.UtcNow;
-            for (var index = 0; index < remainingPublishedMembers.Count; index++)
-            {
-                var remainingMember = remainingPublishedMembers[index];
-                var newDisplayOrder = index + 1;
-                if (remainingMember.DisplayOrder == newDisplayOrder)
-                {
-                    continue;
-                }
-
-                remainingMember.DisplayOrder = newDisplayOrder;
-                remainingMember.UpdatedAt = now;
-            }
-
-            member.IsPublished = false;
-            member.DisplayOrder = null;
-            member.UpdatedAt = now;
-
-            await _dbContext.SaveChangesAsync();
-            await transaction.CommitAsync();
-
-            return ToResponse(member);
+            throw new TeamMemberException(
+                "RESOURCE_CONFLICT",
+                "Phải gỡ đăng thành viên trước khi chỉnh sửa hoặc chuyển sang Đã nghỉ.",
+                "isPublished");
         }
 
-        var fullName = request.FullName?.Trim();
-        var email = request.Email?.Trim().ToLowerInvariant();
-        var position = request.Position?.Trim();
-        var jobLevel = request.JobLevel?.Trim();
-        var employmentStatus = request.EmploymentStatus?.Trim();
+        var fullName = NormalizeRequired(request.FullName, "fullName", "Vui lòng nhập họ và tên.");
+        var email = NormalizeRequired(request.Email, "email", "Vui lòng nhập email.")
+            .ToLowerInvariant();
+        var position = NormalizeRequired(request.Position, "position", "Vui lòng nhập vị trí.");
+        var jobLevel = NormalizeRequired(request.JobLevel, "jobLevel", "Vui lòng nhập cấp bậc.");
+        var employmentStatus = NormalizeRequired(
+            request.EmploymentStatus,
+            "employmentStatus",
+            "Vui lòng nhập trạng thái làm việc.");
         var displayName = NormalizeOptional(request.DisplayName);
 
-        if (string.IsNullOrWhiteSpace(fullName))
-            throw new ArgumentException("Vui lòng nhập họ và tên.");
-
-        if (string.IsNullOrWhiteSpace(email))
-            throw new ArgumentException("Vui lòng nhập email.");
-
-        if (string.IsNullOrWhiteSpace(position))
-            throw new ArgumentException("Vui lòng nhập vị trí.");
-
-        if (string.IsNullOrWhiteSpace(jobLevel))
-            throw new ArgumentException("Vui lòng nhập cấp bậc.");
-
-        if (request.JoinedDate is null)
-            throw new ArgumentException("Vui lòng nhập ngày tham gia.");
-
-        if (string.IsNullOrWhiteSpace(employmentStatus))
-            throw new ArgumentException("Vui lòng nhập trạng thái làm việc.");
-
         if (fullName.Length > 200)
-            throw new ArgumentException("Họ và tên không được vượt quá 200 ký tự.");
+        {
+            throw new TeamMemberException(
+                "RESOURCE_VALIDATION_FAILED",
+                "Họ và tên không được vượt quá 200 ký tự.",
+                "fullName");
+        }
 
         if (position.Length > 200)
-            throw new ArgumentException("Vị trí không được vượt quá 200 ký tự.");
+        {
+            throw new TeamMemberException(
+                "RESOURCE_VALIDATION_FAILED",
+                "Vị trí không được vượt quá 200 ký tự.",
+                "position");
+        }
 
         if (displayName is { Length: > 100 })
-            throw new ArgumentException("Tên hiển thị không được vượt quá 100 ký tự.");
+        {
+            throw new TeamMemberException(
+                "RESOURCE_VALIDATION_FAILED",
+                "Tên hiển thị không được vượt quá 100 ký tự.",
+                "displayName");
+        }
 
         if (email.Length > 320 || !new EmailAddressAttribute().IsValid(email))
-            throw new ArgumentException("Email không đúng định dạng.");
+        {
+            throw new TeamMemberException(
+                "RESOURCE_VALIDATION_FAILED",
+                "Email không đúng định dạng.",
+                "email");
+        }
+
+        if (request.JoinedDate is null)
+        {
+            throw new TeamMemberException(
+                "RESOURCE_VALIDATION_FAILED",
+                "Vui lòng nhập ngày tham gia.",
+                "joinedDate");
+        }
 
         if (!TryParseEnumValue(jobLevel, out JobLevel parsedJobLevel))
         {
-            throw new ArgumentException("Cấp bậc không hợp lệ.");
+            throw new TeamMemberException(
+                "RESOURCE_VALIDATION_FAILED",
+                "Cấp bậc không hợp lệ.",
+                "jobLevel");
         }
 
         if (!TryParseEnumValue(employmentStatus, out EmploymentStatus parsedEmploymentStatus))
         {
-            throw new ArgumentException("Trạng thái làm việc không hợp lệ.");
+            throw new TeamMemberException(
+                "RESOURCE_VALIDATION_FAILED",
+                "Trạng thái làm việc không hợp lệ.",
+                "employmentStatus");
+        }
+
+        var emailUsedByAnotherMember = await _dbContext.Users
+            .AnyAsync(x => x.Id != id && x.Email.ToLower() == email);
+
+        if (emailUsedByAnotherMember)
+        {
+            throw new TeamMemberException(
+                "RESOURCE_CONFLICT",
+                "Email đã tồn tại trong hệ thống.",
+                "email");
         }
 
         var avatarUrl = member.AvatarUrl;
@@ -738,29 +793,6 @@ public sealed class Service : IService
             avatarUrl = NormalizeOptional(request.AvatarUrl);
         }
 
-        var animationUrl = NormalizeOptional(request.AnimationUrl);
-        var audioUrl = NormalizeOptional(request.AudioUrl);
-        var hometown = NormalizeOptional(request.Hometown);
-        var backgroundUrl = NormalizeOptional(request.BackgroundUrl);
-        var hobbies = NormalizeOptional(request.Hobbies);
-        var personalQuote = NormalizeOptional(request.PersonalQuote);
-
-        if (!member.IsPublished && request.IsPublished == true &&
-            parsedEmploymentStatus != EmploymentStatus.Working)
-        {
-            throw new ConflictException(
-                "Thành viên đã nghỉ việc không thể đăng.");
-        }
-
-        var emailUsedByAnotherMember = await _dbContext.Users
-            .AnyAsync(x => x.Id != id && x.Email.ToLower() == email);
-
-        if (emailUsedByAnotherMember)
-        {
-            throw new ConflictException(
-                "Email đã tồn tại trong hệ thống.");
-        }
-
         member.FullName = fullName;
         member.DisplayName = displayName;
         member.Email = email;
@@ -768,62 +800,137 @@ public sealed class Service : IService
         member.JobLevel = parsedJobLevel;
         member.JoinedDate = request.JoinedDate;
         member.AvatarUrl = avatarUrl;
-        member.AnimationUrl = animationUrl;
-        member.AudioUrl = audioUrl;
-        member.Hometown = hometown;
-        member.BackgroundUrl = backgroundUrl;
-        member.Hobbies = hobbies;
-        member.PersonalQuote = personalQuote;
+        member.AnimationUrl = NormalizeOptional(request.AnimationUrl);
+        member.AudioUrl = NormalizeOptional(request.AudioUrl);
+        member.Hometown = NormalizeOptional(request.Hometown);
+        member.BackgroundUrl = NormalizeOptional(request.BackgroundUrl);
+        member.Hobbies = NormalizeOptional(request.Hobbies);
+        member.PersonalQuote = NormalizeOptional(request.PersonalQuote);
         member.EmploymentStatus = parsedEmploymentStatus;
-        if (request.IsPublished.HasValue)
-        {
-            member.IsPublished = request.IsPublished.Value;
-
-            if (request.IsPublished.Value)
-            {
-                var publishedMembers = await _dbContext.Users
-                    .Where(x => x.RoleId == null &&
-                                x.IsPublished &&
-                                x.EmploymentStatus == EmploymentStatus.Working &&
-                                x.Id != member.Id)
-                    .OrderBy(x => x.DisplayOrder)
-                    .ThenByDescending(x => x.CreateAt)
-                    .ThenByDescending(x => x.Id)
-                    .ToListAsync();
-
-                var now = DateTimeOffset.UtcNow;
-                for (var index = 0; index < publishedMembers.Count; index++)
-                {
-                    var publishedMember = publishedMembers[index];
-                    var normalizedDisplayOrder = index + 1;
-                    if (publishedMember.DisplayOrder == normalizedDisplayOrder)
-                    {
-                        continue;
-                    }
-
-                    publishedMember.DisplayOrder = normalizedDisplayOrder;
-                    publishedMember.UpdatedAt = now;
-                }
-
-                member.DisplayOrder = publishedMembers.Count + 1;
-            }
-        }
-
-        if (!member.IsPublished)
-        {
-            member.DisplayOrder = null;
-        }
-
+        member.IsPublished = false;
+        member.DisplayOrder = null;
         member.UpdatedAt = DateTimeOffset.UtcNow;
 
         await _dbContext.SaveChangesAsync();
         await transaction.CommitAsync();
+
         return ToResponse(member);
+    }
+
+    private static void ValidateStatusRequest(Request.UpdateTeamMemberRequest request)
+    {
+        if (HasProfilePayload(request))
+        {
+            throw new TeamMemberException(
+                "RESOURCE_VALIDATION_FAILED",
+                "Request Đăng/Gỡ đăng không được kèm dữ liệu hồ sơ.",
+                "isPublished");
+        }
+    }
+
+    private static bool HasProfilePayload(Request.UpdateTeamMemberRequest request)
+    {
+        return request.FullName is not null ||
+            request.DisplayName is not null ||
+            request.Email is not null ||
+            request.Position is not null ||
+            request.JobLevel is not null ||
+            request.JoinedDate.HasValue ||
+            request.Avatar is not null ||
+            request.AvatarUrl is not null ||
+            request.AnimationUrl is not null ||
+            request.AudioUrl is not null ||
+            request.Hometown is not null ||
+            request.BackgroundUrl is not null ||
+            request.Hobbies is not null ||
+            request.PersonalQuote is not null ||
+            request.EmploymentStatus is not null;
+    }
+
+    private static string NormalizeRequired(string? value, string field, string message)
+    {
+        var normalized = value?.Trim();
+
+        if (string.IsNullOrWhiteSpace(normalized))
+        {
+            throw new TeamMemberException(
+                "RESOURCE_VALIDATION_FAILED",
+                message,
+                field);
+        }
+
+        return normalized;
+    }
+
+    private async Task<List<User>> GetPublishedMembersAsync(Guid excludedMemberId)
+    {
+        return await _dbContext.Users
+            .Where(member => member.RoleId == null &&
+                             !member.IsDelete &&
+                             member.IsPublished &&
+                             member.EmploymentStatus == EmploymentStatus.Working &&
+                             member.Id != excludedMemberId)
+            .OrderBy(member => member.DisplayOrder == null)
+            .ThenBy(member => member.DisplayOrder)
+            .ThenByDescending(member => member.CreateAt)
+            .ThenByDescending(member => member.Id)
+            .ToListAsync();
+    }
+
+    private static void NormalizePublishedDisplayOrders(
+        List<User> publishedMembers,
+        DateTimeOffset now)
+    {
+        for (var index = 0; index < publishedMembers.Count; index++)
+        {
+            var member = publishedMembers[index];
+            var displayOrder = index + 1;
+
+            if (member.DisplayOrder == displayOrder)
+            {
+                continue;
+            }
+
+            member.DisplayOrder = displayOrder;
+            member.UpdatedAt = now;
+        }
+    }
+
+    private static void ValidatePublishableMember(User member)
+    {
+        var displayName = member.DisplayName?.Trim();
+
+        if (string.IsNullOrWhiteSpace(displayName))
+        {
+            throw new TeamMemberException(
+                "RESOURCE_VALIDATION_FAILED",
+                "Tên hiển thị là bắt buộc khi đăng thành viên.",
+                "displayName");
+        }
+
+        if (displayName.Length > 100)
+        {
+            throw new TeamMemberException(
+                "RESOURCE_VALIDATION_FAILED",
+                "Tên hiển thị không được vượt quá 100 ký tự.",
+                "displayName");
+        }
+
+        if (member.EmploymentStatus != EmploymentStatus.Working)
+        {
+            throw new TeamMemberException(
+                "RESOURCE_CONFLICT",
+                "Thành viên đã nghỉ việc không thể đăng.",
+                "employmentStatus");
+        }
     }
 
     private async Task<User> FindMemberAsync(Guid id)
     {
-        var member = await _dbContext.Users.SingleOrDefaultAsync(x => x.Id == id && x.RoleId == null);
+        var member = await _dbContext.Users.SingleOrDefaultAsync(x =>
+            x.Id == id &&
+            x.RoleId == null &&
+            !x.IsDelete);
         if (member is null)
             throw new NotFoundException("Không tìm thấy thành viên.");
 
