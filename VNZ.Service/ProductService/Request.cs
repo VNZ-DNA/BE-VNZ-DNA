@@ -16,14 +16,14 @@ public class Request
 
     public class UpdateProductRequest
     {
-        public string Name { get; set; } = string.Empty;
+        public string? Name { get; set; }
         public IFormFile? Logo { get; set; }
         public IFormFile? Wordmark { get; set; }
         public string? LogoAction { get; set; }
         public string? WordmarkAction { get; set; }
         public string? ProductUrl { get; set; }
         public ProductContentRequest? Content { get; set; }
-        public ProductStatus Status { get; set; }
+        public ProductStatus? Status { get; set; }
         public bool? IsPublished { get; set; }
     }
 

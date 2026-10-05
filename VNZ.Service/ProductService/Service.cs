@@ -129,140 +129,13 @@ public sealed class Service : IService
 
         try
         {
-            await using var transaction = await _dbContext.Database
-                .BeginTransactionAsync(IsolationLevel.Serializable);
-
-            var product = await _dbContext.Products
-                .FirstOrDefaultAsync(product => product.Id == id);
-
-            if (product is null)
+            if (request.IsPublished.HasValue)
             {
-                throw new ProductException(
-                    "PRODUCT_NOT_FOUND",
-                    "Không tìm thấy Product.");
+                ValidateStatusRequest(request);
+                return await UpdateProductPublicationStateAsync(id, request.IsPublished.Value);
             }
 
-            var updatedAt = DateTimeOffset.UtcNow;
-
-            if (product.IsPublished)
-            {
-                if (request.IsPublished != false)
-                {
-                    throw new ProductException(
-                        "PRODUCT_PUBLISHED_CANNOT_EDIT",
-                        "Product đang được đăng. Hãy gỡ đăng trước khi chỉnh sửa.",
-                        "isPublished");
-                }
-
-                // Khi Product đang đăng, PUT chỉ thực hiện gỡ đăng.
-                // Các field khác trong request không được áp dụng cho đến request tiếp theo.
-                product.IsPublished = false;
-                product.DisplayOrder = null;
-
-                var publishedProducts = await _dbContext.Products
-                    .Where(item => item.IsPublished && item.Id != product.Id)
-                    .OrderBy(item => item.DisplayOrder)
-                    .ThenBy(item => item.CreatedAt)
-                    .ThenBy(item => item.Id)
-                    .ToListAsync();
-
-                for (var index = 0; index < publishedProducts.Count; index++)
-                {
-                    var publishedProduct = publishedProducts[index];
-                    var displayOrder = index + 1;
-
-                    if (publishedProduct.DisplayOrder == displayOrder)
-                    {
-                        continue;
-                    }
-
-                    publishedProduct.DisplayOrder = displayOrder;
-                    publishedProduct.UpdatedAt = updatedAt;
-                }
-
-                product.UpdatedAt = updatedAt;
-
-                await _dbContext.SaveChangesAsync();
-                await transaction.CommitAsync();
-
-                return ToDetailResponse(product);
-            }
-
-            var logoAction = NormalizeProductImageAction(request.LogoAction);
-            var wordmarkAction = NormalizeProductImageAction(request.WordmarkAction);
-            ValidateProductImageActions(logoAction, wordmarkAction, request);
-
-            var content = SanitizeProductContent(request.Content);
-            ValidateUpdateRequest(request, content);
-            var isPublished = request.IsPublished.GetValueOrDefault();
-
-            if (isPublished && request.Status == ProductStatus.InProgress)
-            {
-                throw new ProductException(
-                    "PRODUCT_IN_PROGRESS_CANNOT_PUBLISH",
-                    "Chỉ sản phẩm đã hoàn thành mới có thể đăng.",
-                    "status",
-                    "isPublished");
-            }
-
-            var currentLogoUrl = NormalizeProductImageUrl(product.LogoUrl);
-            var currentWordmarkUrl = NormalizeProductImageUrl(product.WordmarkUrl);
-
-            var removeLogo = string.Equals(logoAction, "remove", StringComparison.Ordinal);
-            var removeWordmark = string.Equals(wordmarkAction, "remove", StringComparison.Ordinal);
-            var hasFinalLogo = !removeLogo &&
-                (request.Logo is not null || currentLogoUrl is not null);
-            var hasFinalWordmark = !removeWordmark &&
-                (request.Wordmark is not null || currentWordmarkUrl is not null);
-
-            if (isPublished && !hasFinalLogo)
-            {
-                throw ProductImagesRequired("logoUrl");
-            }
-
-            if (isPublished && !hasFinalWordmark)
-            {
-                throw ProductImagesRequired("wordmarkUrl");
-            }
-
-            var logoUrl = removeLogo
-                ? null
-                : request.Logo is null
-                    ? currentLogoUrl
-                    : await UploadProductImageIfPresentAsync(request.Logo);
-
-            var wordmarkUrl = removeWordmark
-                ? null
-                : request.Wordmark is null
-                    ? currentWordmarkUrl
-                    : await UploadProductImageIfPresentAsync(request.Wordmark);
-
-            if (isPublished)
-            {
-                var lastDisplayOrder = await _dbContext.Products
-                    .Where(item => item.IsPublished)
-                    .MaxAsync(item => (int?)item.DisplayOrder) ?? 0;
-
-                product.DisplayOrder = lastDisplayOrder + 1;
-            }
-            else
-            {
-                product.DisplayOrder = null;
-            }
-
-            product.Name = request.Name.Trim();
-            product.LogoUrl = logoUrl;
-            product.WordmarkUrl = wordmarkUrl;
-            product.ProductUrl = request.ProductUrl;
-            product.Content = ToProductContent(content);
-            product.Status = request.Status;
-            product.IsPublished = isPublished;
-            product.UpdatedAt = updatedAt;
-
-            await _dbContext.SaveChangesAsync();
-            await transaction.CommitAsync();
-
-            return ToDetailResponse(product);
+            return await UpdateProductProfileAsync(id, request);
         }
         catch (Exception exception) when (exception is DbUpdateException or PostgresException)
         {
@@ -270,6 +143,182 @@ public sealed class Service : IService
                 "PRODUCT_OPERATION_FAILED",
                 "Không thể cập nhật Product.",
                 exception);
+        }
+    }
+
+    private async Task<Response.ProductDetailResponse> UpdateProductProfileAsync(
+        Guid id,
+        Request.UpdateProductRequest request)
+    {
+        await using var transaction = await _dbContext.Database
+            .BeginTransactionAsync(IsolationLevel.Serializable);
+
+        var product = await _dbContext.Products
+            .FirstOrDefaultAsync(product => product.Id == id);
+
+        if (product is null)
+        {
+            throw new ProductException(
+                "PRODUCT_NOT_FOUND",
+                "Không tìm thấy Product.");
+        }
+
+        if (product.IsPublished)
+        {
+            throw new ProductException(
+                "PRODUCT_PUBLISHED_CANNOT_EDIT",
+                "Product đang được đăng. Hãy gỡ đăng trước khi chỉnh sửa.",
+                "isPublished");
+        }
+
+        var logoAction = NormalizeProductImageAction(request.LogoAction);
+        var wordmarkAction = NormalizeProductImageAction(request.WordmarkAction);
+        ValidateProductImageActions(logoAction, wordmarkAction, request);
+
+        var content = SanitizeProductContent(request.Content);
+        ValidateUpdateRequest(request, content);
+
+        var updatedAt = DateTimeOffset.UtcNow;
+        var currentLogoUrl = NormalizeProductImageUrl(product.LogoUrl);
+        var currentWordmarkUrl = NormalizeProductImageUrl(product.WordmarkUrl);
+        var removeLogo = string.Equals(logoAction, "remove", StringComparison.Ordinal);
+        var removeWordmark = string.Equals(wordmarkAction, "remove", StringComparison.Ordinal);
+
+        var logoUrl = removeLogo
+            ? null
+            : request.Logo is null
+                ? currentLogoUrl
+                : await UploadProductImageIfPresentAsync(request.Logo);
+
+        var wordmarkUrl = removeWordmark
+            ? null
+            : request.Wordmark is null
+                ? currentWordmarkUrl
+                : await UploadProductImageIfPresentAsync(request.Wordmark);
+
+        product.Name = request.Name!.Trim();
+        product.LogoUrl = logoUrl;
+        product.WordmarkUrl = wordmarkUrl;
+        product.ProductUrl = request.ProductUrl;
+        product.Content = ToProductContent(content);
+        product.Status = request.Status!.Value;
+        product.IsPublished = false;
+        product.DisplayOrder = null;
+        product.UpdatedAt = updatedAt;
+
+        await _dbContext.SaveChangesAsync();
+        await transaction.CommitAsync();
+
+        return ToDetailResponse(product);
+    }
+
+    private async Task<Response.ProductDetailResponse> UpdateProductPublicationStateAsync(
+        Guid id,
+        bool isPublished)
+    {
+        await using var transaction = await _dbContext.Database
+            .BeginTransactionAsync(IsolationLevel.Serializable);
+
+        var product = await _dbContext.Products
+            .FirstOrDefaultAsync(product => product.Id == id);
+
+        if (product is null)
+        {
+            throw new ProductException(
+                "PRODUCT_NOT_FOUND",
+                "Không tìm thấy Product.");
+        }
+
+        if (product.IsPublished == isPublished)
+        {
+            if (isPublished)
+            {
+                ValidatePublishableProduct(product);
+            }
+
+            await transaction.CommitAsync();
+            return ToDetailResponse(product);
+        }
+
+        var updatedAt = DateTimeOffset.UtcNow;
+
+        if (isPublished)
+        {
+            ValidatePublishableProduct(product);
+
+            var lastDisplayOrder = await _dbContext.Products
+                .Where(item => item.IsPublished)
+                .MaxAsync(item => (int?)item.DisplayOrder) ?? 0;
+
+            product.IsPublished = true;
+            product.DisplayOrder = lastDisplayOrder + 1;
+        }
+        else
+        {
+            var publishedProducts = await GetPublishedProductsAsync(product.Id);
+
+            product.IsPublished = false;
+            product.DisplayOrder = null;
+            NormalizePublishedProductDisplayOrders(publishedProducts, updatedAt);
+        }
+
+        product.UpdatedAt = updatedAt;
+
+        await _dbContext.SaveChangesAsync();
+        await transaction.CommitAsync();
+
+        return ToDetailResponse(product);
+    }
+
+    private async Task<List<Product>> GetPublishedProductsAsync(Guid excludedProductId)
+    {
+        return await _dbContext.Products
+            .Where(product => product.IsPublished && product.Id != excludedProductId)
+            .OrderBy(product => product.DisplayOrder == null)
+            .ThenBy(product => product.DisplayOrder)
+            .ThenBy(product => product.CreatedAt)
+            .ThenBy(product => product.Id)
+            .ToListAsync();
+    }
+
+    private static void NormalizePublishedProductDisplayOrders(
+        List<Product> publishedProducts,
+        DateTimeOffset updatedAt)
+    {
+        for (var index = 0; index < publishedProducts.Count; index++)
+        {
+            var displayOrder = index + 1;
+            var product = publishedProducts[index];
+
+            if (product.DisplayOrder == displayOrder)
+            {
+                continue;
+            }
+
+            product.DisplayOrder = displayOrder;
+            product.UpdatedAt = updatedAt;
+        }
+    }
+
+    private static void ValidatePublishableProduct(Product product)
+    {
+        if (product.Status != ProductStatus.Completed)
+        {
+            throw new ProductException(
+                "PRODUCT_IN_PROGRESS_CANNOT_PUBLISH",
+                "Chỉ sản phẩm đã hoàn thành mới có thể đăng.",
+                "status",
+                "isPublished");
+        }
+
+        if (NormalizeProductImageUrl(product.LogoUrl) is null)
+        {
+            throw ProductImagesRequired("logoUrl");
+        }
+
+        if (NormalizeProductImageUrl(product.WordmarkUrl) is null)
+        {
+            throw ProductImagesRequired("wordmarkUrl");
         }
     }
 
@@ -637,6 +686,29 @@ public sealed class Service : IService
             .ToList();
     }
 
+    private static void ValidateStatusRequest(Request.UpdateProductRequest request)
+    {
+        if (HasProductProfilePayload(request))
+        {
+            throw new ProductException(
+                "PRODUCT_VALIDATION_ERROR",
+                "Request đăng/gỡ đăng không được kèm dữ liệu hồ sơ.",
+                "isPublished");
+        }
+    }
+
+    private static bool HasProductProfilePayload(Request.UpdateProductRequest request)
+    {
+        return request.Name is not null ||
+            request.Logo is not null ||
+            request.Wordmark is not null ||
+            request.LogoAction is not null ||
+            request.WordmarkAction is not null ||
+            request.ProductUrl is not null ||
+            request.Content is not null ||
+            request.Status.HasValue;
+    }
+
     private static void ValidateUpdateRequest(
         Request.UpdateProductRequest request,
         Request.ProductContentRequest? content)
@@ -648,12 +720,7 @@ public sealed class Service : IService
             fields.Add("name");
         }
 
-        if (!request.IsPublished.HasValue)
-        {
-            fields.Add("isPublished");
-        }
-
-        if (!Enum.IsDefined(request.Status))
+        if (!request.Status.HasValue || !Enum.IsDefined(request.Status.Value))
         {
             fields.Add("status");
         }

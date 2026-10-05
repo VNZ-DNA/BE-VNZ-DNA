@@ -342,10 +342,12 @@ public class GlobalExceptionHandlerMiddleware : IMiddleware
         return code switch
         {
             "MEMBER_VALIDATION_ERROR" or
-            "MEMBER_QUERY_INVALID" => HttpStatusCode.BadRequest,
+            "MEMBER_QUERY_INVALID" or
+            "RESOURCE_VALIDATION_FAILED" => HttpStatusCode.BadRequest,
             "MEMBER_ORDER_INVALID" => HttpStatusCode.BadRequest,
             "MEMBER_ORDER_CONFLICT" or
-            "TEAM_MEMBER_DELETE_FORBIDDEN" => HttpStatusCode.Conflict,
+            "TEAM_MEMBER_DELETE_FORBIDDEN" or
+            "RESOURCE_CONFLICT" => HttpStatusCode.Conflict,
             "MEMBER_NOT_FOUND" => HttpStatusCode.NotFound,
             "MEMBER_ORDER_UPDATE_FAILED" => HttpStatusCode.InternalServerError,
             "MEMBER_EMAIL_EXISTS" => HttpStatusCode.Conflict,

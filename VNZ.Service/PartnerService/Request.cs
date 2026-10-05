@@ -15,7 +15,7 @@ public class Request
 
     public class UpdatePartnerRequest
     {
-        public string Name { get; set; } = string.Empty;
+        public string? Name { get; set; }
         public IFormFile? Logo { get; set; }
         public string? LogoUrl { get; set; }
         public string? WebsiteUrl { get; set; }
