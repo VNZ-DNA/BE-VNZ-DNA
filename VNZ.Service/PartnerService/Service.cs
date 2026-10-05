@@ -311,7 +311,195 @@ public sealed class Service : IService
                 "id");
         }
 
-        var name = request.Name?.Trim();
+        try
+        {
+            if (request.IsPublished.HasValue)
+            {
+                ValidateStatusRequest(request);
+                return await UpdatePartnerPublicationStateAsync(id, request.IsPublished.Value);
+            }
+
+            return await UpdatePartnerProfileAsync(id, request);
+        }
+        catch (Exception exception) when (exception is DbUpdateException or DbException)
+        {
+            throw new PartnerException(
+                "PARTNER_UPDATE_FAILED",
+                "Không thể cập nhật Partner.",
+                exception);
+        }
+    }
+
+    private async Task<Response.PartnerListItemResponse> UpdatePartnerProfileAsync(
+        Guid id,
+        Request.UpdatePartnerRequest request)
+    {
+        await using var transaction = await _dbContext.Database
+            .BeginTransactionAsync(IsolationLevel.Serializable);
+
+        var partner = await _dbContext.Partners
+            .FirstOrDefaultAsync(partner => partner.Id == id);
+
+        if (partner is null)
+        {
+            throw new PartnerException(
+                "PARTNER_NOT_FOUND",
+                "Không tìm thấy Partner.");
+        }
+
+        if (partner.IsPublished)
+        {
+            throw new PartnerException(
+                "PARTNER_PUBLISHED_CANNOT_EDIT",
+                "Partner đang được đăng. Hãy gỡ đăng trước khi chỉnh sửa.",
+                "isPublished");
+        }
+
+        var name = ValidatePartnerName(request.Name);
+
+        var logoUrl = partner.LogoUrl;
+
+        if (request.Logo is not null)
+        {
+            var uploadResult = await _mediaService.UploadImageAsync(
+                new MediaService.Request.UploadImageRequest
+                {
+                    File = request.Logo,
+                    Purpose = "PartnerLogo"
+                });
+
+            logoUrl = uploadResult.Url;
+        }
+        else if (request.LogoUrl is not null)
+        {
+            logoUrl = NormalizeOptional(request.LogoUrl);
+        }
+
+        partner.Name = name;
+        partner.LogoUrl = logoUrl;
+        partner.WebsiteUrl = NormalizeOptional(request.WebsiteUrl);
+        partner.Description = NormalizeOptional(request.Description);
+        partner.IsPublished = false;
+        partner.DisplayOrder = null;
+        partner.UpdateAt = DateTimeOffset.UtcNow;
+
+        await _dbContext.SaveChangesAsync();
+        await transaction.CommitAsync();
+
+        return ToPartnerResponse(partner);
+    }
+
+    private async Task<Response.PartnerListItemResponse> UpdatePartnerPublicationStateAsync(
+        Guid id,
+        bool isPublished)
+    {
+        await using var transaction = await _dbContext.Database
+            .BeginTransactionAsync(IsolationLevel.Serializable);
+
+        var partner = await _dbContext.Partners
+            .FirstOrDefaultAsync(partner => partner.Id == id);
+
+        if (partner is null)
+        {
+            throw new PartnerException(
+                "PARTNER_NOT_FOUND",
+                "Không tìm thấy Partner.");
+        }
+
+        if (partner.IsPublished == isPublished)
+        {
+            if (isPublished)
+            {
+                ValidatePublishablePartner(partner);
+            }
+
+            await transaction.CommitAsync();
+            return ToPartnerResponse(partner);
+        }
+
+        var updatedAt = DateTimeOffset.UtcNow;
+
+        if (isPublished)
+        {
+            ValidatePublishablePartner(partner);
+
+            var lastDisplayOrder = await _dbContext.Partners
+                .Where(item => item.IsPublished)
+                .MaxAsync(item => (int?)item.DisplayOrder) ?? 0;
+
+            partner.IsPublished = true;
+            partner.DisplayOrder = lastDisplayOrder + 1;
+        }
+        else
+        {
+            var publishedPartners = await GetPublishedPartnersAsync(partner.Id);
+
+            partner.IsPublished = false;
+            partner.DisplayOrder = null;
+            NormalizePublishedPartnerDisplayOrders(publishedPartners, updatedAt);
+        }
+
+        partner.UpdateAt = updatedAt;
+
+        await _dbContext.SaveChangesAsync();
+        await transaction.CommitAsync();
+
+        return ToPartnerResponse(partner);
+    }
+
+    private async Task<List<Partner>> GetPublishedPartnersAsync(Guid excludedPartnerId)
+    {
+        return await _dbContext.Partners
+            .Where(partner => partner.IsPublished && partner.Id != excludedPartnerId)
+            .OrderBy(partner => partner.DisplayOrder == null)
+            .ThenBy(partner => partner.DisplayOrder)
+            .ThenBy(partner => partner.CreatedAt)
+            .ThenBy(partner => partner.Id)
+            .ToListAsync();
+    }
+
+    private static void NormalizePublishedPartnerDisplayOrders(
+        List<Partner> publishedPartners,
+        DateTimeOffset updatedAt)
+    {
+        for (var index = 0; index < publishedPartners.Count; index++)
+        {
+            var displayOrder = index + 1;
+            var partner = publishedPartners[index];
+
+            if (partner.DisplayOrder == displayOrder)
+            {
+                continue;
+            }
+
+            partner.DisplayOrder = displayOrder;
+            partner.UpdateAt = updatedAt;
+        }
+    }
+
+    private static void ValidateStatusRequest(Request.UpdatePartnerRequest request)
+    {
+        if (HasPartnerProfilePayload(request))
+        {
+            throw new PartnerException(
+                "PARTNER_VALIDATION_FAILED",
+                "Request đăng/gỡ đăng không được kèm dữ liệu hồ sơ.",
+                "isPublished");
+        }
+    }
+
+    private static bool HasPartnerProfilePayload(Request.UpdatePartnerRequest request)
+    {
+        return request.Name is not null ||
+            request.Logo is not null ||
+            request.LogoUrl is not null ||
+            request.WebsiteUrl is not null ||
+            request.Description is not null;
+    }
+
+    private static string ValidatePartnerName(string? value)
+    {
+        var name = value?.Trim();
 
         if (string.IsNullOrWhiteSpace(name) || name.Length > 200)
         {
@@ -321,123 +509,19 @@ public sealed class Service : IService
                 "name");
         }
 
-        if (!request.IsPublished.HasValue)
-        {
-            throw new PartnerException(
-                "PARTNER_VALIDATION_FAILED",
-                "Trạng thái đăng Partner là bắt buộc.",
-                "isPublished");
-        }
+        return name;
+    }
 
-        try
-        {
-            await using var transaction = await _dbContext.Database
-                .BeginTransactionAsync(IsolationLevel.Serializable);
+    private static void ValidatePublishablePartner(Partner partner)
+    {
+        ValidatePartnerName(partner.Name);
+    }
 
-            var partner = await _dbContext.Partners
-                .FirstOrDefaultAsync(partner => partner.Id == id);
-
-            if (partner is null)
-            {
-                throw new PartnerException(
-                    "PARTNER_NOT_FOUND",
-                    "Không tìm thấy Partner.");
-            }
-
-            var isLogoChanged = request.Logo is not null ||
-                (request.LogoUrl is not null && partner.LogoUrl != request.LogoUrl);
-
-            var isInformationChanged = partner.Name != name ||
-                isLogoChanged ||
-                partner.WebsiteUrl != request.WebsiteUrl ||
-                partner.Description != request.Description;
-
-            if (partner.IsPublished && isInformationChanged)
-            {
-                throw new PartnerException(
-                    "PARTNER_PUBLISHED_CANNOT_EDIT",
-                    "Partner đang Đã đăng phải được gỡ đăng trước khi chỉnh sửa.",
-                    "name",
-                    "logoUrl",
-                    "websiteUrl",
-                    "description");
-            }
-
-            var updatedAt = DateTimeOffset.UtcNow;
-
-            if (partner.IsPublished && !request.IsPublished.Value)
-            {
-                partner.IsPublished = false;
-                partner.DisplayOrder = null;
-                partner.UpdateAt = updatedAt;
-
-                var publishedPartners = await _dbContext.Partners
-                    .Where(item => item.IsPublished && item.Id != partner.Id)
-                    .OrderBy(item => item.DisplayOrder)
-                    .ThenBy(item => item.CreatedAt)
-                    .ThenBy(item => item.Id)
-                    .ToListAsync();
-
-                for (var index = 0; index < publishedPartners.Count; index++)
-                {
-                    var publishedPartner = publishedPartners[index];
-                    publishedPartner.DisplayOrder = index + 1;
-                    publishedPartner.UpdateAt = updatedAt;
-                }
-            }
-            else if (!partner.IsPublished)
-            {
-                var logoUrl = partner.LogoUrl;
-
-                if (request.Logo is not null)
-                {
-                    var uploadResult = await _mediaService.UploadImageAsync(
-                        new MediaService.Request.UploadImageRequest
-                        {
-                            File = request.Logo,
-                            Purpose = "PartnerLogo"
-                        });
-
-                    logoUrl = uploadResult.Url;
-                }
-                else if (request.LogoUrl is not null)
-                {
-                    logoUrl = request.LogoUrl;
-                }
-
-                partner.Name = name;
-                partner.LogoUrl = logoUrl;
-                partner.WebsiteUrl = request.WebsiteUrl;
-                partner.Description = request.Description;
-                partner.IsPublished = request.IsPublished.Value;
-                partner.UpdateAt = updatedAt;
-
-                if (partner.IsPublished)
-                {
-                    var lastDisplayOrder = await _dbContext.Partners
-                        .Where(item => item.IsPublished)
-                        .MaxAsync(item => (int?)item.DisplayOrder) ?? 0;
-
-                    partner.DisplayOrder = lastDisplayOrder + 1;
-                }
-                else
-                {
-                    partner.DisplayOrder = null;
-                }
-            }
-
-            await _dbContext.SaveChangesAsync();
-            await transaction.CommitAsync();
-
-            return ToPartnerResponse(partner);
-        }
-        catch (Exception exception) when (exception is DbUpdateException or DbException)
-        {
-            throw new PartnerException(
-                "PARTNER_UPDATE_FAILED",
-                "Không thể cập nhật Partner.",
-                exception);
-        }
+    private static string? NormalizeOptional(string? value)
+    {
+        return string.IsNullOrWhiteSpace(value)
+            ? null
+            : value.Trim();
     }
 
     private static Response.PartnerListItemResponse ToPartnerResponse(Partner partner)
