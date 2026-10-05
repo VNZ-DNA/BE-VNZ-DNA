@@ -1,4 +1,5 @@
 using System.ComponentModel.DataAnnotations;
+using System.Globalization;
 using Microsoft.EntityFrameworkCore;
 using VNZ.Repository;
 using VNZ.Repository.Entity;
@@ -328,6 +329,8 @@ public class Service : IService
             }
         }
 
+        var expiredDateFilter = ParseDateFilter(request.ExpiredDate);
+
         // 4. Bắt đầu query danh sách JobPost.
         var jobPostsQuery = _dbContext.JobPosts.AsNoTracking();
 
@@ -359,11 +362,33 @@ public class Service : IService
                 jobLevelFilters.Contains(jobPost.JobLevel.Value));
         }
 
+        if (expiredDateFilter.ExactDate.HasValue)
+        {
+            var expiredAt = ConvertExpiredDateToUtc(expiredDateFilter.ExactDate.Value)!.Value;
+            jobPostsQuery = jobPostsQuery.Where(jobPost => jobPost.ExpiredAt == expiredAt);
+        }
+
         // 5. Đếm tổng sau filter, sau đó lấy đúng trang cần xem.
         var total = await jobPostsQuery.CountAsync();
 
-        var jobPosts = await jobPostsQuery
-            .OrderByDescending(jobPost => jobPost.CreatedAt)
+        IOrderedQueryable<JobPost>? orderedQuery = null;
+
+        if (expiredDateFilter.SortDirection == DateFilterSortDirection.Ascending)
+        {
+            orderedQuery = jobPostsQuery
+                .OrderBy(jobPost => !jobPost.ExpiredAt.HasValue)
+                .ThenBy(jobPost => jobPost.ExpiredAt);
+        }
+        else if (expiredDateFilter.SortDirection == DateFilterSortDirection.Descending)
+        {
+            orderedQuery = jobPostsQuery
+                .OrderByDescending(jobPost => jobPost.ExpiredAt.HasValue)
+                .ThenByDescending(jobPost => jobPost.ExpiredAt);
+        }
+
+        orderedQuery ??= jobPostsQuery.OrderByDescending(jobPost => jobPost.CreatedAt);
+
+        var jobPosts = await orderedQuery
             .ThenByDescending(jobPost => jobPost.Id)
             .Skip((request.Page - 1) * request.PageSize)
             .Take(request.PageSize)
@@ -856,6 +881,63 @@ public class Service : IService
         var nextDate = DateOnly.FromDateTime(expirationTimeInVietnam.DateTime);
 
         return nextDate.AddDays(-1);
+    }
+
+    private static DateFilter ParseDateFilter(string? value)
+    {
+        var normalizedValue = value?.Trim();
+
+        if (string.IsNullOrWhiteSpace(normalizedValue))
+        {
+            return new DateFilter(null, DateFilterSortDirection.None);
+        }
+
+        if (string.Equals(normalizedValue, "asc", StringComparison.OrdinalIgnoreCase))
+        {
+            return new DateFilter(null, DateFilterSortDirection.Ascending);
+        }
+
+        if (string.Equals(normalizedValue, "desc", StringComparison.OrdinalIgnoreCase))
+        {
+            return new DateFilter(null, DateFilterSortDirection.Descending);
+        }
+
+        var isDateParsed = DateOnly.TryParseExact(
+            normalizedValue,
+            "yyyy-MM-dd",
+            CultureInfo.InvariantCulture,
+            DateTimeStyles.None,
+            out var exactDate);
+
+        if (isDateParsed && exactDate != DateOnly.MaxValue)
+        {
+            return new DateFilter(exactDate, DateFilterSortDirection.None);
+        }
+
+        throw new JobPostException(
+            "JOB_POST_INVALID_EXPIRED_DATE_FILTER",
+            "Bộ lọc ngày hết hạn không hợp lệ. Dùng YYYY-MM-DD, asc hoặc desc.",
+            "expiredDate");
+    }
+
+    private enum DateFilterSortDirection
+    {
+        None,
+        Ascending,
+        Descending
+    }
+
+    private sealed class DateFilter
+    {
+        public DateFilter(DateOnly? exactDate, DateFilterSortDirection sortDirection)
+        {
+            ExactDate = exactDate;
+            SortDirection = sortDirection;
+        }
+
+        public DateOnly? ExactDate { get; }
+
+        public DateFilterSortDirection SortDirection { get; }
     }
 
     private async Task SaveJobPostUpdateAsync()

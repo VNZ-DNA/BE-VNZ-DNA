@@ -100,6 +100,120 @@ public class GetAdminJobPostFilterTests
         Assert.Equal(["departmentId"], exception.Fields);
     }
 
+    [Fact]
+    public async Task GetJobPostListAsync_FiltersByExactExpiredDate()
+    {
+        var options = new DbContextOptionsBuilder<AppDbContext>()
+            .UseInMemoryDatabase(Guid.NewGuid().ToString())
+            .Options;
+
+        await using var dbContext = new JobPostFilterTestDbContext(options);
+        var expectedJobPost = CreateJobPost(
+            "Expected job",
+            JobPostStatus.Open,
+            Guid.NewGuid(),
+            JobLevel.Junior,
+            1);
+        expectedJobPost.ExpiredAt = CreateVietnamExpiry(new DateOnly(2030, 10, 31));
+
+        var wrongJobPost = CreateJobPost(
+            "Wrong job",
+            JobPostStatus.Open,
+            Guid.NewGuid(),
+            JobLevel.Junior,
+            2);
+        wrongJobPost.ExpiredAt = CreateVietnamExpiry(new DateOnly(2030, 11, 30));
+
+        dbContext.JobPosts.AddRange(expectedJobPost, wrongJobPost);
+        await dbContext.SaveChangesAsync();
+
+        var service = new JobPostService(dbContext);
+
+        var response = await service.GetJobPostListAsync(new Request.GetJobPostListRequest
+        {
+            ExpiredDate = "2030-10-31"
+        });
+
+        Assert.Equal(1, response.Total);
+        Assert.Single(response.Items);
+        Assert.Equal(expectedJobPost.Id, response.Items[0].Id);
+        Assert.Equal(new DateOnly(2030, 10, 31), response.Items[0].ExpiredDate);
+    }
+
+    [Fact]
+    public async Task GetJobPostListAsync_SortsByExpiredDateAndPlacesMissingDatesLast()
+    {
+        var options = new DbContextOptionsBuilder<AppDbContext>()
+            .UseInMemoryDatabase(Guid.NewGuid().ToString())
+            .Options;
+
+        await using var dbContext = new JobPostFilterTestDbContext(options);
+        var earliest = CreateJobPost(
+            "Earliest",
+            JobPostStatus.Open,
+            Guid.NewGuid(),
+            JobLevel.Junior,
+            1);
+        earliest.ExpiredAt = CreateVietnamExpiry(new DateOnly(2030, 10, 31));
+
+        var latest = CreateJobPost(
+            "Latest",
+            JobPostStatus.Open,
+            Guid.NewGuid(),
+            JobLevel.Junior,
+            2);
+        latest.ExpiredAt = CreateVietnamExpiry(new DateOnly(2030, 11, 30));
+
+        var withoutExpiry = CreateJobPost(
+            "Without expiry",
+            JobPostStatus.Draft,
+            Guid.NewGuid(),
+            JobLevel.Junior,
+            3);
+
+        dbContext.JobPosts.AddRange(latest, withoutExpiry, earliest);
+        await dbContext.SaveChangesAsync();
+
+        var service = new JobPostService(dbContext);
+        var ascending = await service.GetJobPostListAsync(
+            new Request.GetJobPostListRequest { ExpiredDate = "asc" });
+        var descending = await service.GetJobPostListAsync(
+            new Request.GetJobPostListRequest { ExpiredDate = "desc" });
+
+        Assert.Equal(
+            new[] { earliest.Id, latest.Id, withoutExpiry.Id },
+            ascending.Items.Select(item => item.Id));
+        Assert.Equal(
+            new[] { latest.Id, earliest.Id, withoutExpiry.Id },
+            descending.Items.Select(item => item.Id));
+    }
+
+    [Fact]
+    public async Task GetJobPostListAsync_RejectsInvalidExpiredDateFilter()
+    {
+        var options = new DbContextOptionsBuilder<AppDbContext>()
+            .UseInMemoryDatabase(Guid.NewGuid().ToString())
+            .Options;
+
+        await using var dbContext = new JobPostFilterTestDbContext(options);
+        var service = new JobPostService(dbContext);
+
+        var exception = await Assert.ThrowsAsync<JobPostException>(() => service.GetJobPostListAsync(
+            new Request.GetJobPostListRequest { ExpiredDate = "31/10/2030" }));
+
+        Assert.Equal("JOB_POST_INVALID_EXPIRED_DATE_FILTER", exception.Code);
+        Assert.Equal(["expiredDate"], exception.Fields);
+    }
+
+    private static DateTimeOffset CreateVietnamExpiry(DateOnly finalDay)
+    {
+        var nextDayAtMidnightInVietnam = new DateTimeOffset(
+            finalDay.AddDays(1).ToDateTime(TimeOnly.MinValue),
+            TimeSpan.FromHours(7));
+
+        return nextDayAtMidnightInVietnam.ToUniversalTime();
+    }
+
     private static JobPost CreateJobPost(
         string title,
         JobPostStatus status,

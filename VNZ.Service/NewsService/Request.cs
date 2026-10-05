@@ -35,6 +35,8 @@ public class  Request
         public string? Search { get; set; }
         public List<string>? Status { get; set; }
         public List<string>? CategoryId { get; set; }
+        public string? CreatedAt { get; set; }
+        public string? PublishAt { get; set; }
         public int Page { get; set; } = 1;
         public int PageSize { get; set; } = 20;
     }

@@ -25,6 +25,7 @@ public class Request
         public List<string>? Status { get; set; }
         public List<string>? DepartmentId { get; set; }
         public List<string>? JobLevel { get; set; }
+        public string? ExpiredDate { get; set; }
         public int Page { get; set; } = 1;
         public int PageSize { get; set; } = 20;
     }
