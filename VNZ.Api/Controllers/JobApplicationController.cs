@@ -18,6 +18,17 @@ public sealed class JobApplicationController : ControllerBase
         _jobApplicationService = jobApplicationService;
     }
 
+    [HttpDelete("{id:guid}")]
+    public async Task<IActionResult> DeleteJobApplication(Guid id)
+    {
+        var data = await _jobApplicationService.DeleteJobApplicationAsync(id);
+
+        return Ok(ResponseBuilder.SuccessResponse(
+            data,
+            "Xóa hồ sơ ứng viên thành công.",
+            HttpContext.TraceIdentifier));
+    }
+
     [HttpGet]
     public async Task<IActionResult> GetJobApplicationList([FromQuery] Request.GetJobApplicationListRequest request)
     {
@@ -26,6 +37,17 @@ public sealed class JobApplicationController : ControllerBase
         return Ok(ResponseBuilder.SuccessResponse(
             data,
             "Lấy danh sách hồ sơ ứng viên thành công.",
+            HttpContext.TraceIdentifier));
+    }
+
+    [HttpGet("filter-options")]
+    public async Task<IActionResult> GetJobApplicationFilterOptions()
+    {
+        var data = await _jobApplicationService.GetJobApplicationFilterOptionsAsync();
+
+        return Ok(ResponseBuilder.SuccessResponse(
+            data,
+            "Lấy dữ liệu bộ lọc hồ sơ ứng viên thành công.",
             HttpContext.TraceIdentifier));
     }
 

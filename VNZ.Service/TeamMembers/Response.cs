@@ -2,6 +2,11 @@ namespace VNZ.Service.TeamMembers;
 
 public static class Response
 {
+    public class DeleteTeamMemberResponse
+    {
+        public Guid Id { get; set; }
+    }
+
     public class FeaturedTeamMembersResponse
     {
         public int Total { get; set; }
@@ -53,6 +58,12 @@ public static class Response
         public int TotalPages { get; set; }
     }
 
+    public class TeamMemberFilterOptionsResponse
+    {
+        public required List<string> Positions { get; set; }
+        public required List<string> JobLevels { get; set; }
+    }
+
     public class OrderableTeamMemberResponse
     {
         public Guid Id { get; set; }
@@ -84,5 +95,7 @@ public static class Response
         public int? DisplayOrder { get; set; }
         public DateTimeOffset CreatedAt { get; set; }
         public DateTimeOffset? UpdatedAt { get; set; }
+        public bool CanDelete { get; set; }
+        public string? DeleteBlockedReason { get; set; }
     }
 }

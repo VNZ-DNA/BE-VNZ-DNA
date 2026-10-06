@@ -2,6 +2,7 @@ using System.ComponentModel.DataAnnotations;
 using System.Data;
 using System.Globalization;
 using System.Text;
+using Microsoft.AspNetCore.Http;
 using Microsoft.EntityFrameworkCore;
 using Npgsql;
 using VNZ.Repository;
@@ -25,6 +26,43 @@ public sealed class Service : IService
     {
         _dbContext = dbContext;
         _mediaService = mediaService;
+    }
+
+    public async Task<Response.DeleteTeamMemberResponse> DeleteTeamMemberAsync(Guid id, Guid currentUserId)
+    {
+        if (id == currentUserId)
+        {
+            throw new TeamMemberException(
+                "TEAM_MEMBER_DELETE_FORBIDDEN",
+                "Không thể xóa chính tài khoản đang đăng nhập.");
+        }
+
+        var affectedRows = await _dbContext.Users
+            .Where(member => member.Id == id &&
+                             member.RoleId == null &&
+                             !member.IsDelete &&
+                             !(member.EmploymentStatus == EmploymentStatus.Working &&
+                               member.IsPublished))
+            .ExecuteUpdateAsync(setters => setters
+                .SetProperty(member => member.IsDelete, true));
+
+        if (affectedRows == 1)
+        {
+            return new Response.DeleteTeamMemberResponse { Id = id };
+        }
+
+        var memberExists = await _dbContext.Users
+            .AsNoTracking()
+            .AnyAsync(member => member.Id == id && member.RoleId == null && !member.IsDelete);
+
+        if (!memberExists)
+        {
+            throw new TeamMemberException("MEMBER_NOT_FOUND", "Không tìm thấy thành viên.");
+        }
+
+        throw new TeamMemberException(
+            "TEAM_MEMBER_DELETE_FORBIDDEN",
+            "Không thể xóa thành viên đang hiển thị trên website.");
     }
 
     public async Task<Response.FeaturedTeamMembersResponse> GetFeaturedMembersAsync()
@@ -131,7 +169,9 @@ public sealed class Service : IService
         ValidateListRequest(request);
 
         var search = request.Search?.Trim();
-        var status = ParseEmploymentStatus(request.Status);
+        var statuses = ParseEmploymentStatuses(request.Status);
+        var positions = NormalizePositions(request.Position);
+        var jobLevels = ParseJobLevels(request.JobLevel);
 
         try
         {
@@ -144,13 +184,26 @@ public sealed class Service : IService
                 var normalizedSearch = search.ToLowerInvariant();
                 query = query.Where(member =>
                     member.FullName.ToLower().Contains(normalizedSearch) ||
-                    member.Email.ToLower().Contains(normalizedSearch) ||
-                    (member.Position != null && member.Position.ToLower().Contains(normalizedSearch)));
+                    member.Email.ToLower().Contains(normalizedSearch));
             }
 
-            if (status.HasValue)
+            if (statuses.Count > 0)
             {
-                query = query.Where(member => member.EmploymentStatus == status.Value);
+                query = query.Where(member => statuses.Contains(member.EmploymentStatus));
+            }
+
+            if (positions.Count > 0)
+            {
+                query = query.Where(member =>
+                    member.Position != null &&
+                    positions.Contains(member.Position.Trim().ToLower()));
+            }
+
+            if (jobLevels.Count > 0)
+            {
+                query = query.Where(member =>
+                    member.JobLevel.HasValue &&
+                    jobLevels.Contains(member.JobLevel.Value));
             }
 
             var total = await query.CountAsync();
@@ -183,6 +236,43 @@ public sealed class Service : IService
         }
     }
 
+    public async Task<Response.TeamMemberFilterOptionsResponse> GetFilterOptionsAsync()
+    {
+        try
+        {
+            var rawPositions = await _dbContext.Users
+                .AsNoTracking()
+                .Where(member => member.RoleId == null && member.Position != null)
+                .Select(member => member.Position!)
+                .ToListAsync();
+
+            var positions = rawPositions
+                .Select(position => position.Trim())
+                .Where(position => position.Length > 0)
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .OrderBy(position => position, StringComparer.OrdinalIgnoreCase)
+                .ToList();
+
+            var jobLevels = Enum.GetValues<JobLevel>()
+                .Select(GetDisplayName)
+                .ToList();
+
+            return new Response.TeamMemberFilterOptionsResponse
+            {
+                Positions = positions,
+                JobLevels = jobLevels
+            };
+        }
+        catch (Exception exception) when (exception is not TeamMemberException &&
+                                          exception is not OperationCanceledException)
+        {
+            throw new TeamMemberException(
+                "MEMBER_FILTER_OPTIONS_READ_FAILED",
+                "Không thể đọc options bộ lọc thành viên.",
+                exception);
+        }
+    }
+
     public async Task<List<Response.OrderableTeamMemberResponse>> GetOrderableMembersAsync()
     {
         var orderableMembers = await _dbContext.Users
@@ -210,7 +300,7 @@ public sealed class Service : IService
             fields.Add("page");
         }
 
-        if (request.PageSize < 1 || request.PageSize > 100)
+        if (request.PageSize is not (10 or 20 or 50))
         {
             fields.Add("pageSize");
         }
@@ -220,11 +310,25 @@ public sealed class Service : IService
             fields.Add("search");
         }
 
-        if (!string.IsNullOrWhiteSpace(request.Status) &&
-            !string.Equals(request.Status.Trim(), nameof(EmploymentStatus.Working), StringComparison.OrdinalIgnoreCase) &&
-            !string.Equals(request.Status.Trim(), nameof(EmploymentStatus.Resigned), StringComparison.OrdinalIgnoreCase))
+        if (request.Position is not null && request.Position.Any(position =>
+                !string.IsNullOrWhiteSpace(position) && position.Trim().Length > 200))
+        {
+            fields.Add("position");
+        }
+
+        if (request.Status is not null && request.Status.Any(status =>
+                !string.IsNullOrWhiteSpace(status) &&
+                !string.Equals(status.Trim(), nameof(EmploymentStatus.Working), StringComparison.OrdinalIgnoreCase) &&
+                !string.Equals(status.Trim(), nameof(EmploymentStatus.Resigned), StringComparison.OrdinalIgnoreCase)))
         {
             fields.Add("status");
+        }
+
+        if (request.JobLevel is not null && request.JobLevel.Any(jobLevel =>
+                !string.IsNullOrWhiteSpace(jobLevel) &&
+                !TryParseEnumValue<JobLevel>(jobLevel.Trim(), out _)))
+        {
+            fields.Add("jobLevel");
         }
 
         if (fields.Count > 0)
@@ -236,16 +340,62 @@ public sealed class Service : IService
         }
     }
 
-    private static EmploymentStatus? ParseEmploymentStatus(string? status)
+    private static List<EmploymentStatus> ParseEmploymentStatuses(List<string>? statuses)
     {
-        if (string.IsNullOrWhiteSpace(status))
+        if (statuses is null)
         {
-            return null;
+            return [];
         }
 
-        return string.Equals(status.Trim(), nameof(EmploymentStatus.Working), StringComparison.OrdinalIgnoreCase)
-            ? EmploymentStatus.Working
-            : EmploymentStatus.Resigned;
+        return statuses
+            .Where(status => !string.IsNullOrWhiteSpace(status))
+            .Select(status => string.Equals(
+                status.Trim(),
+                nameof(EmploymentStatus.Working),
+                StringComparison.OrdinalIgnoreCase)
+                ? EmploymentStatus.Working
+                : EmploymentStatus.Resigned)
+            .Distinct()
+            .ToList();
+    }
+
+    private static List<string> NormalizePositions(List<string>? positions)
+    {
+        if (positions is null)
+        {
+            return [];
+        }
+
+        return positions
+            .Where(position => !string.IsNullOrWhiteSpace(position))
+            .Select(position => position.Trim().ToLowerInvariant())
+            .Distinct()
+            .ToList();
+    }
+
+    private static List<JobLevel> ParseJobLevels(List<string>? jobLevels)
+    {
+        if (jobLevels is null)
+        {
+            return [];
+        }
+
+        var parsedJobLevels = new List<JobLevel>();
+        foreach (var jobLevel in jobLevels)
+        {
+            if (string.IsNullOrWhiteSpace(jobLevel) ||
+                !TryParseEnumValue<JobLevel>(jobLevel.Trim(), out var parsedJobLevel))
+            {
+                continue;
+            }
+
+            if (!parsedJobLevels.Contains(parsedJobLevel))
+            {
+                parsedJobLevels.Add(parsedJobLevel);
+            }
+        }
+
+        return parsedJobLevels;
     }
 
     public async Task<List<Response.OrderableTeamMemberResponse>> ReorderMembersAsync(
@@ -426,19 +576,9 @@ public sealed class Service : IService
                 "email");
         }
 
-        var avatarUrl = NormalizeOptional(request.AvatarUrl);
-
-        if (request.Avatar is not null)
-        {
-            var uploadResult = await _mediaService.UploadImageAsync(
-                new MediaService.Request.UploadImageRequest
-                {
-                    File = request.Avatar,
-                    Purpose = "TeamMemberAvatar"
-                });
-
-            avatarUrl = uploadResult.Url;
-        }
+        var avatarUrl = await UploadTeamMemberImageAsync(request.Avatar, "TeamMemberAvatar");
+        var backgroundUrl = await UploadTeamMemberImageAsync(request.Background, "TeamMemberBackground");
+        var audioUrl = await UploadTeamMemberAudioAsync(request.Audio, "TeamMemberAudio");
 
         var now = DateTimeOffset.UtcNow;
         var member = new User
@@ -453,9 +593,9 @@ public sealed class Service : IService
             JobLevel = parsedJobLevel,
             AvatarUrl = avatarUrl,
             AnimationUrl = NormalizeOptional(request.AnimationUrl),
-            AudioUrl = NormalizeOptional(request.AudioUrl),
+            AudioUrl = audioUrl,
             Hometown = NormalizeOptional(request.Hometown),
-            BackgroundUrl = NormalizeOptional(request.BackgroundUrl),
+            BackgroundUrl = backgroundUrl,
             Hobbies = NormalizeOptional(request.Hobbies),
             PersonalQuote = NormalizeOptional(request.PersonalQuote),
             JoinedDate = request.JoinedDate,
@@ -479,128 +619,140 @@ public sealed class Service : IService
     {
         ArgumentNullException.ThrowIfNull(request);
 
-        await using var transaction = await _dbContext.Database.BeginTransactionAsync();
+        if (request.IsPublished.HasValue)
+        {
+            ValidateStatusRequest(request);
+            return await UpdatePublishStateAsync(id, request.IsPublished.Value);
+        }
+
+        return await UpdateProfileAsync(id, request);
+    }
+
+    private async Task<Response.TeamMemberResponse> UpdatePublishStateAsync(
+        Guid id,
+        bool isPublished)
+    {
+        await using var transaction = await _dbContext.Database
+            .BeginTransactionAsync(IsolationLevel.Serializable);
+
+        var member = await FindMemberAsync(id);
+
+        if (isPublished)
+        {
+            ValidatePublishableMember(member);
+        }
+
+        if (member.IsPublished == isPublished)
+        {
+            await transaction.CommitAsync();
+            return ToResponse(member);
+        }
+
+        var now = DateTimeOffset.UtcNow;
+        var publishedMembers = await GetPublishedMembersAsync(member.Id);
+        NormalizePublishedDisplayOrders(publishedMembers, now);
+
+        if (isPublished)
+        {
+            member.IsPublished = true;
+            member.DisplayOrder = publishedMembers.Count + 1;
+        }
+        else
+        {
+            member.IsPublished = false;
+            member.DisplayOrder = null;
+        }
+
+        member.UpdatedAt = now;
+
+        await _dbContext.SaveChangesAsync();
+        await transaction.CommitAsync();
+
+        return ToResponse(member);
+    }
+
+    private async Task<Response.TeamMemberResponse> UpdateProfileAsync(
+        Guid id,
+        Request.UpdateTeamMemberRequest request)
+    {
+        await using var transaction = await _dbContext.Database
+            .BeginTransactionAsync(IsolationLevel.Serializable);
+
         var member = await FindMemberAsync(id);
 
         if (member.IsPublished)
         {
-            if (request.IsPublished != false)
-            {
-                throw new ConflictException(
-                    "Thành viên đang được đăng chỉ có thể chuyển sang trạng thái chưa đăng.");
-            }
-
-            var remainingPublishedMembers = await _dbContext.Users
-                .Where(x => x.RoleId == null &&
-                            x.IsPublished &&
-                            x.EmploymentStatus == EmploymentStatus.Working &&
-                            x.Id != member.Id)
-                .OrderBy(x => x.DisplayOrder)
-                .ThenByDescending(x => x.CreateAt)
-                .ThenByDescending(x => x.Id)
-                .ToListAsync();
-
-            var now = DateTimeOffset.UtcNow;
-            for (var index = 0; index < remainingPublishedMembers.Count; index++)
-            {
-                var remainingMember = remainingPublishedMembers[index];
-                var newDisplayOrder = index + 1;
-                if (remainingMember.DisplayOrder == newDisplayOrder)
-                {
-                    continue;
-                }
-
-                remainingMember.DisplayOrder = newDisplayOrder;
-                remainingMember.UpdatedAt = now;
-            }
-
-            member.IsPublished = false;
-            member.DisplayOrder = null;
-            member.UpdatedAt = now;
-
-            await _dbContext.SaveChangesAsync();
-            await transaction.CommitAsync();
-
-            return ToResponse(member);
+            throw new TeamMemberException(
+                "RESOURCE_CONFLICT",
+                "Phải gỡ đăng thành viên trước khi chỉnh sửa hoặc chuyển sang Đã nghỉ.",
+                "isPublished");
         }
 
-        var fullName = request.FullName?.Trim();
-        var email = request.Email?.Trim().ToLowerInvariant();
-        var position = request.Position?.Trim();
-        var jobLevel = request.JobLevel?.Trim();
-        var employmentStatus = request.EmploymentStatus?.Trim();
+        var fullName = NormalizeRequired(request.FullName, "fullName", "Vui lòng nhập họ và tên.");
+        var email = NormalizeRequired(request.Email, "email", "Vui lòng nhập email.")
+            .ToLowerInvariant();
+        var position = NormalizeRequired(request.Position, "position", "Vui lòng nhập vị trí.");
+        var jobLevel = NormalizeRequired(request.JobLevel, "jobLevel", "Vui lòng nhập cấp bậc.");
+        var employmentStatus = NormalizeRequired(
+            request.EmploymentStatus,
+            "employmentStatus",
+            "Vui lòng nhập trạng thái làm việc.");
         var displayName = NormalizeOptional(request.DisplayName);
 
-        if (string.IsNullOrWhiteSpace(fullName))
-            throw new ArgumentException("Vui lòng nhập họ và tên.");
-
-        if (string.IsNullOrWhiteSpace(email))
-            throw new ArgumentException("Vui lòng nhập email.");
-
-        if (string.IsNullOrWhiteSpace(position))
-            throw new ArgumentException("Vui lòng nhập vị trí.");
-
-        if (string.IsNullOrWhiteSpace(jobLevel))
-            throw new ArgumentException("Vui lòng nhập cấp bậc.");
-
-        if (request.JoinedDate is null)
-            throw new ArgumentException("Vui lòng nhập ngày tham gia.");
-
-        if (string.IsNullOrWhiteSpace(employmentStatus))
-            throw new ArgumentException("Vui lòng nhập trạng thái làm việc.");
-
         if (fullName.Length > 200)
-            throw new ArgumentException("Họ và tên không được vượt quá 200 ký tự.");
+        {
+            throw new TeamMemberException(
+                "RESOURCE_VALIDATION_FAILED",
+                "Họ và tên không được vượt quá 200 ký tự.",
+                "fullName");
+        }
 
         if (position.Length > 200)
-            throw new ArgumentException("Vị trí không được vượt quá 200 ký tự.");
+        {
+            throw new TeamMemberException(
+                "RESOURCE_VALIDATION_FAILED",
+                "Vị trí không được vượt quá 200 ký tự.",
+                "position");
+        }
 
         if (displayName is { Length: > 100 })
-            throw new ArgumentException("Tên hiển thị không được vượt quá 100 ký tự.");
+        {
+            throw new TeamMemberException(
+                "RESOURCE_VALIDATION_FAILED",
+                "Tên hiển thị không được vượt quá 100 ký tự.",
+                "displayName");
+        }
 
         if (email.Length > 320 || !new EmailAddressAttribute().IsValid(email))
-            throw new ArgumentException("Email không đúng định dạng.");
+        {
+            throw new TeamMemberException(
+                "RESOURCE_VALIDATION_FAILED",
+                "Email không đúng định dạng.",
+                "email");
+        }
+
+        if (request.JoinedDate is null)
+        {
+            throw new TeamMemberException(
+                "RESOURCE_VALIDATION_FAILED",
+                "Vui lòng nhập ngày tham gia.",
+                "joinedDate");
+        }
 
         if (!TryParseEnumValue(jobLevel, out JobLevel parsedJobLevel))
         {
-            throw new ArgumentException("Cấp bậc không hợp lệ.");
+            throw new TeamMemberException(
+                "RESOURCE_VALIDATION_FAILED",
+                "Cấp bậc không hợp lệ.",
+                "jobLevel");
         }
 
         if (!TryParseEnumValue(employmentStatus, out EmploymentStatus parsedEmploymentStatus))
         {
-            throw new ArgumentException("Trạng thái làm việc không hợp lệ.");
-        }
-
-        var avatarUrl = member.AvatarUrl;
-
-        if (request.Avatar is not null)
-        {
-            var uploadResult = await _mediaService.UploadImageAsync(
-                new MediaService.Request.UploadImageRequest
-                {
-                    File = request.Avatar,
-                    Purpose = "TeamMemberAvatar"
-                });
-
-            avatarUrl = uploadResult.Url;
-        }
-        else if (request.AvatarUrl is not null)
-        {
-            avatarUrl = NormalizeOptional(request.AvatarUrl);
-        }
-
-        var animationUrl = NormalizeOptional(request.AnimationUrl);
-        var audioUrl = NormalizeOptional(request.AudioUrl);
-        var hometown = NormalizeOptional(request.Hometown);
-        var backgroundUrl = NormalizeOptional(request.BackgroundUrl);
-        var hobbies = NormalizeOptional(request.Hobbies);
-        var personalQuote = NormalizeOptional(request.PersonalQuote);
-
-        if (!member.IsPublished && request.IsPublished == true &&
-            parsedEmploymentStatus != EmploymentStatus.Working)
-        {
-            throw new ConflictException(
-                "Thành viên đã nghỉ việc không thể đăng.");
+            throw new TeamMemberException(
+                "RESOURCE_VALIDATION_FAILED",
+                "Trạng thái làm việc không hợp lệ.",
+                "employmentStatus");
         }
 
         var emailUsedByAnotherMember = await _dbContext.Users
@@ -608,9 +760,24 @@ public sealed class Service : IService
 
         if (emailUsedByAnotherMember)
         {
-            throw new ConflictException(
-                "Email đã tồn tại trong hệ thống.");
+            throw new TeamMemberException(
+                "RESOURCE_CONFLICT",
+                "Email đã tồn tại trong hệ thống.",
+                "email");
         }
+
+        var avatarUrl = await UploadTeamMemberImageAsync(
+            request.Avatar,
+            "TeamMemberAvatar",
+            member.AvatarUrl);
+        var backgroundUrl = await UploadTeamMemberImageAsync(
+            request.Background,
+            "TeamMemberBackground",
+            member.BackgroundUrl);
+        var audioUrl = await UploadTeamMemberAudioAsync(
+            request.Audio,
+            "TeamMemberAudio",
+            member.AudioUrl);
 
         member.FullName = fullName;
         member.DisplayName = displayName;
@@ -619,62 +786,176 @@ public sealed class Service : IService
         member.JobLevel = parsedJobLevel;
         member.JoinedDate = request.JoinedDate;
         member.AvatarUrl = avatarUrl;
-        member.AnimationUrl = animationUrl;
+        member.AnimationUrl = NormalizeOptional(request.AnimationUrl);
         member.AudioUrl = audioUrl;
-        member.Hometown = hometown;
+        member.Hometown = NormalizeOptional(request.Hometown);
         member.BackgroundUrl = backgroundUrl;
-        member.Hobbies = hobbies;
-        member.PersonalQuote = personalQuote;
+        member.Hobbies = NormalizeOptional(request.Hobbies);
+        member.PersonalQuote = NormalizeOptional(request.PersonalQuote);
         member.EmploymentStatus = parsedEmploymentStatus;
-        if (request.IsPublished.HasValue)
-        {
-            member.IsPublished = request.IsPublished.Value;
-
-            if (request.IsPublished.Value)
-            {
-                var publishedMembers = await _dbContext.Users
-                    .Where(x => x.RoleId == null &&
-                                x.IsPublished &&
-                                x.EmploymentStatus == EmploymentStatus.Working &&
-                                x.Id != member.Id)
-                    .OrderBy(x => x.DisplayOrder)
-                    .ThenByDescending(x => x.CreateAt)
-                    .ThenByDescending(x => x.Id)
-                    .ToListAsync();
-
-                var now = DateTimeOffset.UtcNow;
-                for (var index = 0; index < publishedMembers.Count; index++)
-                {
-                    var publishedMember = publishedMembers[index];
-                    var normalizedDisplayOrder = index + 1;
-                    if (publishedMember.DisplayOrder == normalizedDisplayOrder)
-                    {
-                        continue;
-                    }
-
-                    publishedMember.DisplayOrder = normalizedDisplayOrder;
-                    publishedMember.UpdatedAt = now;
-                }
-
-                member.DisplayOrder = publishedMembers.Count + 1;
-            }
-        }
-
-        if (!member.IsPublished)
-        {
-            member.DisplayOrder = null;
-        }
-
+        member.IsPublished = false;
+        member.DisplayOrder = null;
         member.UpdatedAt = DateTimeOffset.UtcNow;
 
         await _dbContext.SaveChangesAsync();
         await transaction.CommitAsync();
+
         return ToResponse(member);
+    }
+
+    private static void ValidateStatusRequest(Request.UpdateTeamMemberRequest request)
+    {
+        if (HasProfilePayload(request))
+        {
+            throw new TeamMemberException(
+                "RESOURCE_VALIDATION_FAILED",
+                "Request Đăng/Gỡ đăng không được kèm dữ liệu hồ sơ.",
+                "isPublished");
+        }
+    }
+
+    private static bool HasProfilePayload(Request.UpdateTeamMemberRequest request)
+    {
+        return request.FullName is not null ||
+            request.DisplayName is not null ||
+            request.Email is not null ||
+            request.Position is not null ||
+            request.JobLevel is not null ||
+            request.JoinedDate.HasValue ||
+            request.Avatar is not null ||
+            request.AnimationUrl is not null ||
+            request.Audio is not null ||
+            request.Hometown is not null ||
+            request.Background is not null ||
+            request.Hobbies is not null ||
+            request.PersonalQuote is not null ||
+            request.EmploymentStatus is not null;
+    }
+
+    private async Task<string?> UploadTeamMemberImageAsync(
+        IFormFile? file,
+        string purpose,
+        string? currentUrl = null)
+    {
+        if (file is null)
+        {
+            return currentUrl;
+        }
+
+        var uploadResult = await _mediaService.UploadImageAsync(
+            new MediaService.Request.UploadImageRequest
+            {
+                File = file,
+                Purpose = purpose
+            });
+
+        return uploadResult.Url;
+    }
+
+    private async Task<string?> UploadTeamMemberAudioAsync(
+        IFormFile? file,
+        string purpose,
+        string? currentUrl = null)
+    {
+        if (file is null)
+        {
+            return currentUrl;
+        }
+
+        var uploadResult = await _mediaService.UploadAudioAsync(
+            new MediaService.Request.UploadAudioRequest
+            {
+                File = file,
+                Purpose = purpose
+            });
+
+        return uploadResult.Url;
+    }
+
+    private static string NormalizeRequired(string? value, string field, string message)
+    {
+        var normalized = value?.Trim();
+
+        if (string.IsNullOrWhiteSpace(normalized))
+        {
+            throw new TeamMemberException(
+                "RESOURCE_VALIDATION_FAILED",
+                message,
+                field);
+        }
+
+        return normalized;
+    }
+
+    private async Task<List<User>> GetPublishedMembersAsync(Guid excludedMemberId)
+    {
+        return await _dbContext.Users
+            .Where(member => member.RoleId == null &&
+                             !member.IsDelete &&
+                             member.IsPublished &&
+                             member.EmploymentStatus == EmploymentStatus.Working &&
+                             member.Id != excludedMemberId)
+            .OrderBy(member => member.DisplayOrder == null)
+            .ThenBy(member => member.DisplayOrder)
+            .ThenByDescending(member => member.CreateAt)
+            .ThenByDescending(member => member.Id)
+            .ToListAsync();
+    }
+
+    private static void NormalizePublishedDisplayOrders(
+        List<User> publishedMembers,
+        DateTimeOffset now)
+    {
+        for (var index = 0; index < publishedMembers.Count; index++)
+        {
+            var member = publishedMembers[index];
+            var displayOrder = index + 1;
+
+            if (member.DisplayOrder == displayOrder)
+            {
+                continue;
+            }
+
+            member.DisplayOrder = displayOrder;
+            member.UpdatedAt = now;
+        }
+    }
+
+    private static void ValidatePublishableMember(User member)
+    {
+        var displayName = member.DisplayName?.Trim();
+
+        if (string.IsNullOrWhiteSpace(displayName))
+        {
+            throw new TeamMemberException(
+                "RESOURCE_VALIDATION_FAILED",
+                "Tên hiển thị là bắt buộc khi đăng thành viên.",
+                "displayName");
+        }
+
+        if (displayName.Length > 100)
+        {
+            throw new TeamMemberException(
+                "RESOURCE_VALIDATION_FAILED",
+                "Tên hiển thị không được vượt quá 100 ký tự.",
+                "displayName");
+        }
+
+        if (member.EmploymentStatus != EmploymentStatus.Working)
+        {
+            throw new TeamMemberException(
+                "RESOURCE_CONFLICT",
+                "Thành viên đã nghỉ việc không thể đăng.",
+                "employmentStatus");
+        }
     }
 
     private async Task<User> FindMemberAsync(Guid id)
     {
-        var member = await _dbContext.Users.SingleOrDefaultAsync(x => x.Id == id && x.RoleId == null);
+        var member = await _dbContext.Users.SingleOrDefaultAsync(x =>
+            x.Id == id &&
+            x.RoleId == null &&
+            !x.IsDelete);
         if (member is null)
             throw new NotFoundException("Không tìm thấy thành viên.");
 
@@ -718,7 +999,11 @@ public sealed class Service : IService
             IsPublished = member.IsPublished,
             DisplayOrder = member.DisplayOrder,
             CreatedAt = member.CreateAt,
-            UpdatedAt = member.UpdatedAt
+            UpdatedAt = member.UpdatedAt,
+            CanDelete = !(member.EmploymentStatus == EmploymentStatus.Working && member.IsPublished),
+            DeleteBlockedReason = member.EmploymentStatus == EmploymentStatus.Working && member.IsPublished
+                ? "PUBLIC_VISIBLE"
+                : null
         };
     }
 

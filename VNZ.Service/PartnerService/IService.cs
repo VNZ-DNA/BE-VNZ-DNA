@@ -9,4 +9,5 @@ public interface IService
     Task<List<Response.PartnerListItemResponse>> GetOrderablePartnersAsync();
     Task<List<Response.PartnerListItemResponse>> ReorderPartnersAsync(Request.ReorderPartnersRequest request);
     Task<Response.PartnerListItemResponse> UpdatePartnerAsync(Guid id, Request.UpdatePartnerRequest request);
+    Task<Response.DeletePartnerResponse> DeletePartnerAsync(Guid id);
 }

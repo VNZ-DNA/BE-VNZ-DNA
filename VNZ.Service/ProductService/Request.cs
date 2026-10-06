@@ -17,7 +17,7 @@ public class Request
 
     public class UpdateProductRequest
     {
-        public string Name { get; set; } = string.Empty;
+        public string? Name { get; set; }
         public IFormFile? Logo { get; set; }
         public IFormFile? Wordmark { get; set; }
         public string? LogoAction { get; set; }
@@ -53,7 +53,8 @@ public class Request
     public class GetProductListRequest
     {
         public string? Search { get; set; }
-        public string? Status { get; set; }
+        public List<string>? Status { get; set; }
+        public bool? IsPublished { get; set; }
         public int Page { get; set; } = 1;
         public int PageSize { get; set; } = 20;
     }

@@ -15,10 +15,50 @@ public class Service : IService
     private static readonly TimeSpan VietnamUtcOffset = TimeSpan.FromHours(7);
 
     private readonly AppDbContext _dbContext;
+    private readonly VNZ.Service.Utils.RichTextService.IService _richTextService;
 
     public Service(AppDbContext dbContext)
+        : this(dbContext, new VNZ.Service.Utils.RichTextService.Service())
+    {
+    }
+
+    public Service(
+        AppDbContext dbContext,
+        VNZ.Service.Utils.RichTextService.IService richTextService)
     {
         _dbContext = dbContext;
+        _richTextService = richTextService;
+    }
+
+    public async Task<Response.DeleteJobPostResponse> DeleteJobPostAsync(Guid id)
+    {
+        var nowUtc = DateTimeOffset.UtcNow;
+        var affectedRows = await _dbContext.JobPosts
+            .Where(jobPost => jobPost.Id == id &&
+                              !jobPost.IsDelete &&
+                              !(jobPost.Status == JobPostStatus.Open &&
+                                jobPost.ExpiredAt.HasValue &&
+                                jobPost.ExpiredAt.Value > nowUtc))
+            .ExecuteUpdateAsync(setters => setters
+                .SetProperty(jobPost => jobPost.IsDelete, true));
+
+        if (affectedRows == 1)
+        {
+            return new Response.DeleteJobPostResponse { Id = id };
+        }
+
+        var jobPostExists = await _dbContext.JobPosts
+            .AsNoTracking()
+            .AnyAsync(jobPost => jobPost.Id == id && !jobPost.IsDelete);
+
+        if (!jobPostExists)
+        {
+            throw new JobPostException("JOB_POST_NOT_FOUND", "Không tìm thấy tin tuyển dụng.");
+        }
+
+        throw new JobPostException(
+            "JOB_POST_DELETE_FORBIDDEN",
+            "Không thể xóa tin tuyển dụng đang hiển thị trên website.");
     }
 
     public async Task<Response.CreateJobPostResponse> CreateJobPostAsync(
@@ -43,8 +83,8 @@ public class Service : IService
                 "Hành động tạo tin không hợp lệ.",
                 "action");
         }
-
-        var title = request.Title?.Trim();
+        
+        var title = NormalizePlainText(request.Title, "title");
         var translations = SanitizeJobPostTranslations(request.Translations);
         var english = translations?.En;
 
@@ -56,6 +96,10 @@ public class Service : IService
                 "title");
         }
 
+        var shortDescription = NormalizePlainText(request.ShortDescription, "shortDescription");
+        var skills = NormalizeSkills(request.Skills);
+        var description = SanitizeRichText(request.Description, "description");
+        var requirements = SanitizeRichText(request.Requirements, "requirements");
         var isPublishing = request.Action == JobPostAction.Publish;
         var expiredAt = ConvertExpiredDateToUtc(request.ExpiredDate);
         var nowUtc = VNZ.Service.Utils.DateTimeOffsetPrecision.UtcNowMicrosecond();
@@ -92,17 +136,24 @@ public class Service : IService
                 requiredFields.Add("numberOfPositions");
             }
 
-            if (string.IsNullOrWhiteSpace(request.ShortDescription))
+
+            if (skills.Count == 0)
+            {
+                requiredFields.Add("skills");
+            }
+
+            if (string.IsNullOrWhiteSpace(shortDescription))
+
             {
                 requiredFields.Add("shortDescription");
             }
 
-            if (string.IsNullOrWhiteSpace(request.Description))
+            if (string.IsNullOrWhiteSpace(description))
             {
                 requiredFields.Add("description");
             }
 
-            if (string.IsNullOrWhiteSpace(request.Requirements))
+            if (string.IsNullOrWhiteSpace(requirements))
             {
                 requiredFields.Add("requirements");
             }
@@ -162,6 +213,7 @@ public class Service : IService
             }
         }
 
+
         var skills = request.Skills?
             .Where(skill => !string.IsNullOrWhiteSpace(skill))
             .Select(skill => skill.Trim())
@@ -169,6 +221,7 @@ public class Service : IService
 
         // Skills are optional by the bilingual contract; null/empty is stored
         // as an empty array for both Draft and Published records.
+
         var jobPost = new JobPost
         {
             Id = Guid.NewGuid(),
@@ -182,10 +235,10 @@ public class Service : IService
             JobLevel = request.JobLevel,
             NumberOfPositions = request.NumberOfPositions ?? 0,
             Skills = skills,
-            ShortDescription = request.ShortDescription?.Trim(),
-            Description = request.Description?.Trim(),
-            Requirements = request.Requirements?.Trim(),
-            Translations = translations
+            ShortDescription = shortDescription,
+            Description = description,
+            Requirements = requirements,
+            Translations = translations   
         };
 
         await using var transaction = await _dbContext.Database.BeginTransactionAsync();
@@ -242,13 +295,18 @@ public class Service : IService
                 "search");
         }
 
-        // 3. Parse status filter từ string sang enum C#.
-        JobPostStatus? statusFilter = null;
+        // 3. Parse các filter multi-select trước khi query database.
+        var statusFilters = new List<JobPostStatus>();
+        var statuses = request.Status?
+            .Where(status => !string.IsNullOrWhiteSpace(status))
+            .Select(status => status.Trim())
+            .Distinct(StringComparer.Ordinal)
+            .ToList() ?? [];
 
-        if (!string.IsNullOrWhiteSpace(request.Status))
+        foreach (var status in statuses)
         {
             var isValidStatus = Enum.TryParse<JobPostStatus>(
-                request.Status,
+                status,
                 ignoreCase: false,
                 out var parsedStatus);
 
@@ -260,7 +318,63 @@ public class Service : IService
                     "status");
             }
 
-            statusFilter = parsedStatus;
+            if (!statusFilters.Contains(parsedStatus))
+            {
+                statusFilters.Add(parsedStatus);
+            }
+        }
+
+        var departmentIds = new List<Guid>();
+        var departmentIdValues = request.DepartmentId?
+            .Where(departmentId => !string.IsNullOrWhiteSpace(departmentId))
+            .Select(departmentId => departmentId.Trim())
+            .Distinct(StringComparer.Ordinal)
+            .ToList() ?? [];
+
+        foreach (var departmentIdValue in departmentIdValues)
+        {
+            var isValidDepartmentId = Guid.TryParse(departmentIdValue, out var departmentId);
+
+            if (!isValidDepartmentId || departmentId == Guid.Empty)
+            {
+                throw new JobPostException(
+                    "JOB_POST_INVALID_DEPARTMENT_FILTER",
+                    "Phòng ban lọc không hợp lệ.",
+                    "departmentId");
+            }
+
+            if (!departmentIds.Contains(departmentId))
+            {
+                departmentIds.Add(departmentId);
+            }
+        }
+
+        var jobLevelFilters = new List<JobLevel>();
+        var jobLevels = request.JobLevel?
+            .Where(jobLevel => !string.IsNullOrWhiteSpace(jobLevel))
+            .Select(jobLevel => jobLevel.Trim())
+            .Distinct(StringComparer.Ordinal)
+            .ToList() ?? [];
+
+        foreach (var jobLevel in jobLevels)
+        {
+            var isValidJobLevel = Enum.TryParse<JobLevel>(
+                jobLevel,
+                ignoreCase: false,
+                out var parsedJobLevel);
+
+            if (!isValidJobLevel || !Enum.IsDefined(parsedJobLevel))
+            {
+                throw new JobPostException(
+                    "JOB_POST_INVALID_JOB_LEVEL_FILTER",
+                    "Cấp bậc lọc không hợp lệ.",
+                    "jobLevel");
+            }
+
+            if (!jobLevelFilters.Contains(parsedJobLevel))
+            {
+                jobLevelFilters.Add(parsedJobLevel);
+            }
         }
 
         // 4. Bắt đầu query danh sách JobPost.
@@ -274,10 +388,24 @@ public class Service : IService
                 (jobPost.Title ?? string.Empty).ToLower().Contains(searchLower));
         }
 
-        if (statusFilter.HasValue)
+        if (statusFilters.Count > 0)
         {
             jobPostsQuery = jobPostsQuery.Where(jobPost =>
-                jobPost.Status == statusFilter.Value);
+                statusFilters.Contains(jobPost.Status));
+        }
+
+        if (departmentIds.Count > 0)
+        {
+            jobPostsQuery = jobPostsQuery.Where(jobPost =>
+                jobPost.DepartmentId.HasValue &&
+                departmentIds.Contains(jobPost.DepartmentId.Value));
+        }
+
+        if (jobLevelFilters.Count > 0)
+        {
+            jobPostsQuery = jobPostsQuery.Where(jobPost =>
+                jobPost.JobLevel.HasValue &&
+                jobLevelFilters.Contains(jobPost.JobLevel.Value));
         }
 
         // 5. Đếm tổng sau filter, sau đó lấy đúng trang cần xem.
@@ -311,7 +439,15 @@ public class Service : IService
                 ExpiredDate = ConvertExpiredAtToDate(jobPost.ExpiredAt),
                 NumberOfPositions = jobPost.NumberOfPositions,
                 Status = GetDisplayName(jobPost.Status),
-                PendingApplicationCount = jobPost.PendingApplicationCount
+                PendingApplicationCount = jobPost.PendingApplicationCount,
+                CanDelete = !(jobPost.Status == JobPostStatus.Open &&
+                              jobPost.ExpiredAt.HasValue &&
+                              jobPost.ExpiredAt.Value > DateTimeOffset.UtcNow),
+                DeleteBlockedReason = jobPost.Status == JobPostStatus.Open &&
+                                      jobPost.ExpiredAt.HasValue &&
+                                      jobPost.ExpiredAt.Value > DateTimeOffset.UtcNow
+                    ? "PUBLIC_VISIBLE"
+                    : null
             })
             .ToList();
 
@@ -448,6 +584,16 @@ public class Service : IService
             Requirements = jobPost.Requirements,
             CanEdit = canEdit,
             Translations = ToTranslationsResponse(jobPost.Translations)
+
+            CanDelete = !(jobPost.Status == JobPostStatus.Open &&
+                          jobPost.ExpiredAt.HasValue &&
+                          jobPost.ExpiredAt.Value > DateTimeOffset.UtcNow),
+            DeleteBlockedReason = jobPost.Status == JobPostStatus.Open &&
+                                  jobPost.ExpiredAt.HasValue &&
+                                  jobPost.ExpiredAt.Value > DateTimeOffset.UtcNow
+                ? "PUBLIC_VISIBLE"
+                : null
+
         };
     }
 
@@ -633,7 +779,7 @@ public class Service : IService
                 "action");
         }
 
-        var title = request.Title?.Trim();
+        var title = NormalizePlainText(request.Title, "title");
         var translations = SanitizeJobPostTranslations(request.Translations);
         var english = translations?.En;
 
@@ -653,8 +799,11 @@ public class Service : IService
                 "title");
         }
 
-        var department = await FindDepartmentAsync(request.DepartmentId);
+        var shortDescription = NormalizePlainText(request.ShortDescription, "shortDescription");
         var skills = NormalizeSkills(request.Skills);
+        var description = SanitizeRichText(request.Description, "description");
+        var requirements = SanitizeRichText(request.Requirements, "requirements");
+        var department = await FindDepartmentAsync(request.DepartmentId);
 
         if (request.Action == JobPostAction.Publish)
         {
@@ -680,17 +829,24 @@ public class Service : IService
                 requiredFields.Add("numberOfPositions");
             }
 
-            if (string.IsNullOrWhiteSpace(request.ShortDescription))
+
+            if (skills.Count == 0)
+            {
+                requiredFields.Add("skills");
+            }
+
+            if (string.IsNullOrWhiteSpace(shortDescription))
+
             {
                 requiredFields.Add("shortDescription");
             }
 
-            if (string.IsNullOrWhiteSpace(request.Description))
+            if (string.IsNullOrWhiteSpace(description))
             {
                 requiredFields.Add("description");
             }
 
-            if (string.IsNullOrWhiteSpace(request.Requirements))
+            if (string.IsNullOrWhiteSpace(requirements))
             {
                 requiredFields.Add("requirements");
             }
@@ -733,9 +889,9 @@ public class Service : IService
         jobPost.JobLevel = request.JobLevel;
         jobPost.NumberOfPositions = request.NumberOfPositions ?? 0;
         jobPost.Skills = skills;
-        jobPost.ShortDescription = request.ShortDescription?.Trim();
-        jobPost.Description = request.Description?.Trim();
-        jobPost.Requirements = request.Requirements?.Trim();
+        jobPost.ShortDescription = shortDescription;
+        jobPost.Description = description;
+        jobPost.Requirements = requirements;
         jobPost.ExpiredAt = expiredAt;
         jobPost.Status = request.Action == JobPostAction.Publish
             ? JobPostStatus.Open
@@ -768,17 +924,47 @@ public class Service : IService
         return department;
     }
 
-    private static List<string> NormalizeSkills(List<string>? skills)
+    private string? NormalizePlainText(string? value, string field)
+    {
+        if (_richTextService.ContainsHtmlTag(value))
+        {
+            throw new JobPostException(
+                "JOB_POST_INVALID_RICH_TEXT",
+                "Trường này chỉ nhận plain text.",
+                field);
+        }
+
+        return value?.Trim();
+    }
+
+    private List<string> NormalizeSkills(List<string>? skills)
     {
         if (skills is null)
         {
             return new List<string>();
         }
 
-        return skills
+        var normalizedSkills = skills
             .Where(skill => !string.IsNullOrWhiteSpace(skill))
-            .Select(skill => skill.Trim())
+            .Select(skill => NormalizePlainText(skill, "skills")!)
             .ToList();
+
+        return normalizedSkills;
+    }
+
+    private string? SanitizeRichText(string? value, string field)
+    {
+        try
+        {
+            return _richTextService.SanitizeJobPost(value);
+        }
+        catch (VNZ.Service.Utils.RichTextService.RichTextValidationException exception)
+        {
+            throw new JobPostException(
+                "JOB_POST_INVALID_RICH_TEXT",
+                exception.Message,
+                field);
+        }
     }
 
     private static JobPostTranslations? SanitizeJobPostTranslations(

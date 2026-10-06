@@ -18,6 +18,17 @@ public sealed class PartnersController : ControllerBase
         _partnerService = partnerService;
     }
 
+    [HttpDelete("{id:guid}")]
+    public async Task<IActionResult> DeletePartner(Guid id)
+    {
+        var data = await _partnerService.DeletePartnerAsync(id);
+
+        return Ok(ResponseBuilder.SuccessResponse(
+            data,
+            "Xóa Partner thành công.",
+            HttpContext.TraceIdentifier));
+    }
+
     [HttpPost]
     [Consumes("multipart/form-data")]
     public async Task<IActionResult> CreatePartner(

@@ -2,6 +2,11 @@ namespace VNZ.Service.JobPostService;
 
 public class Response
 {
+    public class DeleteJobPostResponse
+    {
+        public Guid Id { get; set; }
+    }
+
     public class CreateJobPostResponse
     {
         public Guid Id { get; set; }
@@ -43,6 +48,8 @@ public class Response
         public int NumberOfPositions { get; set; }
         public required string Status { get; set; }
         public int PendingApplicationCount { get; set; }
+        public bool CanDelete { get; set; }
+        public string? DeleteBlockedReason { get; set; }
     }
 
     public class PublicJobPostDetailResponse
@@ -78,6 +85,8 @@ public class Response
         public string? Requirements { get; set; }
         public bool CanEdit { get; set; }
         public JobPostTranslationsResponse? Translations { get; set; }
+        public bool CanDelete { get; set; }
+        public string? DeleteBlockedReason { get; set; }
     }
 
     public class UpdateJobPostResponse

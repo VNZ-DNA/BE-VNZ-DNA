@@ -78,6 +78,26 @@ public sealed class EmailComposerTests
     }
 
     [Fact]
+    public void RenderJobApplicationReceived_UsesSavedValuesAndVietnamTime()
+    {
+        var renderer = new EmailTemplateRenderer();
+
+        var rendered = renderer.RenderJobApplicationReceived(new JobApplicationReceivedEmailTemplateData
+        {
+            CandidateName = "<Nguyen Minh Anh>",
+            PositionTitle = "Backend <Engineer>",
+            ReceivedAt = new DateTimeOffset(2026, 10, 1, 2, 30, 0, TimeSpan.Zero)
+        });
+
+        Assert.Equal("VNZ Technology đã nhận được hồ sơ ứng tuyển của bạn", rendered.Subject);
+        Assert.Contains("&lt;Nguyen Minh Anh&gt;", rendered.HtmlBody);
+        Assert.Contains("Backend &lt;Engineer&gt;", rendered.HtmlBody);
+        Assert.Contains("01/10/2026 09:30", rendered.HtmlBody);
+        Assert.Contains("THÔNG BÁO TIẾP NHẬN HỒ SƠ", rendered.HtmlBody);
+        Assert.DoesNotContain("<Nguyen Minh Anh>", rendered.HtmlBody);
+    }
+
+    [Fact]
     public void InterviewTemplateSchema_ReturnsFixedCopyBlocksAndDeadlinePolicy()
     {
         var schema = EmailTemplateSchemaProvider.GetInterviewSchema();
@@ -89,6 +109,7 @@ public sealed class EmailComposerTests
         Assert.Equal("interview-invitation", schema.TemplateKey);
         Assert.Equal("Thân chào {{candidate.fullName}},", schema.FixedCopy.Greeting);
         Assert.Equal("14:00", schema.DeadlinePolicy.Time);
+        Assert.Equal("HH:mm 'ngày' dd/MM/yyyy", schema.DeadlinePolicy.DisplayFormat);
         Assert.Equal(2, schema.DeadlinePolicy.DaysBeforeInterview);
         Assert.Contains("{{deadline}}", schema.FixedCopy.ConfirmationCopy);
         Assert.Equal("greeting", schema.Blocks.Single(block => block.Key == "greeting").FixedCopyKey);
@@ -107,7 +128,16 @@ public sealed class EmailComposerTests
 
         Assert.Equal("contact-reply", schema.TemplateKey);
         Assert.Equal("greeting", schema.Blocks.Single(block => block.Key == "greeting").FixedCopyKey);
-        Assert.Equal("proposalHtml", schema.Blocks.Single(block => block.Key == "proposalHtml").Key);
+        Assert.Equal("bodyHeading", schema.Blocks.Single(block => block.Key == "body").FixedCopyKey);
+        Assert.Equal("proposalHeading", schema.Blocks.Single(block => block.Key == "proposalHtml").FixedCopyKey);
+        Assert.Equal("nextStepsHeading", schema.Blocks.Single(block => block.Key == "nextStepsHtml").FixedCopyKey);
+        Assert.Equal("VNZ Technology", schema.FixedCopy.Footer);
+        Assert.Equal("Vietnamese Minds • Global Solutions", schema.FixedCopy.FooterTagline);
+        var footerBlock = schema.Blocks.Single(block => block.Key == "footer");
+        Assert.Equal("footer", footerBlock.Type);
+        Assert.Null(footerBlock.FixedCopyKey);
+        Assert.Null(schema.Blocks.Single(block => block.Key == "body").Heading);
+        Assert.Contains("footerTagline", schemaJson, StringComparison.Ordinal);
         Assert.DoesNotContain("deadlinePolicy", schemaJson, StringComparison.Ordinal);
         Assert.DoesNotContain("templateVersion", schemaJson, StringComparison.Ordinal);
     }

@@ -4,6 +4,11 @@ namespace VNZ.Service.JobApplicationService;
 
 public static class Response
 {
+    public class DeleteJobApplicationResponse
+    {
+        public Guid Id { get; set; }
+    }
+
     public class CreateJobApplicationResponse
     {
         public Guid Id { get; set; }
@@ -38,6 +43,17 @@ public static class Response
         public int PageSize { get; set; }
         public int Total { get; set; }
         public int TotalPages { get; set; }
+    }
+
+    public class JobApplicationFilterOptionsResponse
+    {
+        public required List<JobApplicationFilterOptionResponse> JobPosts { get; set; }
+    }
+
+    public class JobApplicationFilterOptionResponse
+    {
+        public Guid Id { get; set; }
+        public required string Title { get; set; }
     }
 
     public class JobApplicationListItemResponse

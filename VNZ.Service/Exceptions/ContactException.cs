@@ -9,6 +9,13 @@ public class ContactException : Exception
         Fields = fields;
     }
 
+    public ContactException(string code, string message, Exception innerException)
+        : base(message, innerException)
+    {
+        Code = code;
+        Fields = Array.Empty<string>();
+    }
+
     public string Code { get; }
     public IReadOnlyList<string> Fields { get; }
 }

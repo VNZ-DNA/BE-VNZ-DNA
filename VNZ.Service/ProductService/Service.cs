@@ -30,6 +30,32 @@ public sealed class Service : IService
         _richTextService = richTextService;
     }
 
+    public async Task<Response.DeleteProductResponse> DeleteProductAsync(Guid id)
+    {
+        var affectedRows = await _dbContext.Products
+            .Where(product => product.Id == id && !product.IsDelete && !product.IsPublished)
+            .ExecuteUpdateAsync(setters => setters
+                .SetProperty(product => product.IsDelete, true));
+
+        if (affectedRows == 1)
+        {
+            return new Response.DeleteProductResponse { Id = id };
+        }
+
+        var productExists = await _dbContext.Products
+            .AsNoTracking()
+            .AnyAsync(product => product.Id == id && !product.IsDelete);
+
+        if (!productExists)
+        {
+            throw new ProductException("PRODUCT_NOT_FOUND", "Không tìm thấy Product.");
+        }
+
+        throw new ProductException(
+            "PRODUCT_DELETE_FORBIDDEN",
+            "Không thể xóa Product đang hiển thị trên website.");
+    }
+
     public async Task<Response.ProductDetailResponse> CreateProductAsync(
         Request.CreateProductRequest request,
         Guid createdBy)
@@ -297,140 +323,199 @@ public sealed class Service : IService
     }
 
     private async Task<Response.ProductDetailResponse> UpdateProductLegacyAsync(
+      Guid id,
+      Request.UpdateProductRequest request)
+  {
+      ArgumentNullException.ThrowIfNull(request);
+
+      if (request.IsPublished.HasValue)
+      {
+          ValidateStatusRequest(request);
+          return await UpdateProductPublicationStateAsync(
+              id,
+              request.IsPublished.Value);
+      }
+
+      return await UpdateProductProfileAsync(id, request);
+  }
+
+    private async Task<Response.ProductDetailResponse> UpdateProductProfileAsync(
         Guid id,
         Request.UpdateProductRequest request)
     {
-        ArgumentNullException.ThrowIfNull(request);
+        await using var transaction = await _dbContext.Database
+            .BeginTransactionAsync(IsolationLevel.Serializable);
 
-        try
+        var product = await _dbContext.Products
+            .FirstOrDefaultAsync(product => product.Id == id);
+
+        if (product is null)
         {
-            await using var transaction = await _dbContext.Database
-                .BeginTransactionAsync(IsolationLevel.Serializable);
+            throw new ProductException(
+                "PRODUCT_NOT_FOUND",
+                "Không tìm thấy Product.");
+        }
+        
+        EnsureExpectedUpdatedAt(request.ExpectedUpdatedAt, product.UpdatedAt);
 
-            var product = await _dbContext.Products
-                .FirstOrDefaultAsync(product => product.Id == id);
+        if (product.IsPublished)
+        {
+            throw new ProductException(
+                "PRODUCT_PUBLISHED_CANNOT_EDIT",
+                "Product đang được đăng. Hãy gỡ đăng trước khi chỉnh sửa.",
+                "isPublished");
+        }
 
-            if (product is null)
+        var logoAction = NormalizeProductImageAction(request.LogoAction);
+        var wordmarkAction = NormalizeProductImageAction(request.WordmarkAction);
+        ValidateProductImageActions(logoAction, wordmarkAction, request);
+
+        var content = SanitizeProductContent(request.Content);
+        ValidateUpdateRequest(request, content);
+
+        var updatedAt = VNZ.Service.Utils.DateTimeOffsetPrecision.UtcNowMicrosecond();
+        var currentLogoUrl = NormalizeProductImageUrl(product.LogoUrl);
+        var currentWordmarkUrl = NormalizeProductImageUrl(product.WordmarkUrl);
+        var removeLogo = string.Equals(logoAction, "remove", StringComparison.Ordinal);
+        var removeWordmark = string.Equals(wordmarkAction, "remove", StringComparison.Ordinal);
+
+        var logoUrl = removeLogo
+            ? null
+            : request.Logo is null
+                ? currentLogoUrl
+                : await UploadProductImageIfPresentAsync(request.Logo);
+
+        var wordmarkUrl = removeWordmark
+            ? null
+            : request.Wordmark is null
+                ? currentWordmarkUrl
+                : await UploadProductImageIfPresentAsync(request.Wordmark);
+
+        product.Name = request.Name!.Trim();
+        product.LogoUrl = logoUrl;
+        product.WordmarkUrl = wordmarkUrl;
+        product.ProductUrl = request.ProductUrl;
+        product.Content = ToProductContent(content);
+        product.Status = request.Status!.Value;
+        product.IsPublished = false;
+        product.DisplayOrder = null;
+        product.UpdatedAt = updatedAt;
+
+        await _dbContext.SaveChangesAsync();
+        await transaction.CommitAsync();
+
+        return ToDetailResponse(product);
+    }
+
+     private async Task<Response.ProductDetailResponse> UpdateProductPublicationStateAsync(
+      Guid id,
+      bool isPublished,
+      DateTimeOffset? expectedUpdatedAt = null)
+  {
+      await using var transaction = await _dbContext.Database
+          .BeginTransactionAsync(IsolationLevel.Serializable);
+
+      var product = await _dbContext.Products
+          .FirstOrDefaultAsync(item => item.Id == id);
+
+      if (product is null)
+      {
+          throw new ProductException(
+              "PRODUCT_NOT_FOUND",
+              "Không tìm thấy Product.");
+      }
+
+      EnsureExpectedUpdatedAt(expectedUpdatedAt, product.UpdatedAt);
+
+      if (isPublished)
+      {
+          ValidatePublishableProduct(product);
+
+          var content = product.Content is null
+              ? null
+              : new Request.ProductContentRequest
+              {
+                  Blocks = product.Content.Blocks
+                      .Select(block => new Request.ContentBlockRequest
+                      {
+                          Id = block.Id,
+                          Type = block.Type,
+                          Order = block.Order,
+                          Text = block.Text,
+                          Items = block.Items?
+                              .Select(item => new Request.FeatureItemRequest
+                              {
+                                  Id = item.Id,
+                                  Title = item.Title
+                              })
+                              .ToList()
+                      })
+                      .ToList()
+              };
+
+          ValidateProductBilingualContent(
+              content,
+              product.Translations?.En?.Content);
+      }
+
+      if (product.IsPublished == isPublished)
+      {
+          await transaction.CommitAsync();
+          return ToDetailResponse(product);
+      }
+
+      var updatedAt = VNZ.Service.Utils.DateTimeOffsetPrecision.UtcNowMicrosecond();
+
+      if (isPublished)
+      {
+          var lastDisplayOrder = await _dbContext.Products
+              .Where(item => item.IsPublished)
+              .MaxAsync(item => (int?)item.DisplayOrder) ?? 0;
+
+          product.IsPublished = true;
+          product.DisplayOrder = lastDisplayOrder + 1;
+      }
+      else
+      {
+          var publishedProducts = await GetPublishedProductsAsync(product.Id);
+
+          product.IsPublished = false;
+          product.DisplayOrder = null;
+          NormalizePublishedProductDisplayOrders(publishedProducts, updatedAt);
+      }
+
+      product.UpdatedAt = updatedAt;
+
+      await _dbContext.SaveChangesAsync();
+      await transaction.CommitAsync();
+
+      return ToDetailResponse(product);
+  }
+
+
+    private async Task<List<Product>> GetPublishedProductsAsync(Guid excludedProductId)
+    {
+        return await _dbContext.Products
+            .Where(product => product.IsPublished && product.Id != excludedProductId)
+            .OrderBy(product => product.DisplayOrder == null)
+            .ThenBy(product => product.DisplayOrder)
+            .ThenBy(product => product.CreatedAt)
+            .ThenBy(product => product.Id)
+            .ToListAsync();
+    }
+
+    private static void NormalizePublishedProductDisplayOrders(
+        List<Product> publishedProducts,
+        DateTimeOffset updatedAt)
+    {
+        for (var index = 0; index < publishedProducts.Count; index++)
+        {
+            var displayOrder = index + 1;
+            var product = publishedProducts[index];
+
+            if (product.DisplayOrder == displayOrder)
             {
-                throw new ProductException(
-                    "PRODUCT_NOT_FOUND",
-                    "Không tìm thấy Product.");
-            }
-
-            EnsureExpectedUpdatedAt(request.ExpectedUpdatedAt, product.UpdatedAt);
-
-            var updatedAt = VNZ.Service.Utils.DateTimeOffsetPrecision.UtcNowMicrosecond();
-
-            if (product.IsPublished)
-            {
-                if (request.IsPublished != false)
-                {
-                    throw new ProductException(
-                        "PRODUCT_PUBLISHED_CANNOT_EDIT",
-                        "Product đang được đăng. Hãy gỡ đăng trước khi chỉnh sửa.",
-                        "isPublished");
-                }
-
-                // Khi Product đang đăng, PUT chỉ thực hiện gỡ đăng.
-                // Các field khác trong request không được áp dụng cho đến request tiếp theo.
-                product.IsPublished = false;
-                product.DisplayOrder = null;
-
-                var publishedProducts = await _dbContext.Products
-                    .Where(item => item.IsPublished && item.Id != product.Id)
-                    .OrderBy(item => item.DisplayOrder)
-                    .ThenBy(item => item.CreatedAt)
-                    .ThenBy(item => item.Id)
-                    .ToListAsync();
-
-                for (var index = 0; index < publishedProducts.Count; index++)
-                {
-                    var publishedProduct = publishedProducts[index];
-                    var displayOrder = index + 1;
-
-                    if (publishedProduct.DisplayOrder == displayOrder)
-                    {
-                        continue;
-                    }
-
-                    publishedProduct.DisplayOrder = displayOrder;
-                    publishedProduct.UpdatedAt = updatedAt;
-                }
-
-                product.UpdatedAt = updatedAt;
-
-                await _dbContext.SaveChangesAsync();
-                await transaction.CommitAsync();
-
-                return ToDetailResponse(product);
-            }
-
-            var logoAction = NormalizeProductImageAction(request.LogoAction);
-            var wordmarkAction = NormalizeProductImageAction(request.WordmarkAction);
-            ValidateProductImageActions(logoAction, wordmarkAction, request);
-
-            var isPublished = request.IsPublished.GetValueOrDefault();
-            var content = SanitizeProductContent(request.Content);
-            ValidateUpdateRequest(request, content, isPublished);
-            var translations = SanitizeProductTranslations(request.Translations);
-
-            if (isPublished && request.Status == ProductStatus.InProgress)
-            {
-                throw new ProductException(
-                    "PRODUCT_IN_PROGRESS_CANNOT_PUBLISH",
-                    "Chỉ sản phẩm đã hoàn thành mới có thể đăng.",
-                    "status",
-                    "isPublished");
-            }
-
-            if (isPublished)
-            {
-                ValidateProductBilingualContent(content, translations?.En?.Content);
-            }
-
-            var currentLogoUrl = NormalizeProductImageUrl(product.LogoUrl);
-            var currentWordmarkUrl = NormalizeProductImageUrl(product.WordmarkUrl);
-
-            var removeLogo = string.Equals(logoAction, "remove", StringComparison.Ordinal);
-            var removeWordmark = string.Equals(wordmarkAction, "remove", StringComparison.Ordinal);
-            var hasFinalLogo = !removeLogo &&
-                (request.Logo is not null || currentLogoUrl is not null);
-            var hasFinalWordmark = !removeWordmark &&
-                (request.Wordmark is not null || currentWordmarkUrl is not null);
-
-            if (isPublished && !hasFinalLogo)
-            {
-                throw ProductImagesRequired("logoUrl");
-            }
-
-            if (isPublished && !hasFinalWordmark)
-            {
-                throw ProductImagesRequired("wordmarkUrl");
-            }
-
-            var logoUrl = removeLogo
-                ? null
-                : request.Logo is null
-                    ? currentLogoUrl
-                    : await UploadProductImageIfPresentAsync(request.Logo);
-
-            var wordmarkUrl = removeWordmark
-                ? null
-                : request.Wordmark is null
-                    ? currentWordmarkUrl
-                    : await UploadProductImageIfPresentAsync(request.Wordmark);
-
-            if (isPublished)
-            {
-                var lastDisplayOrder = await _dbContext.Products
-                    .Where(item => item.IsPublished)
-                    .MaxAsync(item => (int?)item.DisplayOrder) ?? 0;
-
-                product.DisplayOrder = lastDisplayOrder + 1;
-            }
-            else
-            {
-                product.DisplayOrder = null;
+                continue;
             }
 
             product.Name = request.Name.Trim();
@@ -441,36 +526,33 @@ public sealed class Service : IService
             product.Translations = translations;
             product.Status = request.Status!.Value;
             product.IsPublished = isPublished;
+
+            product.DisplayOrder = displayOrder;
             product.UpdatedAt = updatedAt;
-
-            await _dbContext.SaveChangesAsync();
-            await transaction.CommitAsync();
-
-            return ToDetailResponse(product);
-        }
-        catch (DbUpdateConcurrencyException)
-        {
-            throw new ProductException(
-                "CONTENT_CONFLICT",
-                "Product đã được cập nhật bởi một yêu cầu khác.",
-                "expectedUpdatedAt");
-        }
-        catch (Exception exception) when (
-            FindPostgresException(exception)?.SqlState == PostgresErrorCodes.SerializationFailure)
-        {
-            throw new ProductException(
-                "CONTENT_CONFLICT",
-                "Product đã được cập nhật bởi một yêu cầu khác.",
-                "expectedUpdatedAt");
-        }
-        catch (Exception exception) when (exception is DbUpdateException or PostgresException)
-        {
-            throw new ProductException(
-                "PRODUCT_OPERATION_FAILED",
-                "Không thể cập nhật Product.",
-                exception);
         }
     }
+
+   private static void ValidatePublishableProduct(Product product)
+  {
+      if (product.Status != ProductStatus.Completed)
+      {
+          throw new ProductException(
+              "PRODUCT_IN_PROGRESS_CANNOT_PUBLISH",
+              "Chỉ sản phẩm đã hoàn thành mới có thể đăng.",
+              "status",
+              "isPublished");
+      }
+
+      if (NormalizeProductImageUrl(product.LogoUrl) is null)
+      {
+          throw ProductImagesRequired("logoUrl");
+      }
+
+      if (NormalizeProductImageUrl(product.WordmarkUrl) is null)
+      {
+          throw ProductImagesRequired("wordmarkUrl");
+      }
+  }
 
     public async Task<Response.PagedProductListResponse> GetProductListAsync(Request.GetProductListRequest request)
     {
@@ -479,7 +561,7 @@ public sealed class Service : IService
         ValidateRequest(request);
 
         var search = request.Search?.Trim();
-        var status = ParseProductStatus(request.Status);
+        var statuses = ParseProductStatuses(request.Status);
 
         try
         {
@@ -494,9 +576,14 @@ public sealed class Service : IService
                     product.Name.ToLower().Contains(normalizedSearch));
             }
 
-            if (status.HasValue)
+            if (statuses.Count > 0)
             {
-                query = query.Where(product => product.Status == status.Value);
+                query = query.Where(product => statuses.Contains(product.Status));
+            }
+
+            if (request.IsPublished.HasValue)
+            {
+                query = query.Where(product => product.IsPublished == request.IsPublished.Value);
             }
 
             var total = await query.CountAsync();
@@ -924,7 +1011,7 @@ public sealed class Service : IService
             fields.Add("page");
         }
 
-        if (request.PageSize < 1 || request.PageSize > 100)
+        if (request.PageSize is not (10 or 20 or 50))
         {
             fields.Add("pageSize");
         }
@@ -934,9 +1021,10 @@ public sealed class Service : IService
             fields.Add("search");
         }
 
-        if (!string.IsNullOrWhiteSpace(request.Status) &&
-            !string.Equals(request.Status.Trim(), nameof(ProductStatus.InProgress), StringComparison.OrdinalIgnoreCase) &&
-            !string.Equals(request.Status.Trim(), nameof(ProductStatus.Completed), StringComparison.OrdinalIgnoreCase))
+        if (request.Status is not null && request.Status.Any(status =>
+                !string.IsNullOrWhiteSpace(status) &&
+                !string.Equals(status.Trim(), nameof(ProductStatus.InProgress), StringComparison.OrdinalIgnoreCase) &&
+                !string.Equals(status.Trim(), nameof(ProductStatus.Completed), StringComparison.OrdinalIgnoreCase)))
         {
             fields.Add("status");
         }
@@ -950,16 +1038,46 @@ public sealed class Service : IService
         }
     }
 
-    private static ProductStatus? ParseProductStatus(string? status)
+    private static List<ProductStatus> ParseProductStatuses(List<string>? statuses)
     {
-        if (string.IsNullOrWhiteSpace(status))
+        if (statuses is null)
         {
-            return null;
+            return [];
         }
 
-        return string.Equals(status.Trim(), nameof(ProductStatus.InProgress), StringComparison.OrdinalIgnoreCase)
-            ? ProductStatus.InProgress
-            : ProductStatus.Completed;
+        return statuses
+            .Where(status => !string.IsNullOrWhiteSpace(status))
+            .Select(status => string.Equals(
+                status.Trim(),
+                nameof(ProductStatus.InProgress),
+                StringComparison.OrdinalIgnoreCase)
+                ? ProductStatus.InProgress
+                : ProductStatus.Completed)
+            .Distinct()
+            .ToList();
+    }
+
+    private static void ValidateStatusRequest(Request.UpdateProductRequest request)
+    {
+        if (HasProductProfilePayload(request))
+        {
+            throw new ProductException(
+                "PRODUCT_VALIDATION_ERROR",
+                "Request đăng/gỡ đăng không được kèm dữ liệu hồ sơ.",
+                "isPublished");
+        }
+    }
+
+    private static bool HasProductProfilePayload(Request.UpdateProductRequest request)
+    {
+        return request.Name is not null ||
+            request.Logo is not null ||
+            request.Wordmark is not null ||
+            request.LogoAction is not null ||
+            request.WordmarkAction is not null ||
+            request.ProductUrl is not null ||
+            request.Content is not null ||
+            request.Status.HasValue;
     }
 
     private static void ValidateUpdateRequest(
@@ -974,10 +1092,12 @@ public sealed class Service : IService
             fields.Add("name");
         }
 
+
         if (!request.IsPublished.HasValue)
         {
             fields.Add("isPublished");
         }
+
 
         if (!request.Status.HasValue || !Enum.IsDefined(request.Status.Value))
         {
@@ -1390,7 +1510,9 @@ public sealed class Service : IService
             IsPublished = product.IsPublished,
             DisplayOrder = product.DisplayOrder,
             CreatedAt = product.CreatedAt,
-            UpdatedAt = product.UpdatedAt
+            UpdatedAt = product.UpdatedAt,
+            CanDelete = !product.IsPublished,
+            DeleteBlockedReason = product.IsPublished ? "PUBLIC_VISIBLE" : null
         };
     }
 
@@ -1430,60 +1552,67 @@ public sealed class Service : IService
     }
 
     private static Response.ProductDetailResponse ToDetailResponse(Product product)
-    {
-        return new Response.ProductDetailResponse
-        {
-            Id = product.Id,
-            Name = product.Name,
-            LogoUrl = product.LogoUrl,
-            WordmarkUrl = product.WordmarkUrl,
-            ProductUrl = product.ProductUrl,
-            Content = ToDetailContentResponse(product.Content),
-            Status = product.Status,
-            IsPublished = product.IsPublished,
-            DisplayOrder = product.DisplayOrder,
-            CreatedBy = product.CreatedBy,
-            CreatedAt = product.CreatedAt,
-            UpdatedAt = product.UpdatedAt,
-            Translations = product.Translations is null
-                ? null
-                : new Response.ProductTranslationsResponse
-                {
-                    En = product.Translations.En is null
-                        ? null
-                        : new Response.ProductEnglishTranslationResponse
-                        {
-                            Content = ToDetailContentResponse(product.Translations.En.Content)
-                        }
-                }
-        };
-    }
+  {
+      return new Response.ProductDetailResponse
+      {
+          Id = product.Id,
+          Name = product.Name,
+          LogoUrl = product.LogoUrl,
+          WordmarkUrl = product.WordmarkUrl,
+          ProductUrl = product.ProductUrl,
+          Content = ToDetailContentResponse(product.Content),
+          Status = product.Status,
+          IsPublished = product.IsPublished,
+          DisplayOrder = product.DisplayOrder,
+          CreatedBy = product.CreatedBy,
+          CreatedAt = product.CreatedAt,
+          UpdatedAt = product.UpdatedAt,
+          Translations = product.Translations is null
+              ? null
+              : new Response.ProductTranslationsResponse
+              {
+                  En = product.Translations.En is null
+                      ? null
+                      : new Response.ProductEnglishTranslationResponse
+                      {
+                          Content = ToDetailContentResponse(
+                              product.Translations.En.Content)
+                      }
+              },
+          CanDelete = !product.IsPublished,
+          DeleteBlockedReason = product.IsPublished ? "PUBLIC_VISIBLE" : null
+      };
+  }
 
-    private static Response.ProductContentResponse? ToDetailContentResponse(ProductContent? content)
-    {
-        if (content is null)
-        {
-            return null;
-        }
+  private static Response.ProductContentResponse? ToDetailContentResponse(
+      ProductContent? content)
+  {
+      if (content is null)
+      {
+          return null;
+      }
 
-        return new Response.ProductContentResponse
-        {
-            Blocks = content.Blocks
-                .OrderBy(block => block.Order)
-                .Select(block => new Response.ContentBlockResponse
-                {
-                    Id = block.Id,
-                    Type = block.Type,
-                    Order = block.Order,
-                    Text = block.Text,
-                    Items = block.Items?.Select(item => new Response.FeatureItemResponse
-                    {
-                        Id = item.Id,
-                        Title = item.Title
-                    }).ToList()
-                }).ToList()
-        };
-    }
+      return new Response.ProductContentResponse
+      {
+          Blocks = content.Blocks
+              .OrderBy(block => block.Order)
+              .Select(block => new Response.ContentBlockResponse
+              {
+                  Id = block.Id,
+                  Type = block.Type,
+                  Order = block.Order,
+                  Text = block.Text,
+                  Items = block.Items?
+                      .Select(item => new Response.FeatureItemResponse
+                      {
+                          Id = item.Id,
+                          Title = item.Title
+                      })
+                      .ToList()
+              })
+              .ToList()
+      };
+  }
 
     private static PostgresException? FindPostgresException(Exception exception)
     {

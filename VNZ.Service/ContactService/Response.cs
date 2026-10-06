@@ -2,6 +2,11 @@ namespace VNZ.Service.ContactService;
 
 public class Response
 {
+    public class DeleteContactResponse
+    {
+        public Guid Id { get; set; }
+    }
+
     public class ContactListResponse
     {
         public List<ContactListItemResponse> Items { get; set; } = new();

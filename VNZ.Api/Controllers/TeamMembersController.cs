@@ -18,12 +18,39 @@ public sealed class TeamMembersController : ControllerBase
         _teamMemberService = teamMemberService;
     }
 
+    [HttpDelete("{id:guid}")]
+    public async Task<IActionResult> DeleteMember(Guid id)
+    {
+        var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+        if (!Guid.TryParse(userId, out var currentUserId))
+        {
+            return Unauthorized();
+        }
+
+        var data = await _teamMemberService.DeleteTeamMemberAsync(id, currentUserId);
+
+        return Ok(ResponseBuilder.SuccessResponse(
+            data,
+            "Xóa thành viên thành công.",
+            HttpContext.TraceIdentifier));
+    }
+
     [HttpGet]
     public async Task<IActionResult> GetMemberList(
         [FromQuery] TeamMemberService.Request.GetTeamMemberListRequest request)
     {
         var data = await _teamMemberService.GetMemberListAsync(request);
         return Ok(ResponseBuilder.SuccessResponse(data, "Lấy danh sách thành viên thành công.", HttpContext.TraceIdentifier));
+    }
+
+    [HttpGet("filter-options")]
+    public async Task<IActionResult> GetFilterOptions()
+    {
+        var data = await _teamMemberService.GetFilterOptionsAsync();
+        return Ok(ResponseBuilder.SuccessResponse(
+            data,
+            "Lấy options bộ lọc thành viên thành công.",
+            HttpContext.TraceIdentifier));
     }
 
     [HttpGet("display-order")]

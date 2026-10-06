@@ -2,6 +2,11 @@ namespace VNZ.Service.PartnerService;
 
 public class Response
 {
+    public class DeletePartnerResponse
+    {
+        public Guid Id { get; set; }
+    }
+
     public class PublicPartnerListResponse
     {
         public List<PublicPartnerListItemResponse> Items { get; set; } = new();
@@ -35,6 +40,8 @@ public class Response
         public Guid? CreatedBy { get; set; }
         public DateTimeOffset CreatedAt { get; set; }
         public DateTimeOffset UpdatedAt { get; set; }
+        public bool CanDelete { get; set; }
+        public string? DeleteBlockedReason { get; set; }
     }
 
 }

@@ -4,7 +4,9 @@ public interface IService
 {
     Task<Response.CreateJobApplicationResponse> CreateAsync(Request.CreateJobApplicationRequest request);
     Task<Response.JobApplicationListResponse> GetJobApplicationListAsync(Request.GetJobApplicationListRequest request);
+    Task<Response.JobApplicationFilterOptionsResponse> GetJobApplicationFilterOptionsAsync();
     Task<Response.JobApplicationDetailResponse> GetJobApplicationByIdAsync(Guid id);
+    Task<Response.DeleteJobApplicationResponse> DeleteJobApplicationAsync(Guid id);
 
     Task<Response.ReviewJobApplicationResponse> ReviewAsync(
         Guid id,

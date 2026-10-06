@@ -50,6 +50,24 @@ public sealed class Service : IService
         _richTextService = richTextService;
     }
 
+    public async Task<Response.DeleteJobApplicationResponse> DeleteJobApplicationAsync(Guid id)
+    {
+        var affectedRows = await _dbContext.JobApplications
+            .Where(application => application.Id == id && !application.IsDelete)
+            .ExecuteUpdateAsync(setters => setters
+                .SetProperty(application => application.IsDelete, true));
+
+        if (affectedRows != 1)
+        {
+            throw new JobApplicationException(
+                "JOB_APPLICATION_NOT_FOUND",
+                "Không tìm thấy hồ sơ ứng viên.",
+                "id");
+        }
+
+        return new Response.DeleteJobApplicationResponse { Id = id };
+    }
+
     public async Task<Response.CreateJobApplicationResponse> CreateAsync(Request.CreateJobApplicationRequest request)
     {
         ArgumentNullException.ThrowIfNull(request);
@@ -190,6 +208,35 @@ public sealed class Service : IService
                 exception);
         }
 
+        try
+        {
+            var renderedEmail = _emailTemplateRenderer.RenderJobApplicationReceived(
+                new MailService.JobApplicationReceivedEmailTemplateData
+                {
+                    CandidateName = application.FullName,
+                    PositionTitle = application.JobPostSnapshot?.Title ?? string.Empty,
+                    ReceivedAt = application.CreatedAt
+                });
+
+            await _mailService.SendAsync(new MailService.MailContent
+            {
+                To = application.Email,
+                ToName = application.FullName,
+                Subject = renderedEmail.Subject,
+                Body = renderedEmail.HtmlBody,
+                IdempotencyKey = $"job-application-received-{application.Id}",
+                IsHtmlBody = true,
+                Tag = "job-application-received"
+            });
+        }
+        catch (Exception exception)
+        {
+            _logger.LogError(
+                "Job application receipt email failed. ApplicationId: {ApplicationId}, ErrorType: {ErrorType}",
+                application.Id,
+                exception.GetType().Name);
+        }
+
         return new Response.CreateJobApplicationResponse
         {
             Id = application.Id,
@@ -291,7 +338,6 @@ public sealed class Service : IService
         Guid adminUserId)
     {
         var application = await _dbContext.JobApplications
-            .Include(item => item.JobPost)
             .SingleOrDefaultAsync(item => item.Id == id);
 
         if (application is null)
@@ -309,7 +355,7 @@ public sealed class Service : IService
                 "Hồ sơ ứng viên không còn ở trạng thái Chờ duyệt.");
         }
 
-        var positionTitle = application.JobPostSnapshot?.Title ?? application.JobPost.Title;
+        var positionTitle = GetJobPostSnapshotTitle(application);
         var deliveryResult = await _mailService.SendRejectionEmailAsync(
             new MailService.RejectionEmailMailContent
             {
@@ -368,7 +414,7 @@ public sealed class Service : IService
     {
         ArgumentNullException.ThrowIfNull(request);
 
-        if (request.Page < 1 || request.PageSize < 1 || request.PageSize > 100)
+        if (request.Page < 1 || request.PageSize is not (10 or 20 or 50))
         {
             throw new ArgumentException("Thông tin phân trang không hợp lệ.");
         }
@@ -379,21 +425,35 @@ public sealed class Service : IService
             throw new ArgumentException("Từ khóa tìm kiếm không được vượt quá 300 ký tự.");
         }
 
-        JobApplicationStatus? statusFilter = null;
+        var statusFilters = new List<JobApplicationStatus>();
 
-        if (!string.IsNullOrWhiteSpace(request.Status))
+        var rawStatusFilters = request.Status?
+            .Where(status => !string.IsNullOrWhiteSpace(status))
+            .Select(status => status.Trim())
+            .Distinct(StringComparer.Ordinal)
+            .ToList() ?? [];
+
+        foreach (var rawStatus in rawStatusFilters)
         {
-            if (!Enum.TryParse<JobApplicationStatus>(request.Status.Trim(), ignoreCase: false, out var parsedStatus) ||
+            if (!Enum.TryParse<JobApplicationStatus>(rawStatus, ignoreCase: false, out var parsedStatus) ||
                 !Enum.IsDefined(parsedStatus))
             {
                 throw new ArgumentException("Trạng thái lọc không hợp lệ.");
             }
 
-            statusFilter = parsedStatus;
+            statusFilters.Add(parsedStatus);
+        }
+
+        var jobPostIds = request.JobPostId?.Distinct().ToList() ?? [];
+
+        if (jobPostIds.Any(id => id == Guid.Empty))
+        {
+            throw new ArgumentException("Vị trí ứng tuyển không hợp lệ.");
         }
 
         var query = _dbContext.JobApplications
             .AsNoTracking()
+            .Include(application => application.JobPost)
             .AsQueryable();
 
         if (!string.IsNullOrWhiteSpace(search))
@@ -401,13 +461,17 @@ public sealed class Service : IService
             var searchLower = search.ToLower();
             query = query.Where(application =>
                 application.FullName.ToLower().Contains(searchLower) ||
-                application.Email.ToLower().Contains(searchLower) ||
-                application.JobPost.Title.ToLower().Contains(searchLower));
+                application.Email.ToLower().Contains(searchLower));
         }
 
-        if (statusFilter.HasValue)
+        if (statusFilters.Count > 0)
         {
-            query = query.Where(application => application.Status == statusFilter.Value);
+            query = query.Where(application => statusFilters.Contains(application.Status));
+        }
+
+        if (jobPostIds.Count > 0)
+        {
+            query = query.Where(application => jobPostIds.Contains(application.JobPostId));
         }
 
         var total = await query.CountAsync();
@@ -417,7 +481,6 @@ public sealed class Service : IService
             .ThenByDescending(application => application.Id)
             .Skip((request.Page - 1) * request.PageSize)
             .Take(request.PageSize)
-            .Include(application => application.JobPost)
             .ToListAsync();
 
         var applications = applicationRows.Select(application => new Response.JobApplicationListItemResponse
@@ -426,7 +489,7 @@ public sealed class Service : IService
             FullName = application.FullName,
             Email = application.Email,
             JobPostId = application.JobPostId,
-            JobPostTitle = application.JobPost.Title,
+            JobPostTitle = GetJobPostSnapshotTitle(application),
             JobPostSnapshotTitle = application.JobPostSnapshot?.Title,
             Status = GetStatusLabel(application.Status),
             CvUrl = application.CvUrl,
@@ -442,6 +505,26 @@ public sealed class Service : IService
             PageSize = request.PageSize,
             Total = total,
             TotalPages = total == 0 ? 0 : (int)Math.Ceiling(total / (double)request.PageSize)
+        };
+    }
+
+    public async Task<Response.JobApplicationFilterOptionsResponse> GetJobApplicationFilterOptionsAsync()
+    {
+        var jobPosts = await _dbContext.JobPosts
+            .AsNoTracking()
+            .Where(jobPost => jobPost.Applications.Any(application => !application.IsDelete))
+            .OrderBy(jobPost => jobPost.Title)
+            .ThenBy(jobPost => jobPost.Id)
+            .Select(jobPost => new Response.JobApplicationFilterOptionResponse
+            {
+                Id = jobPost.Id,
+                Title = jobPost.Title
+            })
+            .ToListAsync();
+
+        return new Response.JobApplicationFilterOptionsResponse
+        {
+            JobPosts = jobPosts
         };
     }
 
@@ -472,7 +555,6 @@ public sealed class Service : IService
 
         var applications = await _dbContext.JobApplications
             .Where(application => applicationIds.Contains(application.Id))
-            .Include(application => application.JobPost)
             .ToListAsync();
 
         if (applications.Count != applicationIds.Count ||
@@ -498,7 +580,7 @@ public sealed class Service : IService
                 ApplicationId = application.Id,
                 To = application.Email,
                 ToName = application.FullName,
-                PositionTitle = application.JobPostSnapshot?.Title ?? application.JobPost.Title,
+                PositionTitle = GetJobPostSnapshotTitle(application),
                 InterviewAt = interviewAt,
                 DurationMinutes = normalizedContent.DurationMinutes,
                 InterviewMode = normalizedContent.InterviewMode,
@@ -746,7 +828,7 @@ public sealed class Service : IService
         {
             Id = application.Id,
             JobPostId = application.JobPostId,
-            JobPostTitle = application.JobPost.Title,
+            JobPostTitle = application.JobPost?.Title ?? GetJobPostSnapshotTitle(application),
             FullName = application.FullName,
             Email = application.Email,
             Phone = application.Phone,
@@ -789,6 +871,15 @@ public sealed class Service : IService
                 Skills = jobPost.Skills.ToList()
             }
         };
+    }
+
+    private static string GetJobPostSnapshotTitle(JobApplication application)
+    {
+        var snapshotTitle = application.JobPostSnapshot?.Title;
+
+        return !string.IsNullOrWhiteSpace(snapshotTitle)
+            ? snapshotTitle
+            : application.JobPost?.Title ?? string.Empty;
     }
 
     private static string? NormalizeOptional(string? value)

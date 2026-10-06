@@ -245,24 +245,34 @@ public class GlobalExceptionHandlerMiddleware : IMiddleware
         {
             "JOB_POST_INVALID_ACTION" or
             "JOB_POST_INVALID_REQUEST" or
+            "JOB_POST_INVALID_RICH_TEXT" or
             "JOB_POST_INVALID_STATUS" or
             "JOB_POST_VALIDATION_FAILED" or
             "JOB_POST_VALIDATION_ERROR" or
             "JOB_POST_INVALID_EXPIRY" or
             "JOB_POST_INVALID_PAGINATION" or
             "JOB_POST_INVALID_SEARCH" or
+
             "JOB_POST_INVALID_STATUS_FILTER" => HttpStatusCode.BadRequest,
             "BILINGUAL_CONTENT_REQUIRED" or
             "BILINGUAL_SCHEMA_INVALID" => HttpStatusCode.BadRequest,
+
+            "JOB_POST_INVALID_STATUS_FILTER" or
+            "JOB_POST_INVALID_DEPARTMENT_FILTER" or
+            "JOB_POST_INVALID_JOB_LEVEL_FILTER" => HttpStatusCode.BadRequest,
+
             "JOB_POST_NOT_FOUND" => HttpStatusCode.NotFound,
             "DEPARTMENT_NOT_FOUND" => HttpStatusCode.NotFound,
             "JOB_POST_CLOSED" or
             "JOB_POST_EXPIRED" or
+
             "CONTENT_CONFLICT" => HttpStatusCode.Conflict,
+            "JOB_POST_DELETE_FORBIDDEN" => HttpStatusCode.Conflict,
             
             "PUBLIC_JOB_POST_NOT_AVAILABLE" => HttpStatusCode.NotFound,
             "JOB_POST_CREATE_FAILED" => HttpStatusCode.InternalServerError,
             "JOB_POST_UPDATE_FAILED" or
+            "JOB_POST_DELETE_FAILED" or
             "PUBLIC_JOB_POST_DETAIL_READ_FAILED" => HttpStatusCode.InternalServerError,
             "PUBLIC_JOB_POST_LIST_READ_FAILED" => HttpStatusCode.InternalServerError,
             _ => HttpStatusCode.InternalServerError
@@ -291,12 +301,14 @@ public class GlobalExceptionHandlerMiddleware : IMiddleware
             "NEWS_ARTICLE_CLOSED" or
             "NEWS_STATUS_TRANSITION_INVALID" or
             "CONTENT_CONFLICT" => HttpStatusCode.Conflict,
+            "NEWS_DELETE_FORBIDDEN" => HttpStatusCode.Conflict,
             "NEWS_LIST_READ_FAILED" or
             "NEWS_PUBLIC_LIST_FAILED" or
             "NEWS_PUBLIC_ARTICLE_FAILED" or
             "NEWS_DETAIL_READ_FAILED" or
             "NEWS_ARTICLE_CREATE_FAILED" or
-            "NEWS_ARTICLE_UPDATE_FAILED" => HttpStatusCode.InternalServerError,
+            "NEWS_ARTICLE_UPDATE_FAILED" or
+            "NEWS_ARTICLE_DELETE_FAILED" => HttpStatusCode.InternalServerError,
             _ => HttpStatusCode.InternalServerError
         };
     }
@@ -347,11 +359,13 @@ public class GlobalExceptionHandlerMiddleware : IMiddleware
             "PARTNER_VALIDATION_FAILED" or
             "PARTNER_ORDER_INVALID" => HttpStatusCode.BadRequest,
             "PARTNER_NOT_FOUND" => HttpStatusCode.NotFound,
-            "PARTNER_PUBLISHED_CANNOT_EDIT" => HttpStatusCode.Conflict,
+            "PARTNER_PUBLISHED_CANNOT_EDIT" or
+            "PARTNER_DELETE_FORBIDDEN" => HttpStatusCode.Conflict,
             "PARTNER_LIST_READ_FAILED" or
             "PARTNER_CREATE_FAILED" or
             "PARTNER_ORDER_UPDATE_FAILED" or
-            "PARTNER_UPDATE_FAILED" => HttpStatusCode.InternalServerError,
+            "PARTNER_UPDATE_FAILED" or
+            "PARTNER_DELETE_FAILED" => HttpStatusCode.InternalServerError,
             _ => HttpStatusCode.InternalServerError
         };
     }
@@ -361,12 +375,17 @@ public class GlobalExceptionHandlerMiddleware : IMiddleware
         return code switch
         {
             "MEMBER_VALIDATION_ERROR" or
-            "MEMBER_QUERY_INVALID" => HttpStatusCode.BadRequest,
+            "MEMBER_QUERY_INVALID" or
+            "RESOURCE_VALIDATION_FAILED" => HttpStatusCode.BadRequest,
             "MEMBER_ORDER_INVALID" => HttpStatusCode.BadRequest,
-            "MEMBER_ORDER_CONFLICT" => HttpStatusCode.Conflict,
+            "MEMBER_ORDER_CONFLICT" or
+            "TEAM_MEMBER_DELETE_FORBIDDEN" or
+            "RESOURCE_CONFLICT" => HttpStatusCode.Conflict,
+            "MEMBER_NOT_FOUND" => HttpStatusCode.NotFound,
             "MEMBER_ORDER_UPDATE_FAILED" => HttpStatusCode.InternalServerError,
             "MEMBER_EMAIL_EXISTS" => HttpStatusCode.Conflict,
             "MEMBER_CREATE_FAILED" or
+            "TEAM_MEMBER_DELETE_FAILED" or
             "MEMBER_LIST_READ_FAILED" => HttpStatusCode.InternalServerError,
             _ => HttpStatusCode.InternalServerError
         };
@@ -387,7 +406,8 @@ public class GlobalExceptionHandlerMiddleware : IMiddleware
             "CONTACT_REPLY_TEMPLATE_READ_FAILED" or
             "CONTACT_EMAIL_SEND_FAILED" or
             "CONTACT_REPLY_UPDATE_FAILED" or
-            "CONTACT_CREATE_FAILED" => HttpStatusCode.InternalServerError,
+            "CONTACT_CREATE_FAILED" or
+            "CONTACT_DELETE_FAILED" => HttpStatusCode.InternalServerError,
             _ => HttpStatusCode.InternalServerError
         };
     }
@@ -412,7 +432,8 @@ public class GlobalExceptionHandlerMiddleware : IMiddleware
             "JOB_APPLICATION_REJECTION_PERSIST_FAILED" => HttpStatusCode.InternalServerError,
             "JOB_APPLICATION_INTERVIEW_TEMPLATE_READ_FAILED" or
             "JOB_APPLICATION_INTERVIEW_PERSIST_FAILED" or
-            "JOB_APPLICATION_CREATE_FAILED" => HttpStatusCode.InternalServerError,
+            "JOB_APPLICATION_CREATE_FAILED" or
+            "JOB_APPLICATION_DELETE_FAILED" => HttpStatusCode.InternalServerError,
             _ => HttpStatusCode.InternalServerError
         };
     }

@@ -2,6 +2,11 @@ namespace VNZ.Service.NewsService;
 
 public class Response
 {
+    public class DeleteNewsResponse
+    {
+        public Guid Id { get; set; }
+    }
+
     public class UploadContentImageResponse
     {
         public required string Url { get; set; }
@@ -61,6 +66,8 @@ public class Response
         public DateTimeOffset CreatedAt { get; set; }
         public DateTimeOffset? PublishAt { get; set; }
         public required string Status { get; set; }
+        public bool CanDelete { get; set; }
+        public string? DeleteBlockedReason { get; set; }
         public required List<NewsCategoryResponse> Categories { get; set; }
     }
 
@@ -77,6 +84,8 @@ public class Response
         public DateTimeOffset? UpdatedAtUtc { get; set; }
         public DateTimeOffset? PublishAt { get; set; }
         public required string Status { get; set; }
+        public bool CanDelete { get; set; }
+        public string? DeleteBlockedReason { get; set; }
         public required List<NewsCategoryResponse> Categories { get; set; }
         public required List<string> Actions { get; set; }
         public NewsTranslationsResponse? Translations { get; set; }

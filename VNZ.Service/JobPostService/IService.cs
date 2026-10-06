@@ -18,4 +18,6 @@ public interface IService
     Task<Response.UpdateJobPostResponse> UpdateJobPostAsync(
         Guid id,
         Request.UpdateJobPostRequest request);
+
+    Task<Response.DeleteJobPostResponse> DeleteJobPostAsync(Guid id);
 }

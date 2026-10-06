@@ -13,6 +13,8 @@ public interface IService
         Guid id,
         Request.UpdateNewsRequest request);
 
+    Task<Response.DeleteNewsResponse> DeleteNewsAsync(Guid id);
+
     Task<Response.PagedNewsListResponse> GetNewsListAsync(
         Request.GetNewsListRequest request);
 

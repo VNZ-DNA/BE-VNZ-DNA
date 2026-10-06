@@ -33,6 +33,36 @@ public sealed class Service : IService
         _richTextService = richTextService;
     }
 
+    public async Task<Response.DeleteNewsResponse> DeleteNewsAsync(Guid id)
+    {
+        var affectedRows = await _dbContext.NewsArticles
+            .Where(article => article.Id == id &&
+                              !article.IsDelete &&
+                              !(article.Status == NewsStatus.Published &&
+                                article.Published &&
+                                article.PublishAt.HasValue))
+            .ExecuteUpdateAsync(setters => setters
+                .SetProperty(article => article.IsDelete, true));
+
+        if (affectedRows == 1)
+        {
+            return new Response.DeleteNewsResponse { Id = id };
+        }
+
+        var articleExists = await _dbContext.NewsArticles
+            .AsNoTracking()
+            .AnyAsync(article => article.Id == id && !article.IsDelete);
+
+        if (!articleExists)
+        {
+            throw new NewsException("NEWS_ARTICLE_NOT_FOUND", "Không tìm thấy bài viết.", "id");
+        }
+
+        throw new NewsException(
+            "NEWS_DELETE_FORBIDDEN",
+            "Không thể xóa bài viết đang hiển thị trên website.");
+    }
+
     public async Task<Response.UploadContentImageResponse> UploadContentImageAsync(
         Request.UploadContentImageRequest request)
     {
@@ -826,34 +856,46 @@ public sealed class Service : IService
                 "search");
         }
 
-        NewsStatus? statusFilter = null;
-        if (!string.IsNullOrWhiteSpace(request.Status))
+        var statusFilters = new HashSet<NewsStatus>();
+        if (request.Status is not null)
         {
-            var status = request.Status.Trim();
-
-            var statusParsed = Enum.TryParse<NewsStatus>(
-                status,
-                ignoreCase: false,
-                out var parsedStatus);
-
-            if (!statusParsed)
+            foreach (var statusValue in request.Status)
             {
-                throw new NewsException(
-                    "NEWS_QUERY_INVALID",
-                    "Trạng thái lọc không hợp lệ.",
-                    "status");
-            }
+                var status = statusValue?.Trim();
+                var parsedStatus = default(NewsStatus);
+                var statusParsed = !string.IsNullOrWhiteSpace(status) &&
+                    Enum.TryParse<NewsStatus>(status, ignoreCase: false, out parsedStatus);
 
-            var statusDefined = Enum.IsDefined(parsedStatus);
-            if (!statusDefined)
+                if (!statusParsed || !Enum.IsDefined(parsedStatus))
+                {
+                    throw new NewsException(
+                        "NEWS_QUERY_INVALID",
+                        "Trạng thái lọc không hợp lệ.",
+                        "status");
+                }
+
+                statusFilters.Add(parsedStatus);
+            }
+        }
+
+        var categoryIds = new HashSet<Guid>();
+        if (request.CategoryId is not null)
+        {
+            foreach (var categoryIdValue in request.CategoryId)
             {
-                throw new NewsException(
-                    "NEWS_QUERY_INVALID",
-                    "Trạng thái lọc không hợp lệ.",
-                    "status");
-            }
+                var isCategoryIdValid = Guid.TryParse(categoryIdValue, out var categoryId) &&
+                    categoryId != Guid.Empty;
 
-            statusFilter = parsedStatus;
+                if (!isCategoryIdValid)
+                {
+                    throw new NewsException(
+                        "NEWS_QUERY_INVALID",
+                        "Danh mục lọc không hợp lệ.",
+                        "categoryId");
+                }
+
+                categoryIds.Add(categoryId);
+            }
         }
 
         var query = _dbContext.NewsArticles
@@ -867,19 +909,34 @@ public sealed class Service : IService
                 (article.Title ?? string.Empty).ToLower().Contains(searchLower));
         }
 
-        if (statusFilter.HasValue)
+        if (statusFilters.Count > 0)
         {
             query = query.Where(article =>
-                article.Status == statusFilter.Value);
+                statusFilters.Contains(article.Status));
         }
 
-        if (request.CategoryId.HasValue)
+        if (categoryIds.Count > 0)
         {
             query = query.Where(article => article.NewsArticleCategories
-                .Any(link => link.NewsCategoryId == request.CategoryId.Value));
+                .Any(link => categoryIds.Contains(link.NewsCategoryId)));
         }
 
         var totalItems = await query.CountAsync();
+        var totalPages = totalItems == 0
+            ? 0
+            : (int)Math.Ceiling(totalItems / (double)request.PageSize);
+
+        if (request.Page > totalPages)
+        {
+            return new Response.PagedNewsListResponse
+            {
+                Items = new List<Response.NewsListItemResponse>(),
+                Page = request.Page,
+                PageSize = request.PageSize,
+                TotalItems = totalItems,
+                TotalPages = totalPages
+            };
+        }
 
         var articleRows = await query
             .OrderByDescending(article => article.CreatedAt)
@@ -894,7 +951,8 @@ public sealed class Service : IService
                 AuthorName = article.Creator!.FullName,
                 article.CreatedAt,
                 article.PublishAt,
-                article.Status
+                article.Status,
+                article.Published
             })
             .ToListAsync();
 
@@ -937,6 +995,14 @@ public sealed class Service : IService
                 CreatedAt = article.CreatedAt,
                 PublishAt = article.PublishAt,
                 Status = GetDisplayName(article.Status),
+                CanDelete = !(article.Status == NewsStatus.Published &&
+                              article.Published &&
+                              article.PublishAt.HasValue),
+                DeleteBlockedReason = article.Status == NewsStatus.Published &&
+                                      article.Published &&
+                                      article.PublishAt.HasValue
+                    ? "PUBLIC_VISIBLE"
+                    : null,
                 Categories = GetCategories(categoriesByArticleId, article.Id)
             })
             .ToList();
@@ -947,9 +1013,7 @@ public sealed class Service : IService
             Page = request.Page,
             PageSize = request.PageSize,
             TotalItems = totalItems,
-            TotalPages = totalItems == 0
-                ? 0
-                : (int)Math.Ceiling(totalItems / (double)request.PageSize)
+            TotalPages = totalPages
         };
     }
 
@@ -1234,6 +1298,14 @@ public sealed class Service : IService
             UpdatedAtUtc = article.UpdatedAt,
             PublishAt = article.PublishAt,
             Status = GetDisplayName(article.Status),
+            CanDelete = !(article.Status == NewsStatus.Published &&
+                          article.Published &&
+                          article.PublishAt.HasValue),
+            DeleteBlockedReason = article.Status == NewsStatus.Published &&
+                                  article.Published &&
+                                  article.PublishAt.HasValue
+                ? "PUBLIC_VISIBLE"
+                : null,
             Categories = article.NewsArticleCategories
                 .OrderBy(link => link.NewsCategory.Code)
                 .ThenBy(link => link.NewsCategory.Id)

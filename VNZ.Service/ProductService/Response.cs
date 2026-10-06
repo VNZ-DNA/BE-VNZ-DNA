@@ -4,6 +4,11 @@ namespace VNZ.Service.ProductService;
 
 public class Response
 {
+    public class DeleteProductResponse
+    {
+        public Guid Id { get; set; }
+    }
+
     public class PublicProductListResponse
     {
         public List<PublicProductListItemResponse> Items { get; set; } = new();
@@ -50,6 +55,8 @@ public class Response
         public DateTimeOffset CreatedAt { get; set; }
         public DateTimeOffset? UpdatedAt { get; set; }
         public ProductTranslationsResponse? Translations { get; set; }
+        public bool CanDelete { get; set; }
+        public string? DeleteBlockedReason { get; set; }
     }
 
     public class ProductContentResponse
@@ -103,6 +110,8 @@ public class Response
         public int? DisplayOrder { get; set; }
         public DateTimeOffset CreatedAt { get; set; }
         public DateTimeOffset? UpdatedAt { get; set; }
+        public bool CanDelete { get; set; }
+        public string? DeleteBlockedReason { get; set; }
     }
 
     public class ProductOrderItemResponse
