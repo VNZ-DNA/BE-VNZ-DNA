@@ -23,7 +23,7 @@ public class Response
     public class RecentPostResponse
     {
         public Guid Id { get; init; }
-        public required string Title { get; init; }
+        public required string? Title { get; init; }
         public required string AuthorName { get; init; }
         public required string Status { get; init; }
         public DateTimeOffset CreatedAtUtc { get; init; }

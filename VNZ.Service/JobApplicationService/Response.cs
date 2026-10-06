@@ -53,7 +53,7 @@ public static class Response
     public class JobApplicationFilterOptionResponse
     {
         public Guid Id { get; set; }
-        public required string Title { get; set; }
+        public required string? Title { get; set; }
     }
 
     public class JobApplicationListItemResponse

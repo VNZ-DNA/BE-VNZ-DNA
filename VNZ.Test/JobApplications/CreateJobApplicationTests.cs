@@ -3,6 +3,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 using VNZ.Repository;
 using VNZ.Repository.Entity;
 using VNZ.Repository.Entity.Enum;
+using VNZ.Service.Exceptions;
 using VNZ.Service.JobApplicationService;
 using VNZ.Service.MailService;
 using Xunit;
@@ -12,6 +13,30 @@ namespace VNZ.Test.JobApplications;
 
 public class CreateJobApplicationTests
 {
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("   ")]
+    public async Task CreateAsync_RejectsJobPostWithoutTitleBeforeSavingOrSendingEmail(string? title)
+    {
+        await using var dbContext = CreateDbContext();
+        var jobPost = await AddOpenJobPostAsync(dbContext);
+        jobPost.Title = title;
+        await dbContext.SaveChangesAsync();
+        var mailService = new StubMailService();
+        var service = new JobApplicationService(
+            dbContext,
+            mailService,
+            NullLogger<JobApplicationService>.Instance);
+
+        var exception = await Assert.ThrowsAsync<JobApplicationException>(() =>
+            service.CreateAsync(CreateValidRequest(jobPost.Id)));
+
+        Assert.Equal("JOB_APPLICATION_CREATE_FAILED", exception.Code);
+        Assert.Empty(await dbContext.JobApplications.ToListAsync());
+        Assert.Null(mailService.SentMail);
+    }
+
     [Fact]
     public async Task CreateAsync_SavesApplicationThenSendsConfirmationEmail()
     {
@@ -76,6 +101,7 @@ public class CreateJobApplicationTests
         var department = new Department
         {
             Id = Guid.NewGuid(),
+            Code = "ENGINEERING",
             Name = "Engineering",
             CreatedAt = DateTimeOffset.UtcNow
         };

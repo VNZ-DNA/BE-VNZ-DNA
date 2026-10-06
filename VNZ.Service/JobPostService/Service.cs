@@ -137,11 +137,6 @@ public class Service : IService
             }
 
 
-            if (skills.Count == 0)
-            {
-                requiredFields.Add("skills");
-            }
-
             if (string.IsNullOrWhiteSpace(shortDescription))
 
             {
@@ -212,16 +207,6 @@ public class Service : IService
                     "departmentId");
             }
         }
-
-
-        var skills = request.Skills?
-            .Where(skill => !string.IsNullOrWhiteSpace(skill))
-            .Select(skill => skill.Trim())
-            .ToList() ?? new List<string>();
-
-        // Skills are optional by the bilingual contract; null/empty is stored
-        // as an empty array for both Draft and Published records.
-
         var jobPost = new JobPost
         {
             Id = Guid.NewGuid(),
@@ -526,7 +511,7 @@ public class Service : IService
         {
             throw new LocalizationException(
                 "PUBLIC_TRANSLATION_MISSING",
-                "Báº£n dá»‹ch tiáº¿ng Anh cá»§a vá»‹ trÃ­ tuyá»ƒn dá»¥ng khÃ´ng há»£p lá»‡.",
+                "Bản dịch tiếng Anh của vị trí tuyển dụng không hợp lệ.",
                 new[] { "translations.en" });
         }
         catch (Exception exception) when (exception is not OperationCanceledException)
@@ -583,7 +568,7 @@ public class Service : IService
             Description = jobPost.Description,
             Requirements = jobPost.Requirements,
             CanEdit = canEdit,
-            Translations = ToTranslationsResponse(jobPost.Translations)
+            Translations = ToTranslationsResponse(jobPost.Translations),
 
             CanDelete = !(jobPost.Status == JobPostStatus.Open &&
                           jobPost.ExpiredAt.HasValue &&
@@ -683,7 +668,7 @@ public class Service : IService
         {
             throw new LocalizationException(
                 "PUBLIC_TRANSLATION_MISSING",
-                "Báº£n dá»‹ch tiáº¿ng Anh cá»§a vá»‹ trÃ­ tuyá»ƒn dá»¥ng khÃ´ng há»£p lá»‡.",
+                "Bản dịch tiếng Anh của vị trí tuyển dụng không hợp lệ.",
                 new[] { "translations.en" });
         }
         catch (JobPostException)
@@ -829,11 +814,6 @@ public class Service : IService
                 requiredFields.Add("numberOfPositions");
             }
 
-
-            if (skills.Count == 0)
-            {
-                requiredFields.Add("skills");
-            }
 
             if (string.IsNullOrWhiteSpace(shortDescription))
 
@@ -1066,7 +1046,7 @@ public class Service : IService
         {
             throw new LocalizationException(
                 "PUBLIC_TRANSLATION_MISSING",
-                "Báº£n dá»‹ch tiáº¿ng Viá»‡t cá»§a vá»‹ trÃ­ tuyá»ƒn dá»¥ng Ä‘ang bá»‹ thiáº¿u.",
+                "Bản dịch tiếng Việt của vị trí tuyển dụng đang bị thiếu.",
                 missingFields.ToArray());
         }
     }
