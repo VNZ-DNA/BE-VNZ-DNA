@@ -13,11 +13,10 @@ public static class Request
         public string? JobLevel { get; set; }
         public DateTimeOffset? JoinedDate { get; set; }
         public IFormFile? Avatar { get; set; }
-        public string? AvatarUrl { get; set; }
         public string? AnimationUrl { get; set; }
-        public string? AudioUrl { get; set; }
+        public IFormFile? Audio { get; set; }
         public string? Hometown { get; set; }
-        public string? BackgroundUrl { get; set; }
+        public IFormFile? Background { get; set; }
         public string? Hobbies { get; set; }
         public string? PersonalQuote { get; set; }
 
@@ -32,11 +31,10 @@ public static class Request
         public string? JobLevel { get; set; }
         public DateTimeOffset? JoinedDate { get; set; }
         public IFormFile? Avatar { get; set; }
-        public string? AvatarUrl { get; set; }
         public string? AnimationUrl { get; set; }
-        public string? AudioUrl { get; set; }
+        public IFormFile? Audio { get; set; }
         public string? Hometown { get; set; }
-        public string? BackgroundUrl { get; set; }
+        public IFormFile? Background { get; set; }
         public string? Hobbies { get; set; }
         public string? PersonalQuote { get; set; }
         public string? EmploymentStatus { get; set; }

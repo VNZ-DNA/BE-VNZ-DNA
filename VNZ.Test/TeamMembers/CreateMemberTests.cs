@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.Http;
 using Microsoft.EntityFrameworkCore;
 using VNZ.Repository;
 using VNZ.Repository.Entity.Enum;
@@ -38,7 +39,9 @@ public class CreateMemberTests
                 JobLevel = "Junior",
                 JoinedDate = joinedDate,
                 Hometown = "  Da Nang  ",
-                BackgroundUrl = "  https://maps.example/da-nang  "
+                Avatar = CreateFile("avatar.png"),
+                Background = CreateFile("background.png"),
+                Audio = CreateFile("audio.mp3")
             },
             createdBy);
 
@@ -66,9 +69,16 @@ public class CreateMemberTests
         Assert.False(savedMember.IsPublished);
         Assert.Null(savedMember.DisplayOrder);
         Assert.Equal("Da Nang", savedMember.Hometown);
-        Assert.Equal("https://maps.example/da-nang", savedMember.BackgroundUrl);
+        Assert.Equal("https://cdn.example.com/test-image.png", savedMember.AvatarUrl);
+        Assert.Equal("https://cdn.example.com/test-background.png", savedMember.BackgroundUrl);
+        Assert.Equal("https://cdn.example.com/test-audio.mp3", savedMember.AudioUrl);
         Assert.NotEqual("Vnz@123456", savedMember.PasswordHash);
         Assert.True(BCrypt.Net.BCrypt.Verify("Vnz@123456", savedMember.PasswordHash));
         Assert.NotEqual(default, savedMember.CreateAt);
+    }
+
+    private static IFormFile CreateFile(string fileName)
+    {
+        return new FormFile(new MemoryStream([1, 2, 3]), 0, 3, "file", fileName);
     }
 }
