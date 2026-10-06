@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.Http;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Diagnostics;
 using VNZ.Repository;
@@ -62,9 +63,10 @@ public class UpdateMemberTests
                 JobLevel = "Senior",
                 JoinedDate = joinedDate,
                 EmploymentStatus = "Resigned",
-                IsPublished = false,
                 Hometown = "  Ha Noi  ",
-                BackgroundUrl = "  https://maps.example/ha-noi  "
+                Avatar = CreateFile("avatar.png"),
+                Background = CreateFile("background.png"),
+                Audio = CreateFile("audio.mp3")
             });
 
         var savedMember = await dbContext.Users
@@ -87,10 +89,17 @@ public class UpdateMemberTests
         Assert.Equal("b@vnz.vn", savedMember.Email);
         Assert.Equal(EmploymentStatus.Resigned, savedMember.EmploymentStatus);
         Assert.Equal("Ha Noi", savedMember.Hometown);
-        Assert.Equal("https://maps.example/ha-noi", savedMember.BackgroundUrl);
+        Assert.Equal("https://cdn.example.com/test-image.png", savedMember.AvatarUrl);
+        Assert.Equal("https://cdn.example.com/test-background.png", savedMember.BackgroundUrl);
+        Assert.Equal("https://cdn.example.com/test-audio.mp3", savedMember.AudioUrl);
         Assert.False(savedMember.IsPublished);
         Assert.Null(savedMember.DisplayOrder);
         Assert.Equal(originalCreatedAt, savedMember.CreateAt);
         Assert.NotNull(savedMember.UpdatedAt);
+    }
+
+    private static IFormFile CreateFile(string fileName)
+    {
+        return new FormFile(new MemoryStream([1, 2, 3]), 0, 3, "file", fileName);
     }
 }
