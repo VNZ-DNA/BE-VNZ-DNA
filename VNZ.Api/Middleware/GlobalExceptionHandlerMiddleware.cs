@@ -376,6 +376,7 @@ public class GlobalExceptionHandlerMiddleware : IMiddleware
         {
             "MEMBER_VALIDATION_ERROR" or
             "MEMBER_QUERY_INVALID" or
+            "MEMBER_MEDIA_ACTION_INVALID" or
             "RESOURCE_VALIDATION_FAILED" => HttpStatusCode.BadRequest,
             "MEMBER_ORDER_INVALID" => HttpStatusCode.BadRequest,
             "MEMBER_ORDER_CONFLICT" or

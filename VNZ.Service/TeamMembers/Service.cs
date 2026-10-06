@@ -766,18 +766,33 @@ public sealed class Service : IService
                 "email");
         }
 
-        var avatarUrl = await UploadTeamMemberImageAsync(
-            request.Avatar,
-            "TeamMemberAvatar",
-            member.AvatarUrl);
-        var backgroundUrl = await UploadTeamMemberImageAsync(
-            request.Background,
-            "TeamMemberBackground",
-            member.BackgroundUrl);
-        var audioUrl = await UploadTeamMemberAudioAsync(
-            request.Audio,
-            "TeamMemberAudio",
-            member.AudioUrl);
+        var avatarAction = NormalizeTeamMemberMediaAction(request.AvatarAction);
+        var backgroundAction = NormalizeTeamMemberMediaAction(request.BackgroundAction);
+        var audioAction = NormalizeTeamMemberMediaAction(request.AudioAction);
+        ValidateTeamMemberMediaActions(avatarAction, backgroundAction, audioAction, request);
+
+        var removeAvatar = string.Equals(avatarAction, "remove", StringComparison.Ordinal);
+        var removeBackground = string.Equals(backgroundAction, "remove", StringComparison.Ordinal);
+        var removeAudio = string.Equals(audioAction, "remove", StringComparison.Ordinal);
+
+        var avatarUrl = removeAvatar
+            ? null
+            : await UploadTeamMemberImageAsync(
+                request.Avatar,
+                "TeamMemberAvatar",
+                member.AvatarUrl);
+        var backgroundUrl = removeBackground
+            ? null
+            : await UploadTeamMemberImageAsync(
+                request.Background,
+                "TeamMemberBackground",
+                member.BackgroundUrl);
+        var audioUrl = removeAudio
+            ? null
+            : await UploadTeamMemberAudioAsync(
+                request.Audio,
+                "TeamMemberAudio",
+                member.AudioUrl);
 
         member.FullName = fullName;
         member.DisplayName = displayName;
@@ -823,13 +838,64 @@ public sealed class Service : IService
             request.JobLevel is not null ||
             request.JoinedDate.HasValue ||
             request.Avatar is not null ||
+            request.AvatarAction is not null ||
             request.AnimationUrl is not null ||
             request.Audio is not null ||
+            request.AudioAction is not null ||
             request.Hometown is not null ||
             request.Background is not null ||
+            request.BackgroundAction is not null ||
             request.Hobbies is not null ||
             request.PersonalQuote is not null ||
             request.EmploymentStatus is not null;
+    }
+
+    private static string? NormalizeTeamMemberMediaAction(string? action)
+    {
+        return string.IsNullOrWhiteSpace(action)
+            ? null
+            : action.Trim();
+    }
+
+    private static void ValidateTeamMemberMediaActions(
+        string? avatarAction,
+        string? backgroundAction,
+        string? audioAction,
+        Request.UpdateTeamMemberRequest request)
+    {
+        ValidateTeamMemberMediaAction(avatarAction, request.Avatar, "avatarAction", "avatar", "Avatar");
+        ValidateTeamMemberMediaAction(
+            backgroundAction,
+            request.Background,
+            "backgroundAction",
+            "background",
+            "Background");
+        ValidateTeamMemberMediaAction(audioAction, request.Audio, "audioAction", "audio", "Audio");
+    }
+
+    private static void ValidateTeamMemberMediaAction(
+        string? action,
+        IFormFile? file,
+        string actionField,
+        string fileField,
+        string mediaName)
+    {
+        if (action is not null && !string.Equals(action, "remove", StringComparison.Ordinal))
+        {
+            throw new TeamMemberException(
+                "MEMBER_MEDIA_ACTION_INVALID",
+                $"Thao tác {mediaName} của thành viên không hợp lệ.",
+                actionField);
+        }
+
+        if (string.Equals(action, "remove", StringComparison.Ordinal) && file is not null)
+        {
+            throw new TeamMemberException(
+                "MEMBER_MEDIA_ACTION_INVALID",
+                $"Không thể vừa gỡ {mediaName} vừa gửi file mới.",
+                actionField,
+                fileField);
+        }
     }
 
     private async Task<string?> UploadTeamMemberImageAsync(

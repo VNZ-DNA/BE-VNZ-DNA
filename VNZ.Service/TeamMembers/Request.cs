@@ -31,10 +31,13 @@ public static class Request
         public string? JobLevel { get; set; }
         public DateTimeOffset? JoinedDate { get; set; }
         public IFormFile? Avatar { get; set; }
+        public string? AvatarAction { get; set; }
         public string? AnimationUrl { get; set; }
         public IFormFile? Audio { get; set; }
+        public string? AudioAction { get; set; }
         public string? Hometown { get; set; }
         public IFormFile? Background { get; set; }
+        public string? BackgroundAction { get; set; }
         public string? Hobbies { get; set; }
         public string? PersonalQuote { get; set; }
         public string? EmploymentStatus { get; set; }
