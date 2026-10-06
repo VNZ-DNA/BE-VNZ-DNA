@@ -2,6 +2,7 @@ using System.ComponentModel.DataAnnotations;
 using System.Data;
 using System.Globalization;
 using System.Text;
+using Microsoft.AspNetCore.Http;
 using Microsoft.EntityFrameworkCore;
 using Npgsql;
 using VNZ.Repository;
@@ -575,19 +576,9 @@ public sealed class Service : IService
                 "email");
         }
 
-        var avatarUrl = NormalizeOptional(request.AvatarUrl);
-
-        if (request.Avatar is not null)
-        {
-            var uploadResult = await _mediaService.UploadImageAsync(
-                new MediaService.Request.UploadImageRequest
-                {
-                    File = request.Avatar,
-                    Purpose = "TeamMemberAvatar"
-                });
-
-            avatarUrl = uploadResult.Url;
-        }
+        var avatarUrl = await UploadTeamMemberImageAsync(request.Avatar, "TeamMemberAvatar");
+        var backgroundUrl = await UploadTeamMemberImageAsync(request.Background, "TeamMemberBackground");
+        var audioUrl = await UploadTeamMemberAudioAsync(request.Audio, "TeamMemberAudio");
 
         var now = DateTimeOffset.UtcNow;
         var member = new User
@@ -602,9 +593,9 @@ public sealed class Service : IService
             JobLevel = parsedJobLevel,
             AvatarUrl = avatarUrl,
             AnimationUrl = NormalizeOptional(request.AnimationUrl),
-            AudioUrl = NormalizeOptional(request.AudioUrl),
+            AudioUrl = audioUrl,
             Hometown = NormalizeOptional(request.Hometown),
-            BackgroundUrl = NormalizeOptional(request.BackgroundUrl),
+            BackgroundUrl = backgroundUrl,
             Hobbies = NormalizeOptional(request.Hobbies),
             PersonalQuote = NormalizeOptional(request.PersonalQuote),
             JoinedDate = request.JoinedDate,
@@ -775,23 +766,18 @@ public sealed class Service : IService
                 "email");
         }
 
-        var avatarUrl = member.AvatarUrl;
-
-        if (request.Avatar is not null)
-        {
-            var uploadResult = await _mediaService.UploadImageAsync(
-                new MediaService.Request.UploadImageRequest
-                {
-                    File = request.Avatar,
-                    Purpose = "TeamMemberAvatar"
-                });
-
-            avatarUrl = uploadResult.Url;
-        }
-        else if (request.AvatarUrl is not null)
-        {
-            avatarUrl = NormalizeOptional(request.AvatarUrl);
-        }
+        var avatarUrl = await UploadTeamMemberImageAsync(
+            request.Avatar,
+            "TeamMemberAvatar",
+            member.AvatarUrl);
+        var backgroundUrl = await UploadTeamMemberImageAsync(
+            request.Background,
+            "TeamMemberBackground",
+            member.BackgroundUrl);
+        var audioUrl = await UploadTeamMemberAudioAsync(
+            request.Audio,
+            "TeamMemberAudio",
+            member.AudioUrl);
 
         member.FullName = fullName;
         member.DisplayName = displayName;
@@ -801,9 +787,9 @@ public sealed class Service : IService
         member.JoinedDate = request.JoinedDate;
         member.AvatarUrl = avatarUrl;
         member.AnimationUrl = NormalizeOptional(request.AnimationUrl);
-        member.AudioUrl = NormalizeOptional(request.AudioUrl);
+        member.AudioUrl = audioUrl;
         member.Hometown = NormalizeOptional(request.Hometown);
-        member.BackgroundUrl = NormalizeOptional(request.BackgroundUrl);
+        member.BackgroundUrl = backgroundUrl;
         member.Hobbies = NormalizeOptional(request.Hobbies);
         member.PersonalQuote = NormalizeOptional(request.PersonalQuote);
         member.EmploymentStatus = parsedEmploymentStatus;
@@ -837,14 +823,53 @@ public sealed class Service : IService
             request.JobLevel is not null ||
             request.JoinedDate.HasValue ||
             request.Avatar is not null ||
-            request.AvatarUrl is not null ||
             request.AnimationUrl is not null ||
-            request.AudioUrl is not null ||
+            request.Audio is not null ||
             request.Hometown is not null ||
-            request.BackgroundUrl is not null ||
+            request.Background is not null ||
             request.Hobbies is not null ||
             request.PersonalQuote is not null ||
             request.EmploymentStatus is not null;
+    }
+
+    private async Task<string?> UploadTeamMemberImageAsync(
+        IFormFile? file,
+        string purpose,
+        string? currentUrl = null)
+    {
+        if (file is null)
+        {
+            return currentUrl;
+        }
+
+        var uploadResult = await _mediaService.UploadImageAsync(
+            new MediaService.Request.UploadImageRequest
+            {
+                File = file,
+                Purpose = purpose
+            });
+
+        return uploadResult.Url;
+    }
+
+    private async Task<string?> UploadTeamMemberAudioAsync(
+        IFormFile? file,
+        string purpose,
+        string? currentUrl = null)
+    {
+        if (file is null)
+        {
+            return currentUrl;
+        }
+
+        var uploadResult = await _mediaService.UploadAudioAsync(
+            new MediaService.Request.UploadAudioRequest
+            {
+                File = file,
+                Purpose = purpose
+            });
+
+        return uploadResult.Url;
     }
 
     private static string NormalizeRequired(string? value, string field, string message)

@@ -9,4 +9,10 @@ public class Request
         public IFormFile? File { get; set; }
         public string? Purpose { get; set; }
     }
+
+    public class UploadAudioRequest
+    {
+        public IFormFile? File { get; set; }
+        public string? Purpose { get; set; }
+    }
 }
