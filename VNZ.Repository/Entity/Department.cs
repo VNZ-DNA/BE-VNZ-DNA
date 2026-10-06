@@ -4,6 +4,7 @@ using VNZ.Repository.Abstraction;
 
 public class Department : BaseEntity
 {
+    public string Code { get; set; } = null!;
     public string Name { get; set; } = null!;
     public DateTimeOffset CreatedAt { get; set; }
 

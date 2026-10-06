@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using VNZ.Service.Models;
+using VNZ.Service.Localization;
 using NewsService = VNZ.Service.NewsService;
 
 namespace VNZ.Api.Controllers;
@@ -21,6 +22,7 @@ public sealed class PublicNewsController : ControllerBase
     public async Task<IActionResult> GetPublicNewsList(
         [FromQuery] NewsService.Request.GetPublicNewsListRequest request)
     {
+        request.Lang = LocaleResolver.Resolve(Request.Query["lang"].ToArray());
         var data = await _newsService.GetPublicNewsListAsync(request);
 
         return Ok(ResponseBuilder.SuccessResponse(
@@ -32,7 +34,8 @@ public sealed class PublicNewsController : ControllerBase
     [HttpGet("{id}")]
     public async Task<IActionResult> GetPublicNewsDetail(string id)
     {
-        var data = await _newsService.GetPublicNewsDetailAsync(id);
+        var lang = LocaleResolver.Resolve(Request.Query["lang"].ToArray());
+        var data = await _newsService.GetPublicNewsDetailAsync(id, lang);
 
         return Ok(ResponseBuilder.SuccessResponse(
             data,
