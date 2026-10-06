@@ -21,7 +21,7 @@ public class Service : IService
             .Select(department => new Response.DepartmentResponse
             {
                 Id = department.Id,
-                Name = department.Name
+                Name = department.Code
             })
             .ToListAsync();
     }

@@ -3,6 +3,7 @@ using System;
 using System.Collections.Generic;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 using VNZ.Repository;
@@ -13,9 +14,11 @@ using VNZ.Repository.Entity.Json;
 namespace VNZ.Repository.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    partial class AppDbContextModelSnapshot : ModelSnapshot
+    [Migration("20261001063216_AddManualBilingualContent")]
+    partial class AddManualBilingualContent
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -69,11 +72,6 @@ namespace VNZ.Repository.Migrations
                         .IsRequired()
                         .HasColumnType("text");
 
-                    b.Property<bool>("IsDelete")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("boolean")
-                        .HasDefaultValue(false);
-
                     b.Property<bool>("IsRead")
                         .HasColumnType("boolean");
 
@@ -108,11 +106,6 @@ namespace VNZ.Repository.Migrations
 
                     b.Property<DateTimeOffset>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
-
-                    b.Property<bool>("IsDelete")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("boolean")
-                        .HasDefaultValue(false);
 
                     b.Property<string>("Name")
                         .IsRequired()
@@ -171,11 +164,6 @@ namespace VNZ.Repository.Migrations
 
                     b.Property<DateTimeOffset?>("InterViewAt")
                         .HasColumnType("timestamp with time zone");
-
-                    b.Property<bool>("IsDelete")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("boolean")
-                        .HasDefaultValue(false);
 
                     b.Property<Guid>("JobPostId")
                         .HasColumnType("uuid");
@@ -247,11 +235,6 @@ namespace VNZ.Repository.Migrations
                     b.Property<DateTimeOffset?>("ExpiredAt")
                         .HasColumnType("timestamp with time zone");
 
-                    b.Property<bool>("IsDelete")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("boolean")
-                        .HasDefaultValue(false);
-
                     b.Property<string>("JobLevel")
                         .HasColumnType("text");
 
@@ -312,11 +295,6 @@ namespace VNZ.Repository.Migrations
                     b.Property<string>("ImageUrl")
                         .HasColumnType("text");
 
-                    b.Property<bool>("IsDelete")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("boolean")
-                        .HasDefaultValue(false);
-
                     b.Property<DateTimeOffset?>("PublishAt")
                         .HasColumnType("timestamp with time zone");
 
@@ -367,11 +345,6 @@ namespace VNZ.Repository.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uuid");
 
-                    b.Property<bool>("IsDelete")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("boolean")
-                        .HasDefaultValue(false);
-
                     b.Property<Guid>("NewsArticleId")
                         .HasColumnType("uuid");
 
@@ -401,11 +374,6 @@ namespace VNZ.Repository.Migrations
 
                     b.Property<DateTimeOffset>("CreateAt")
                         .HasColumnType("timestamp with time zone");
-
-                    b.Property<bool>("IsDelete")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("boolean")
-                        .HasDefaultValue(false);
 
                     b.Property<string>("Name")
                         .IsRequired()
@@ -440,11 +408,6 @@ namespace VNZ.Repository.Migrations
 
                     b.Property<int?>("DisplayOrder")
                         .HasColumnType("integer");
-
-                    b.Property<bool>("IsDelete")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("boolean")
-                        .HasDefaultValue(false);
 
                     b.Property<bool>("IsPublished")
                         .HasColumnType("boolean");
@@ -491,11 +454,6 @@ namespace VNZ.Repository.Migrations
                     b.Property<ProductImages>("Images")
                         .HasColumnType("jsonb");
 
-                    b.Property<bool>("IsDelete")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("boolean")
-                        .HasDefaultValue(false);
-
                     b.Property<bool>("IsPublished")
                         .HasColumnType("boolean");
 
@@ -539,11 +497,6 @@ namespace VNZ.Repository.Migrations
 
                     b.Property<DateTimeOffset>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
-
-                    b.Property<bool>("IsDelete")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("boolean")
-                        .HasDefaultValue(false);
 
                     b.Property<string>("Type")
                         .IsRequired()
@@ -615,11 +568,6 @@ namespace VNZ.Repository.Migrations
                     b.Property<bool>("IsActive")
                         .HasColumnType("boolean");
 
-                    b.Property<bool>("IsDelete")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("boolean")
-                        .HasDefaultValue(false);
-
                     b.Property<bool>("IsPublished")
                         .HasColumnType("boolean");
 
@@ -654,9 +602,7 @@ namespace VNZ.Repository.Migrations
                     b.HasIndex("CreatedBy");
 
                     b.HasIndex("Email")
-                        .IsUnique()
-                        .HasDatabaseName("IX_User_Email_Active")
-                        .HasFilter("\"IsDelete\" = FALSE");
+                        .IsUnique();
 
                     b.HasIndex("RoleId");
 
@@ -674,11 +620,6 @@ namespace VNZ.Repository.Migrations
 
                     b.Property<DateTimeOffset>("ExpiresAt")
                         .HasColumnType("timestamp with time zone");
-
-                    b.Property<bool>("IsDelete")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("boolean")
-                        .HasDefaultValue(false);
 
                     b.Property<bool>("IsRevoked")
                         .HasColumnType("boolean");

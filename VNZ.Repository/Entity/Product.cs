@@ -17,6 +17,7 @@ public class Product : BaseEntity
     public DateTimeOffset CreatedAt { get; set; }
     public DateTimeOffset? UpdatedAt { get; set; }
     public ProductContent? Content { get; set; }
+    public ProductTranslations? Translations { get; set; }
     public ProductImages? Images { get; set; }
 
     public User? Creator { get; set; }
