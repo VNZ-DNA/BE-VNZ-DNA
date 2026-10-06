@@ -152,7 +152,7 @@ public sealed class Service : IService
         {
             throw new ProductException(
                 "PRODUCT_NOT_FOUND",
-                "KhÃ´ng tÃ¬m tháº¥y Product.");
+                "Không tìm thấy Product.");
         }
 
         EnsureExpectedUpdatedAt(request.ExpectedUpdatedAt, current.UpdatedAt);
@@ -165,7 +165,7 @@ public sealed class Service : IService
             {
                 throw new ProductException(
                     "PRODUCT_PUBLISHED_CANNOT_EDIT",
-                    "Product Ä‘ang Ä‘Æ°á»£c Ä‘Äƒng. HÃ£y gá»¡ Ä‘Äƒng trÆ°á»›c khi chá»‰nh sá»­a.",
+                    "Product đang được đăng. Hãy gỡ đăng trước khi chỉnh sửa.",
                     "isPublished");
             }
 
@@ -189,7 +189,7 @@ public sealed class Service : IService
         {
             throw new ProductException(
                 "PRODUCT_IN_PROGRESS_CANNOT_PUBLISH",
-                "Chá»‰ sáº£n pháº©m Ä‘Ã£ hoÃ n thÃ nh má»›i cÃ³ thá»ƒ Ä‘Äƒng.",
+                "Chỉ sản phẩm đã hoàn thành mới có thể đăng.",
                 "status",
                 "isPublished");
         }
@@ -239,7 +239,7 @@ public sealed class Service : IService
 
             if (product is null)
             {
-                throw new ProductException("PRODUCT_NOT_FOUND", "KhÃ´ng tÃ¬m tháº¥y Product.");
+                throw new ProductException("PRODUCT_NOT_FOUND", "Không tìm thấy Product.");
             }
 
             EnsureExpectedUpdatedAt(request.ExpectedUpdatedAt, product.UpdatedAt);
@@ -248,7 +248,7 @@ public sealed class Service : IService
             {
                 throw new ProductException(
                     "PRODUCT_PUBLISHED_CANNOT_EDIT",
-                    "Product Ä‘ang Ä‘Æ°á»£c Ä‘Äƒng. HÃ£y gá»¡ Ä‘Äƒng trÆ°á»›c khi chá»‰nh sá»­a.",
+                    "Product đang được đăng. Hãy gỡ đăng trước khi chỉnh sửa.",
                     "isPublished");
             }
 
@@ -275,7 +275,7 @@ public sealed class Service : IService
                     .Where(item => item.IsPublished)
                     .MaxAsync(item => (int?)item.DisplayOrder) ?? 0) + 1
                 : null;
-            product.Name = request.Name.Trim();
+            product.Name = request.Name!.Trim();
             product.LogoUrl = finalLogoUrl;
             product.WordmarkUrl = finalWordmarkUrl;
             product.ProductUrl = request.ProductUrl;
@@ -295,7 +295,7 @@ public sealed class Service : IService
             await CleanupUploadedImagesAsync(uploadedImages);
             throw new ProductException(
                 "CONTENT_CONFLICT",
-                "Product Ä‘Ã£ Ä‘Æ°á»£c cáº­p nháº­t bá»Ÿi má»™t yÃªu cáº§u khÃ¡c.",
+                "Product đã được cập nhật bởi một yêu cầu khác.",
                 "expectedUpdatedAt");
         }
         catch (Exception exception) when (
@@ -304,7 +304,7 @@ public sealed class Service : IService
             await CleanupUploadedImagesAsync(uploadedImages);
             throw new ProductException(
                 "CONTENT_CONFLICT",
-                "Product Ä‘Ã£ Ä‘Æ°á»£c cáº­p nháº­t bá»Ÿi má»™t yÃªu cáº§u khÃ¡c.",
+                "Product đã được cập nhật bởi một yêu cầu khác.",
                 "expectedUpdatedAt");
         }
         catch (Exception exception) when (exception is DbUpdateException or PostgresException)
@@ -312,7 +312,7 @@ public sealed class Service : IService
             await CleanupUploadedImagesAsync(uploadedImages);
             throw new ProductException(
                 "PRODUCT_OPERATION_FAILED",
-                "KhÃ´ng thá»ƒ cáº­p nháº­t Product.",
+                "Không thể cập nhật Product.",
                 exception);
         }
         catch
@@ -371,7 +371,7 @@ public sealed class Service : IService
         ValidateProductImageActions(logoAction, wordmarkAction, request);
 
         var content = SanitizeProductContent(request.Content);
-        ValidateUpdateRequest(request, content);
+        ValidateUpdateRequest(request, content, false);
 
         var updatedAt = VNZ.Service.Utils.DateTimeOffsetPrecision.UtcNowMicrosecond();
         var currentLogoUrl = NormalizeProductImageUrl(product.LogoUrl);
@@ -518,15 +518,6 @@ public sealed class Service : IService
                 continue;
             }
 
-            product.Name = request.Name.Trim();
-            product.LogoUrl = logoUrl;
-            product.WordmarkUrl = wordmarkUrl;
-            product.ProductUrl = request.ProductUrl;
-            product.Content = ToProductContent(content);
-            product.Translations = translations;
-            product.Status = request.Status!.Value;
-            product.IsPublished = isPublished;
-
             product.DisplayOrder = displayOrder;
             product.UpdatedAt = updatedAt;
         }
@@ -641,7 +632,7 @@ public sealed class Service : IService
         {
             throw new LocalizationException(
                 "PUBLIC_TRANSLATION_MISSING",
-                "Báº£n dá»‹ch tiáº¿ng Anh cá»§a Product khÃ´ng há»£p lá»‡.",
+                "Bản dịch tiếng Anh của Product không hợp lệ.",
                 "translations.en");
         }
 
@@ -787,7 +778,7 @@ public sealed class Service : IService
 
             if (product is null)
             {
-                throw new ProductException("PRODUCT_NOT_FOUND", "KhÃ´ng tÃ¬m tháº¥y Product.");
+                throw new ProductException("PRODUCT_NOT_FOUND", "Không tìm thấy Product.");
             }
 
             EnsureExpectedUpdatedAt(expectedUpdatedAt, product.UpdatedAt);
@@ -796,7 +787,7 @@ public sealed class Service : IService
             {
                 throw new ProductException(
                     "CONTENT_CONFLICT",
-                    "Product Ä‘Ã£ Ä‘Æ°á»£c thay Ä‘á»•i bá»Ÿi má»™t yÃªu cáº§u khÃ¡c.",
+                    "Product đã được thay đổi bởi một yêu cầu khác.",
                     "expectedUpdatedAt");
             }
 
@@ -834,7 +825,7 @@ public sealed class Service : IService
         {
             throw new ProductException(
                 "CONTENT_CONFLICT",
-                "Product Ä‘Ã£ Ä‘Æ°á»£c cáº­p nháº­t bá»Ÿi má»™t yÃªu cáº§u khÃ¡c.",
+                "Product đã được cập nhật bởi một yêu cầu khác.",
                 "expectedUpdatedAt");
         }
         catch (Exception exception) when (
@@ -842,14 +833,14 @@ public sealed class Service : IService
         {
             throw new ProductException(
                 "CONTENT_CONFLICT",
-                "Product Ä‘Ã£ Ä‘Æ°á»£c cáº­p nháº­t bá»Ÿi má»™t yÃªu cáº§u khÃ¡c.",
+                "Product đã được cập nhật bởi một yêu cầu khác.",
                 "expectedUpdatedAt");
         }
         catch (Exception exception) when (exception is DbUpdateException or PostgresException)
         {
             throw new ProductException(
                 "PRODUCT_OPERATION_FAILED",
-                "KhÃ´ng thá»ƒ gá»¡ Ä‘Äƒng Product.",
+                "Không thể gỡ đăng Product.",
                 exception);
         }
     }

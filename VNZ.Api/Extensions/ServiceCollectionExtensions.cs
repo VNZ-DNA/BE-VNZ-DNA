@@ -76,7 +76,7 @@ public static class ServiceCollectionExtensions
                             Code = errorCode,
                             Fields = fields
                         },
-                        message: "Dá»¯ liá»‡u gá»­i lÃªn khÃ´ng há»£p lá»‡.",
+                        message: "Dữ liệu gửi lên không hợp lệ.",
                         traceId: context.HttpContext.TraceIdentifier));
                 };
             });

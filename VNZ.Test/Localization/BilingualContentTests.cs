@@ -75,6 +75,35 @@ public sealed class BilingualContentTests
     }
 
     [Fact]
+    public async Task CreateJobPostDraft_AllowsMissingVietnameseTitle()
+    {
+        var options = CreateOptions();
+        await using var dbContext = new BilingualTestDbContext(options);
+        var admin = CreateAdmin();
+        dbContext.Users.Add(admin);
+        await dbContext.SaveChangesAsync();
+
+        var response = await new JobPostService(dbContext).CreateJobPostAsync(
+            new VNZ.Service.JobPostService.Request.CreateJobPostRequest
+            {
+                Action = JobPostAction.SavedDraft,
+                Translations = new VNZ.Service.JobPostService.Request.JobPostTranslationsRequest
+                {
+                    En = new VNZ.Service.JobPostService.Request.JobPostEnglishTranslationRequest
+                    {
+                        Title = "English draft"
+                    }
+                }
+            },
+            admin.Id);
+
+        var saved = await dbContext.JobPosts.AsNoTracking().SingleAsync(post => post.Id == response.Id);
+        Assert.Null(saved.Title);
+        Assert.Equal(JobPostStatus.Draft, saved.Status);
+        Assert.Equal("English draft", saved.Translations!.En!.Title);
+    }
+
+    [Fact]
     public async Task CreateNewsPublishWithoutEnglish_ReturnsBilingualRequiredAndDoesNotWrite()
     {
         var options = CreateOptions();

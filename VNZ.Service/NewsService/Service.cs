@@ -380,14 +380,14 @@ public sealed class Service : IService
             {
                 throw new NewsException(
                     "CONTENT_CONFLICT",
-                    "BÃ i viáº¿t Ä‘Ã£ Ä‘Æ°á»£c cáº­p nháº­t bá»Ÿi má»™t yÃªu cáº§u khÃ¡c.",
+                    "Bài viết đã được cập nhật bởi một yêu cầu khác.",
                     "expectedUpdatedAt");
             }
             catch (DbUpdateException exception)
             {
                 throw new NewsException(
                     "NEWS_ARTICLE_UPDATE_FAILED",
-                    "KhÃ´ng thá»ƒ cáº­p nháº­t bÃ i viáº¿t.",
+                    "Không thể cập nhật bài viết.",
                     exception);
             }
 
@@ -1081,7 +1081,7 @@ public sealed class Service : IService
         {
             throw new LocalizationException(
                 "PUBLIC_TRANSLATION_MISSING",
-                "Báº£n dá»‹ch tiáº¿ng Anh cá»§a News khÃ´ng há»£p lá»‡.",
+                "Bản dịch tiếng Anh của News không hợp lệ.",
                 "translations.en");
         }
 
@@ -1197,7 +1197,7 @@ public sealed class Service : IService
         {
             throw new LocalizationException(
                 "PUBLIC_TRANSLATION_MISSING",
-                "Báº£n dá»‹ch tiáº¿ng Anh cá»§a News khÃ´ng há»£p lá»‡.",
+                "Bản dịch tiếng Anh của News không hợp lệ.",
                 "translations.en");
         }
 

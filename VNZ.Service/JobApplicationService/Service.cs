@@ -164,7 +164,10 @@ public sealed class Service : IService
                 "jobPostId");
         }
 
-        if (!jobPost.DepartmentId.HasValue || jobPost.Department is null ||
+        var jobPostTitle = jobPost.Title;
+
+        if (string.IsNullOrWhiteSpace(jobPostTitle) ||
+            !jobPost.DepartmentId.HasValue || jobPost.Department is null ||
             !jobPost.EmploymentType.HasValue || !jobPost.JobLevel.HasValue)
         {
             throw new JobApplicationException(
@@ -189,7 +192,7 @@ public sealed class Service : IService
             AvailableStartDate = availableStartDate,
             ReferralSource = referralSource,
             ConsentToDataProcessing = true,
-            JobPostSnapshot = CreateJobPostSnapshot(jobPost),
+            JobPostSnapshot = CreateJobPostSnapshot(jobPost, jobPostTitle),
             Status = JobApplicationStatus.Pending,
             CreatedAt = now,
             UpdateAt = now
@@ -241,7 +244,7 @@ public sealed class Service : IService
         {
             Id = application.Id,
             JobPostId = application.JobPostId,
-            JobPostTitle = jobPost.Title,
+            JobPostTitle = jobPostTitle,
             FullName = application.FullName,
             Email = application.Email,
             Phone = application.Phone!,
@@ -852,13 +855,13 @@ public sealed class Service : IService
         };
     }
 
-    private static JobPostSnapshot CreateJobPostSnapshot(JobPost jobPost)
+    private static JobPostSnapshot CreateJobPostSnapshot(JobPost jobPost, string title)
     {
         return new JobPostSnapshot
         {
             DepartmentId = jobPost.DepartmentId!.Value,
             DepartmentName = jobPost.Department!.Name,
-            Title = jobPost.Title,
+            Title = title,
             EmploymentType = jobPost.EmploymentType!.Value,
             JobLevel = jobPost.JobLevel!.Value,
             NumberOfPositions = jobPost.NumberOfPositions,

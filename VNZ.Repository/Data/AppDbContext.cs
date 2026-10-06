@@ -85,7 +85,7 @@ public class AppDbContext : DbContext
 
             entity.Property(x => x.IsDelete).HasDefaultValue(false);
             entity.HasQueryFilter(x => !x.IsDelete);
-            entity.Property(x => x.Title).HasMaxLength(300).IsRequired();
+            entity.Property(x => x.Title).HasMaxLength(300);
 
             entity.Property(x => x.ReadingTimeMinutes).HasDefaultValue(1);
             entity.Property(x => x.Status).HasConversion<string>().IsRequired();
@@ -150,7 +150,7 @@ public class AppDbContext : DbContext
                 .HasColumnType("jsonb");
             entity.Property(x => x.IsDelete).HasDefaultValue(false);
             entity.HasQueryFilter(x => !x.IsDelete);
-            entity.Property(x => x.Title).HasMaxLength(300).IsRequired();
+            entity.Property(x => x.Title).HasMaxLength(300);
             entity.Property(x => x.Status).HasConversion<string>().IsRequired();
             entity.Property(x => x.EmploymentType).HasConversion<string>();
             entity.Property(x => x.JobLevel).HasConversion<string>();

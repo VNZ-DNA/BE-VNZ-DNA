@@ -22,8 +22,20 @@ public class GetAdminJobPostFilterTests
 
         await using var dbContext = new JobPostFilterTestDbContext(options);
 
-        var departmentA = new Department { Id = Guid.NewGuid(), Name = "Kỹ thuật", CreatedAt = DateTimeOffset.UtcNow };
-        var departmentB = new Department { Id = Guid.NewGuid(), Name = "Sản phẩm", CreatedAt = DateTimeOffset.UtcNow };
+        var departmentA = new Department
+        {
+            Id = Guid.NewGuid(),
+            Code = "ENGINEERING",
+            Name = "Kỹ thuật",
+            CreatedAt = DateTimeOffset.UtcNow
+        };
+        var departmentB = new Department
+        {
+            Id = Guid.NewGuid(),
+            Code = "PRODUCT",
+            Name = "Sản phẩm",
+            CreatedAt = DateTimeOffset.UtcNow
+        };
 
         var expectedOpen = CreateJobPost("Backend A", JobPostStatus.Open, departmentA.Id, JobLevel.Junior, 3);
         var expectedClosed = CreateJobPost("Backend B", JobPostStatus.Closed, departmentB.Id, JobLevel.Senior, 2);
