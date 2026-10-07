@@ -14,6 +14,41 @@ namespace VNZ.Test.JobPosts;
 public class GetAdminJobPostFilterTests
 {
     [Theory]
+    [InlineData(JobPostStatus.Draft, "Bản nháp")]
+    [InlineData(JobPostStatus.Open, "Đang tuyển")]
+    [InlineData(JobPostStatus.Closed, "Đã đóng")]
+    [InlineData(JobPostStatus.Expired, "Đã hết hạn")]
+    public async Task GetJobPostListAsync_ReturnsStatusDisplayNameAndAcceptsEnumFilter(
+        JobPostStatus status,
+        string expectedStatus)
+    {
+        var options = new DbContextOptionsBuilder<AppDbContext>()
+            .UseInMemoryDatabase(Guid.NewGuid().ToString())
+            .Options;
+
+        await using var dbContext = new JobPostFilterTestDbContext(options);
+        var jobPost = CreateJobPost("Backend role", status, Guid.NewGuid(), JobLevel.Junior, 1);
+        jobPost.EmploymentType = EmploymentType.FullTime;
+        jobPost.ExpiredAt = CreateVietnamExpiry(new DateOnly(2030, 12, 31));
+        dbContext.JobPosts.Add(jobPost);
+        await dbContext.SaveChangesAsync();
+
+        var service = new JobPostService(dbContext);
+        var list = await service.GetJobPostListAsync(new Request.GetJobPostListRequest
+        {
+            Status = [status.ToString()],
+            JobLevel = [nameof(JobLevel.Junior)]
+        });
+        var detail = await service.GetJobPostDetailAsync(jobPost.Id);
+
+        Assert.Equal(expectedStatus, Assert.Single(list.Items).Status);
+        Assert.Equal(expectedStatus, detail.Status);
+        Assert.Equal("Toàn thời gian", detail.EmploymentType);
+        Assert.Equal("Junior", detail.JobLevel);
+        Assert.Equal(status, (await dbContext.JobPosts.AsNoTracking().SingleAsync()).Status);
+    }
+
+    [Theory]
     [InlineData("asc")]
     [InlineData("desc")]
     public async Task GetJobPostListAsync_AppliesMultiSelectFiltersBeforeDateSortingAndPagination(string direction)

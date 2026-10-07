@@ -16,6 +16,38 @@ namespace VNZ.Test.News;
 public class GetAdminNewsDateFilterTests
 {
     [Theory]
+    [InlineData(NewsStatus.Draft, "Bản nháp")]
+    [InlineData(NewsStatus.Published, "Đã đăng")]
+    [InlineData(NewsStatus.Closed, "Đã đóng")]
+    public async Task GetNewsListAsync_ReturnsStatusDisplayNameAndAcceptsEnumFilter(
+        NewsStatus status,
+        string expectedStatus)
+    {
+        var options = new DbContextOptionsBuilder<AppDbContext>()
+            .UseInMemoryDatabase(Guid.NewGuid().ToString())
+            .Options;
+
+        await using var dbContext = new NewsDateFilterTestDbContext(options);
+        var creator = CreateCreator();
+        var article = CreateArticle(creator, "Status label article", new DateOnly(2026, 10, 1), null);
+        article.Status = status;
+        dbContext.Users.Add(creator);
+        dbContext.NewsArticles.Add(article);
+        await dbContext.SaveChangesAsync();
+
+        var service = CreateService(dbContext);
+        var listResponse = await service.GetNewsListAsync(new NewsRequest.GetNewsListRequest
+        {
+            Status = [status.ToString()]
+        });
+        var detailResponse = await service.GetNewsDetailAsync(article.Id);
+
+        Assert.Equal(expectedStatus, Assert.Single(listResponse.Items).Status);
+        Assert.Equal(expectedStatus, detailResponse.Status);
+        Assert.Equal(status, (await dbContext.NewsArticles.AsNoTracking().SingleAsync()).Status);
+    }
+
+    [Theory]
     [InlineData("asc")]
     [InlineData("desc")]
     public async Task GetNewsListAsync_AppliesExistingFiltersBeforeDateSortingAndPagination(string direction)

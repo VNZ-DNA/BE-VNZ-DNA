@@ -1204,7 +1204,11 @@ public class Service : IService
     private static string GetDisplayName<TEnum>(TEnum value)
         where TEnum : struct, Enum
     {
-        // Enum/system values are stable API keys. FE owns the VI/EN labels.
-        return value.ToString();
+        var member = typeof(TEnum).GetMember(value.ToString()).Single();
+
+        return member.GetCustomAttributes(typeof(DisplayAttribute), inherit: false)
+            .OfType<DisplayAttribute>()
+            .SingleOrDefault()?
+            .GetName() ?? value.ToString();
     }
 }
