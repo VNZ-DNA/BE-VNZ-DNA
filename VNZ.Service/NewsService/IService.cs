@@ -21,7 +21,7 @@ public interface IService
     Task<Response.PagedPublicNewsListResponse> GetPublicNewsListAsync(
         Request.GetPublicNewsListRequest request);
 
-    Task<Response.PublicNewsDetailResponse> GetPublicNewsDetailAsync(string id, string? lang = null);
+    Task<Response.PublicNewsDetailResponse> GetPublicNewsDetailAsync(string slug, string? lang = null);
 
     Task<Response.NewsDetailResponse> GetNewsDetailAsync(Guid id);
 

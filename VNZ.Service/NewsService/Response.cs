@@ -38,6 +38,7 @@ public class Response
     public class PublicNewsListItemResponse
     {
         public Guid Id { get; set; }
+        public string Slug { get; set; } = string.Empty;
         public required string Title { get; set; }
         public string? Summary { get; set; }
         public DateTimeOffset PublishAt { get; set; }
@@ -48,6 +49,7 @@ public class Response
     public class PublicNewsDetailResponse
     {
         public Guid Id { get; set; }
+        public string Slug { get; set; } = string.Empty;
         public required string Title { get; set; }
         public string? Summary { get; set; }
         public string? Content { get; set; }
@@ -60,6 +62,7 @@ public class Response
     public class NewsListItemResponse
     {
         public Guid Id { get; set; }
+        public string Slug { get; set; } = string.Empty;
         public string? Title { get; set; }
         public string? ImageUrl { get; set; }
         public required string AuthorName { get; set; }
@@ -74,6 +77,7 @@ public class Response
     public class NewsDetailResponse
     {
         public Guid Id { get; set; }
+        public string Slug { get; set; } = string.Empty;
         public string? Title { get; set; }
         public string? Summary { get; set; }
         public string? Content { get; set; }
@@ -94,6 +98,7 @@ public class Response
     public class CreateNewsResponse
     {
         public Guid Id { get; set; }
+        public string Slug { get; set; } = string.Empty;
         public string? Title { get; set; }
         public string? Summary { get; set; }
         public string? Content { get; set; }
@@ -111,6 +116,7 @@ public class Response
     public class UpdateNewsResponse
     {
         public Guid Id { get; set; }
+        public string Slug { get; set; } = string.Empty;
         public string? Title { get; set; }
         public string? Summary { get; set; }
         public string? Content { get; set; }

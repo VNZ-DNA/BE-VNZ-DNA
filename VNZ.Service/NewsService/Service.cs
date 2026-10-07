@@ -1,4 +1,5 @@
 using System.ComponentModel.DataAnnotations;
+using System.Globalization;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using Microsoft.EntityFrameworkCore;
@@ -10,6 +11,7 @@ using VNZ.Service.Exceptions;
 using VNZ.Service.Localization;
 using MediaService = VNZ.Service.Utils.MediaService;
 using RichTextService = VNZ.Service.Utils.RichTextService;
+using SlugService = VNZ.Service.Utils.SlugService;
 
 namespace VNZ.Service.NewsService;
 
@@ -17,20 +19,24 @@ public sealed class Service : IService
 {
     private const int MinimumPublishedContentLength = 300;
     private const int WordsPerMinute = 200;
+    private const int MaximumSlugLength = 200;
     private static readonly TimeSpan VietnamUtcOffset = TimeSpan.FromHours(7);
 
     private readonly AppDbContext _dbContext;
     private readonly MediaService.IService _mediaService;
     private readonly RichTextService.IService _richTextService;
+    private readonly SlugService.IService _slugService;
 
     public Service(
         AppDbContext dbContext,
         MediaService.IService mediaService,
-        RichTextService.IService richTextService)
+        RichTextService.IService richTextService,
+        SlugService.IService slugService)
     {
         _dbContext = dbContext;
         _mediaService = mediaService;
         _richTextService = richTextService;
+        _slugService = slugService;
     }
 
     public async Task<Response.DeleteNewsResponse> DeleteNewsAsync(Guid id)
@@ -149,6 +155,8 @@ public sealed class Service : IService
                 requiredFields.ToArray());
         }
 
+        var baseSlug = NormalizeNewsSlug(title);
+
         if (status == NewsStatus.Published &&
             !HasMinimumPublishedContentLength(content!))
         {
@@ -251,27 +259,15 @@ public sealed class Service : IService
             })
             .ToList();
 
-        try
-        {
-            await using var transaction = await _dbContext.Database.BeginTransactionAsync();
-
-            _dbContext.NewsArticles.Add(article);
-            _dbContext.NewsArticleCategories.AddRange(categoryLinks);
-            await _dbContext.SaveChangesAsync();
-            await transaction.CommitAsync();
-        }
-        catch (DbUpdateException exception)
-        {
-            throw new NewsException(
-                "NEWS_ARTICLE_CREATE_FAILED",
-                "Không thể tạo bài viết.",
-                exception);
-        }
+        _dbContext.NewsArticles.Add(article);
+        _dbContext.NewsArticleCategories.AddRange(categoryLinks);
+        await SaveNewsAsync(article, baseSlug);
 
         // 5. Trả dữ liệu đã lưu theo contract create.
         return new Response.CreateNewsResponse
         {
             Id = article.Id,
+            Slug = article.Slug,
             Title = article.Title,
             Summary = article.Summary,
             Content = article.Content,
@@ -370,30 +366,12 @@ public sealed class Service : IService
             article.Published = false;
             article.UpdatedAt = closeNowUtc;
 
-            try
-            {
-                await using var transaction = await _dbContext.Database.BeginTransactionAsync();
-                await _dbContext.SaveChangesAsync();
-                await transaction.CommitAsync();
-            }
-            catch (DbUpdateConcurrencyException)
-            {
-                throw new NewsException(
-                    "CONTENT_CONFLICT",
-                    "Bài viết đã được cập nhật bởi một yêu cầu khác.",
-                    "expectedUpdatedAt");
-            }
-            catch (DbUpdateException exception)
-            {
-                throw new NewsException(
-                    "NEWS_ARTICLE_UPDATE_FAILED",
-                    "Không thể cập nhật bài viết.",
-                    exception);
-            }
+            await SaveNewsAsync(article, baseSlug: null);
 
             return new Response.UpdateNewsResponse
             {
                 Id = article.Id,
+                Slug = article.Slug,
                 Title = article.Title,
                 Summary = article.Summary,
                 Content = article.Content,
@@ -479,6 +457,19 @@ public sealed class Service : IService
                     : "NEWS_VALIDATION_ERROR",
                 "Thông tin cập nhật bài viết không hợp lệ.",
                 requiredFields.ToArray());
+        }
+
+        var normalizedTitle = NormalizeNewsSlug(title);
+        string? baseSlug = null;
+
+        if (article.Status == NewsStatus.Draft)
+        {
+            var previousNormalizedTitle = _slugService.Normalize(article.Title ?? string.Empty);
+
+            if (!string.Equals(previousNormalizedTitle, normalizedTitle, StringComparison.Ordinal))
+            {
+                baseSlug = normalizedTitle;
+            }
         }
 
         if (targetStatus == NewsStatus.Published &&
@@ -586,34 +577,15 @@ public sealed class Service : IService
             .ToList();
 
         // 5. Lưu nội dung, trạng thái và category links trong cùng một transaction.
-        try
-        {
-            await using var transaction = await _dbContext.Database.BeginTransactionAsync();
-
-            _dbContext.NewsArticleCategories.RemoveRange(article.NewsArticleCategories);
-            _dbContext.NewsArticleCategories.AddRange(newCategoryLinks);
-            await _dbContext.SaveChangesAsync();
-            await transaction.CommitAsync();
-        }
-        catch (DbUpdateConcurrencyException)
-        {
-            throw new NewsException(
-                "CONTENT_CONFLICT",
-                "Bài viết đã được cập nhật bởi một yêu cầu khác.",
-                "expectedUpdatedAt");
-        }
-        catch (DbUpdateException exception)
-        {
-            throw new NewsException(
-                "NEWS_ARTICLE_UPDATE_FAILED",
-                "Không thể cập nhật bài viết.",
-                exception);
-        }
+        _dbContext.NewsArticleCategories.RemoveRange(article.NewsArticleCategories);
+        _dbContext.NewsArticleCategories.AddRange(newCategoryLinks);
+        await SaveNewsAsync(article, baseSlug);
 
         // 6. Trả dữ liệu bài viết sau cập nhật theo contract TDD-010.
         return new Response.UpdateNewsResponse
         {
             Id = article.Id,
+            Slug = article.Slug,
             Title = article.Title,
             Summary = article.Summary,
             Content = article.Content,
@@ -633,6 +605,93 @@ public sealed class Service : IService
                 .ToList(),
             Translations = ToTranslationsResponse(article.Translations)
         };
+    }
+
+    private string NormalizeNewsSlug(string? title)
+    {
+        var baseSlug = _slugService.Normalize(title ?? string.Empty);
+
+        if (string.IsNullOrEmpty(baseSlug))
+        {
+            throw new NewsException(
+                "NEWS_SLUG_INVALID",
+                "Tiêu đề bài viết không thể tạo slug hợp lệ.",
+                "title");
+        }
+
+        return baseSlug;
+    }
+
+    private async Task SaveNewsAsync(NewsArticle article, string? baseSlug)
+    {
+        if (baseSlug is null)
+        {
+            await using var transaction = await _dbContext.Database.BeginTransactionAsync();
+            await _dbContext.SaveChangesAsync();
+            await transaction.CommitAsync();
+            return;
+        }
+
+        var strategy = new SlugService.SlugWriteExecutionStrategy(
+            _dbContext,
+            "IX_News_Article_Slug",
+            () => new NewsException(
+                "NEWS_SLUG_GENERATION_FAILED",
+                "Không thể tạo slug duy nhất cho bài viết.",
+                "title"));
+
+        long suffixNumber = 1;
+
+        // Chỉ thử lại phần ghi database; không thêm entity hoặc upload lại.
+        await strategy.ExecuteAsync(async () =>
+        {
+            string candidate;
+            bool slugExists;
+
+            do
+            {
+                var suffix = string.Empty;
+
+                if (suffixNumber > 1)
+                {
+                    suffix = "-" + suffixNumber.ToString(CultureInfo.InvariantCulture);
+                }
+
+                var maximumBaseLength = MaximumSlugLength - suffix.Length;
+                var candidateBase = baseSlug;
+
+                if (candidateBase.Length > maximumBaseLength)
+                {
+                    // Ưu tiên giữ trọn từ, tính cả ranh giới đúng tại giới hạn.
+                    var wordBoundaryIndex = candidateBase.LastIndexOf('-', maximumBaseLength);
+                    var cutLength = maximumBaseLength;
+
+                    if (wordBoundaryIndex > 0)
+                    {
+                        cutLength = wordBoundaryIndex;
+                    }
+
+                    candidateBase = candidateBase[..cutLength];
+                }
+
+                candidate = candidateBase.TrimEnd('-') + suffix;
+                suffixNumber++;
+
+                // Soft-delete vẫn giữ chỗ slug; bỏ qua chính record đang sửa.
+                slugExists = await _dbContext.NewsArticles
+                    .IgnoreQueryFilters()
+                    .AnyAsync(item => item.Id != article.Id && item.Slug == candidate);
+            }
+            while (slugExists);
+
+            article.Slug = candidate;
+
+            // Mỗi lần retry có transaction mới. Giữ tracking state tới khi commit.
+            await using var transaction = await _dbContext.Database.BeginTransactionAsync();
+            await _dbContext.SaveChangesAsync(acceptAllChangesOnSuccess: false);
+            await transaction.CommitAsync();
+            _dbContext.ChangeTracker.AcceptAllChanges();
+        });
     }
 
     private bool HasMinimumPublishedContentLength(string content)
@@ -982,6 +1041,7 @@ public sealed class Service : IService
             .Select(article => new
             {
                 article.Id,
+                article.Slug,
                 article.Title,
                 article.ImageUrl,
                 AuthorName = article.Creator!.FullName,
@@ -1025,6 +1085,7 @@ public sealed class Service : IService
             .Select(article => new Response.NewsListItemResponse
             {
                 Id = article.Id,
+                Slug = article.Slug,
                 Title = article.Title,
                 ImageUrl = article.ImageUrl,
                 AuthorName = article.AuthorName,
@@ -1104,6 +1165,7 @@ public sealed class Service : IService
                 .Select(article => new PublicNewsRow
                 {
                     Id = article.Id,
+                    Slug = article.Slug,
                     Title = article.Title,
                     Summary = article.Summary,
                     Content = article.Content,
@@ -1172,6 +1234,7 @@ public sealed class Service : IService
             .Select(article => new Response.PublicNewsListItemResponse
             {
                 Id = article.Id,
+                Slug = article.Slug,
                 Title = lang == LocaleResolver.English
                     ? RequireNewsEnglish(article.Translations).Title!
                     : RequirePublicNewsValue(article.Title, "title", article.Id),
@@ -1200,18 +1263,17 @@ public sealed class Service : IService
     }
 
     public async Task<Response.PublicNewsDetailResponse> GetPublicNewsDetailAsync(
-        string id,
+        string slug,
         string? lang = null)
     {
         var resolvedLang = LocaleResolver.Resolve(lang);
 
-        // 1. Validate UUID tại Service để Controller chỉ chịu trách nhiệm nhận route.
-        if (!Guid.TryParse(id, out var newsArticleId))
+        // 1. Public detail chỉ nhận slug, không fallback sang UUID.
+        if (string.IsNullOrWhiteSpace(slug) || slug.Length > MaximumSlugLength)
         {
             throw new NewsException(
-                "NEWS_PUBLIC_ARTICLE_ID_INVALID",
-                "Mã bài viết không hợp lệ.",
-                "id");
+                "NEWS_PUBLIC_ARTICLE_NOT_FOUND",
+                "Không tìm thấy bài viết công khai.");
         }
 
         // 2. Chỉ đọc bài có đầy đủ điều kiện hiển thị public cùng toàn bộ danh mục.
@@ -1224,7 +1286,7 @@ public sealed class Service : IService
             .Include(item => item.NewsArticleCategories)
             .ThenInclude(item => item.NewsCategory)
             .SingleOrDefaultAsync(item =>
-                item.Id == newsArticleId &&
+                item.Slug == slug &&
                 item.Status == NewsStatus.Published &&
                 item.Published &&
                 item.PublishAt != null);
@@ -1259,6 +1321,7 @@ public sealed class Service : IService
         return new Response.PublicNewsDetailResponse
         {
             Id = article.Id,
+            Slug = article.Slug,
             Title = resolvedLang == LocaleResolver.English
                 ? english!.Title!
                 : RequirePublicNewsValue(article.Title, "title", article.Id),
@@ -1324,6 +1387,7 @@ public sealed class Service : IService
         return new Response.NewsDetailResponse
         {
             Id = article.Id,
+            Slug = article.Slug,
             Title = article.Title,
             Summary = _richTextService.SanitizeNewsSummary(article.Summary),
             Content = SafeNormalizeNewsContent(article.Content),
@@ -1460,6 +1524,7 @@ private static DateSortDirection ParseDateSortDirection(string? value, string fi
       private sealed class PublicNewsRow
       {
           public Guid Id { get; init; }
+          public string Slug { get; init; } = string.Empty;
           public string? Title { get; init; }
           public string? Summary { get; init; }
           public string? Content { get; init; }

@@ -268,6 +268,11 @@ namespace VNZ.Repository.Migrations
                         .IsRequired()
                         .HasColumnType("jsonb");
 
+                    b.Property<string>("Slug")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
                     b.Property<string>("Status")
                         .IsRequired()
                         .HasColumnType("text");
@@ -288,6 +293,10 @@ namespace VNZ.Repository.Migrations
                     b.HasIndex("CreatedBy");
 
                     b.HasIndex("DepartmentId");
+
+                    b.HasIndex("Slug")
+                        .IsUnique()
+                        .HasDatabaseName("IX_Job_Post_Slug");
 
                     b.HasIndex("Status", "ExpiredAt");
 
@@ -328,6 +337,11 @@ namespace VNZ.Repository.Migrations
                         .HasColumnType("integer")
                         .HasDefaultValue(1);
 
+                    b.Property<string>("Slug")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
                     b.Property<string>("Status")
                         .IsRequired()
                         .HasColumnType("text");
@@ -351,6 +365,10 @@ namespace VNZ.Repository.Migrations
                     b.HasIndex("CreatedAt");
 
                     b.HasIndex("CreatedBy");
+
+                    b.HasIndex("Slug")
+                        .IsUnique()
+                        .HasDatabaseName("IX_News_Article_Slug");
 
                     b.HasIndex("Status");
 

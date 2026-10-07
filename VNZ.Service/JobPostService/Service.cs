@@ -1,4 +1,5 @@
 using System.ComponentModel.DataAnnotations;
+using System.Globalization;
 using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using VNZ.Repository;
@@ -7,27 +8,32 @@ using VNZ.Repository.Entity.Enum;
 using VNZ.Repository.Entity.Json;
 using VNZ.Service.Exceptions;
 using VNZ.Service.Localization;
+using SlugService = VNZ.Service.Utils.SlugService;
 
 namespace VNZ.Service.JobPostService;
 
 public class Service : IService
 {
+    private const int MaximumSlugLength = 200;
     private static readonly TimeSpan VietnamUtcOffset = TimeSpan.FromHours(7);
 
     private readonly AppDbContext _dbContext;
     private readonly VNZ.Service.Utils.RichTextService.IService _richTextService;
+    private readonly SlugService.IService _slugService;
 
-    public Service(AppDbContext dbContext)
-        : this(dbContext, new VNZ.Service.Utils.RichTextService.Service())
+    public Service(AppDbContext dbContext, SlugService.IService slugService)
+        : this(dbContext, new VNZ.Service.Utils.RichTextService.Service(), slugService)
     {
     }
 
     public Service(
         AppDbContext dbContext,
-        VNZ.Service.Utils.RichTextService.IService richTextService)
+        VNZ.Service.Utils.RichTextService.IService richTextService,
+        SlugService.IService slugService)
     {
         _dbContext = dbContext;
         _richTextService = richTextService;
+        _slugService = slugService;
     }
 
     public async Task<Response.DeleteJobPostResponse> DeleteJobPostAsync(Guid id)
@@ -194,6 +200,8 @@ public class Service : IService
             }
         }
 
+        var baseSlug = NormalizeJobPostSlug(title);
+
         if (request.DepartmentId.HasValue)
         {
             var departmentExists = await _dbContext.Departments
@@ -226,15 +234,13 @@ public class Service : IService
             Translations = translations   
         };
 
-        await using var transaction = await _dbContext.Database.BeginTransactionAsync();
-
         _dbContext.JobPosts.Add(jobPost);
-        await _dbContext.SaveChangesAsync();
-        await transaction.CommitAsync();
+        await SaveJobPostAsync(jobPost, baseSlug);
 
         return new Response.CreateJobPostResponse
         {
             Id = jobPost.Id,
+            Slug = jobPost.Slug,
             Status = GetDisplayName(jobPost.Status),
             ExpiredDate = ConvertExpiredAtToDate(jobPost.ExpiredAt),
             CreatedBy = createdBy,
@@ -422,6 +428,7 @@ public class Service : IService
             .Select(jobPost => new
             {
                 jobPost.Id,
+                jobPost.Slug,
                 jobPost.Title,
                 jobPost.ShortDescription,
                 jobPost.ExpiredAt,
@@ -437,6 +444,7 @@ public class Service : IService
             .Select(jobPost => new Response.JobPostListItemResponse
             {
                 Id = jobPost.Id,
+                Slug = jobPost.Slug,
                 Title = jobPost.Title,
                 ShortDescription = jobPost.ShortDescription,
                 ExpiredDate = ConvertExpiredAtToDate(jobPost.ExpiredAt),
@@ -502,6 +510,7 @@ public class Service : IService
                 .Select(jobPost => new Response.PublicJobPostListItemResponse
                 {
                     Id = jobPost.Id,
+                    Slug = jobPost.Slug,
                     Title = resolvedLang == LocaleResolver.English
                         ? RequireJobPostEnglish(jobPost.Translations).Title!
                         : jobPost.Title!,
@@ -568,6 +577,7 @@ public class Service : IService
         return new Response.JobPostDetailResponse
         {
             Id = jobPost.Id,
+            Slug = jobPost.Slug,
             Title = jobPost.Title,
             CreatedByName = jobPost.Creator?.FullName,
             UpdatedAt = jobPost.UpdatedAt,
@@ -601,23 +611,33 @@ public class Service : IService
     }
 
     public async Task<Response.PublicJobPostDetailResponse> GetPublicJobPostDetailAsync(
-        Guid id,
+        string slug,
         string? lang = null)
     {
         var resolvedLang = LocaleResolver.Resolve(lang);
         var nowUtc = DateTimeOffset.UtcNow;
 
+        // Public detail chỉ nhận slug, không fallback sang UUID.
+        if (string.IsNullOrWhiteSpace(slug) || slug.Length > MaximumSlugLength)
+        {
+            throw new JobPostException(
+                "PUBLIC_JOB_POST_NOT_AVAILABLE",
+                "Vị trí tuyển dụng không còn mở. Vui lòng xem danh sách vị trí đang tuyển.",
+                "slug");
+        }
+
         try
         {
             var jobPost = await _dbContext.JobPosts
                 .AsNoTracking()
-                .Where(jobPost => jobPost.Id == id &&
+                .Where(jobPost => jobPost.Slug == slug &&
                                   jobPost.Status == JobPostStatus.Open &&
                                   jobPost.ExpiredAt.HasValue &&
                                   jobPost.ExpiredAt.Value > nowUtc)
                 .Select(jobPost => new
                 {
                     jobPost.Id,
+                    jobPost.Slug,
                     jobPost.Title,
                     Department = jobPost.Department == null
                         ? null
@@ -639,7 +659,7 @@ public class Service : IService
                 throw new JobPostException(
                     "PUBLIC_JOB_POST_NOT_AVAILABLE",
                     "Vị trí tuyển dụng không còn mở. Vui lòng xem danh sách vị trí đang tuyển.",
-                    "id");
+                    "slug");
             }
 
             if (resolvedLang == LocaleResolver.English)
@@ -654,6 +674,7 @@ public class Service : IService
             return new Response.PublicJobPostDetailResponse
             {
                 Id = jobPost.Id,
+                Slug = jobPost.Slug,
                 Title = resolvedLang == LocaleResolver.English
                     ? RequireJobPostEnglish(jobPost.Translations).Title!
                     : jobPost.Title!,
@@ -769,7 +790,7 @@ public class Service : IService
             jobPost.Status = JobPostStatus.Closed;
             jobPost.UpdatedAt = nowUtc;
 
-            await SaveJobPostUpdateAsync();
+            await SaveJobPostAsync(jobPost, baseSlug: null);
             return ToUpdateResponse(jobPost);
         }
 
@@ -881,6 +902,19 @@ public class Service : IService
                 "action");
         }
 
+        var normalizedTitle = NormalizeJobPostSlug(title);
+        string? baseSlug = null;
+
+        if (jobPost.Status == JobPostStatus.Draft)
+        {
+            var previousNormalizedTitle = _slugService.Normalize(jobPost.Title ?? string.Empty);
+
+            if (!string.Equals(previousNormalizedTitle, normalizedTitle, StringComparison.Ordinal))
+            {
+                baseSlug = normalizedTitle;
+            }
+        }
+
         jobPost.Title = title;
         jobPost.DepartmentId = request.DepartmentId;
         jobPost.Department = department;
@@ -898,7 +932,7 @@ public class Service : IService
         jobPost.UpdatedAt = nowUtc;
         jobPost.Translations = translations;
 
-        await SaveJobPostUpdateAsync();
+        await SaveJobPostAsync(jobPost, baseSlug);
         return ToUpdateResponse(jobPost);
     }
 
@@ -1129,28 +1163,91 @@ public class Service : IService
         Descending
     }
 
-    private async Task SaveJobPostUpdateAsync()
+    private string NormalizeJobPostSlug(string? title)
     {
-        try
+        var baseSlug = _slugService.Normalize(title ?? string.Empty);
+
+        if (string.IsNullOrEmpty(baseSlug))
+        {
+            throw new JobPostException(
+                "JOB_POST_SLUG_INVALID",
+                "Tiêu đề tin tuyển dụng không thể tạo slug hợp lệ.",
+                "title");
+        }
+
+        return baseSlug;
+    }
+
+    private async Task SaveJobPostAsync(JobPost jobPost, string? baseSlug)
+    {
+        if (baseSlug is null)
         {
             await using var transaction = await _dbContext.Database.BeginTransactionAsync();
             await _dbContext.SaveChangesAsync();
             await transaction.CommitAsync();
+            return;
         }
-        catch (DbUpdateConcurrencyException)
+
+        var strategy = new SlugService.SlugWriteExecutionStrategy(
+            _dbContext,
+            "IX_Job_Post_Slug",
+            () => new JobPostException(
+                "JOB_POST_SLUG_GENERATION_FAILED",
+                "Không thể tạo slug duy nhất cho tin tuyển dụng.",
+                "title"));
+
+        long suffixNumber = 1;
+
+        // Chỉ thử lại phần ghi database; không thêm entity lại.
+        await strategy.ExecuteAsync(async () =>
         {
-            throw new JobPostException(
-                "CONTENT_CONFLICT",
-                "Tin tuyển dụng đã được cập nhật bởi một yêu cầu khác.",
-                "expectedUpdatedAt");
-        }
-        catch (DbUpdateException exception)
-        {
-            throw new JobPostException(
-                "JOB_POST_UPDATE_FAILED",
-                "Không thể cập nhật tin tuyển dụng.",
-                exception);
-        }
+            string candidate;
+            bool slugExists;
+
+            do
+            {
+                var suffix = string.Empty;
+
+                if (suffixNumber > 1)
+                {
+                    suffix = "-" + suffixNumber.ToString(CultureInfo.InvariantCulture);
+                }
+
+                var maximumBaseLength = MaximumSlugLength - suffix.Length;
+                var candidateBase = baseSlug;
+
+                if (candidateBase.Length > maximumBaseLength)
+                {
+                    // Ưu tiên giữ trọn từ, tính cả ranh giới đúng tại giới hạn.
+                    var wordBoundaryIndex = candidateBase.LastIndexOf('-', maximumBaseLength);
+                    var cutLength = maximumBaseLength;
+
+                    if (wordBoundaryIndex > 0)
+                    {
+                        cutLength = wordBoundaryIndex;
+                    }
+
+                    candidateBase = candidateBase[..cutLength];
+                }
+
+                candidate = candidateBase.TrimEnd('-') + suffix;
+                suffixNumber++;
+
+                // Soft-delete vẫn giữ chỗ slug; bỏ qua chính record đang sửa.
+                slugExists = await _dbContext.JobPosts
+                    .IgnoreQueryFilters()
+                    .AnyAsync(item => item.Id != jobPost.Id && item.Slug == candidate);
+            }
+            while (slugExists);
+
+            jobPost.Slug = candidate;
+
+            // Mỗi lần retry có transaction mới. Giữ tracking state tới khi commit.
+            await using var transaction = await _dbContext.Database.BeginTransactionAsync();
+            await _dbContext.SaveChangesAsync(acceptAllChangesOnSuccess: false);
+            await transaction.CommitAsync();
+            _dbContext.ChangeTracker.AcceptAllChanges();
+        });
     }
 
     private static Response.UpdateJobPostResponse ToUpdateResponse(JobPost jobPost)
@@ -1158,6 +1255,7 @@ public class Service : IService
         return new Response.UpdateJobPostResponse
         {
             Id = jobPost.Id,
+            Slug = jobPost.Slug,
             Title = jobPost.Title,
             CreatedByName = jobPost.Creator?.FullName,
             UpdatedAt = jobPost.UpdatedAt,
