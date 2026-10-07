@@ -29,6 +29,7 @@ public class GetAdminNewsDateFilterTests
         var category = new NewsCategory
         {
             Id = Guid.NewGuid(),
+            Code = "Technology",
             Name = "Technology",
             CreateAt = DateTimeOffset.UtcNow
         };
@@ -496,6 +497,12 @@ public class GetAdminNewsDateFilterTests
     {
         public Task<MediaService.Response.UploadImageResponse> UploadImageAsync(
             MediaService.Request.UploadImageRequest request)
+        {
+            throw new NotSupportedException();
+        }
+
+        public Task<MediaService.Response.UploadAudioResponse> UploadAudioAsync(
+            MediaService.Request.UploadAudioRequest request)
         {
             throw new NotSupportedException();
         }
