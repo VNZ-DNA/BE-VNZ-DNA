@@ -21,7 +21,7 @@ public class JobPostExpirationBackgroundService : BackgroundService
         {
             using var scope = _serviceScopeFactory.CreateScope();
             var dbContext = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-            var nowUtc = DateTimeOffset.UtcNow;
+            var nowUtc = VNZ.Service.Utils.DateTimeOffsetPrecision.UtcNowMicrosecond();
 
             var expiredJobPosts = await dbContext.JobPosts
                 .Where(jobPost =>

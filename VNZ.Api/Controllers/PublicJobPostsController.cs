@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using VNZ.Service.JobPostService;
 using VNZ.Service.Models;
+using VNZ.Service.Localization;
 
 namespace VNZ.Api.Controllers;
 
@@ -24,7 +25,8 @@ public sealed class PublicJobPostsController : ControllerBase
     [HttpGet("{id:guid}")]
     public async Task<IActionResult> GetPublicJobPostDetail(Guid id)
     {
-        var data = await _jobPostService.GetPublicJobPostDetailAsync(id);
+        var lang = LocaleResolver.Resolve(Request.Query["lang"].ToArray());
+        var data = await _jobPostService.GetPublicJobPostDetailAsync(id, lang);
 
         return Ok(ResponseBuilder.SuccessResponse(data, "Lấy chi tiết vị trí tuyển dụng thành công.",
             HttpContext.TraceIdentifier));
@@ -33,7 +35,8 @@ public sealed class PublicJobPostsController : ControllerBase
     [HttpGet]
     public async Task<IActionResult> GetPublicJobPostList()
     {
-        var data = await _jobPostService.GetPublicJobPostListAsync();
+        var lang = LocaleResolver.Resolve(Request.Query["lang"].ToArray());
+        var data = await _jobPostService.GetPublicJobPostListAsync(lang);
 
         return Ok(ResponseBuilder.SuccessResponse(data, "Lấy danh sách vị trí tuyển dụng thành công.", HttpContext.TraceIdentifier));
     }

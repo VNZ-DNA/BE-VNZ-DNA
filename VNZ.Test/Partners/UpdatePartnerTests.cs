@@ -47,8 +47,7 @@ public class UpdatePartnerTests
                 Name = "  VNZ Updated Partner  ",
                 LogoUrl = "https://vnz.vn/logo.png",
                 WebsiteUrl = "https://vnz.vn",
-                Description = "Updated partner description",
-                IsPublished = false
+                Description = "Updated partner description"
             });
 
         Assert.Equal(partner.Id, response.Id);

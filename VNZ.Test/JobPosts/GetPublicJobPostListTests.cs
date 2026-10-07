@@ -23,6 +23,7 @@ public class GetPublicJobPostListTests
         var engineering = new Department
         {
             Id = Guid.NewGuid(),
+            Code = "ENGINEERING",
             Name = "Kỹ thuật",
             CreatedAt = new DateTimeOffset(2026, 9, 1, 0, 0, 0, TimeSpan.Zero)
         };
@@ -91,8 +92,8 @@ public class GetPublicJobPostListTests
 
         Assert.Equal(firstJobPost.Id, response[0].Id);
         Assert.Equal("Thực tập sinh Backend (.NET)", response[0].Title);
-        Assert.Equal("Kỹ thuật", response[0].Department);
-        Assert.Equal("Thực tập", response[0].EmploymentType);
+        Assert.Equal("ENGINEERING", response[0].Department);
+        Assert.Equal("Internship", response[0].EmploymentType);
         Assert.Equal("Intern", response[0].JobLevel);
         Assert.Equal(2, response[0].NumberOfPositions);
         Assert.Equal(new[] { "C#", ".NET" }, response[0].Skills);
@@ -102,7 +103,7 @@ public class GetPublicJobPostListTests
         Assert.Equal(secondJobPost.Id, response[1].Id);
         Assert.Equal("Chuyên viên Nhân sự", response[1].Title);
         Assert.Null(response[1].Department);
-        Assert.Equal("Toàn thời gian", response[1].EmploymentType);
+        Assert.Equal("FullTime", response[1].EmploymentType);
         Assert.Equal("Junior", response[1].JobLevel);
         Assert.Equal(1, response[1].NumberOfPositions);
         Assert.Empty(response[1].Skills);

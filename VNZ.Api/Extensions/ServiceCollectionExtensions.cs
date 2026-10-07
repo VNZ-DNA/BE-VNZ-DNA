@@ -1,11 +1,13 @@
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.AspNetCore.Mvc.Infrastructure;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
 using Npgsql;
+using System.Text.Json;
+
 using System.Security.Claims;
+
 using System.Text;
 using System.Text.Json.Serialization;
 
@@ -26,8 +28,14 @@ public static class ServiceCollectionExtensions
         IConfiguration configuration)
     {
         services.AddControllers()
+            .AddMvcOptions(options =>
+            {
+                options.Filters.Add<BilingualFormFieldValidationFilter>();
+                options.Filters.Add<ApiResponseErrorResultFilter>();
+            })
             .AddJsonOptions(options =>
             {
+                options.JsonSerializerOptions.UnmappedMemberHandling = JsonUnmappedMemberHandling.Disallow;
                 options.JsonSerializerOptions.Converters.Add(
                     new JsonStringEnumConverter());
             })
@@ -35,22 +43,48 @@ public static class ServiceCollectionExtensions
             {
                 options.InvalidModelStateResponseFactory = context =>
                 {
-                    var problemDetailsFactory = context.HttpContext.RequestServices
-                        .GetRequiredService<ProblemDetailsFactory>();
-                    var problemDetails = problemDetailsFactory.CreateValidationProblemDetails(
-                        context.HttpContext,
-                        context.ModelState,
-                        statusCode: StatusCodes.Status400BadRequest);
+                    var modelStateErrors = context.ModelState
+                        .Where(item => item.Value?.Errors.Count > 0)
+                        .SelectMany(item => item.Value!.Errors.Select(error =>
+                            (Key: item.Key, Error: error.ErrorMessage)))
+                        .ToArray();
 
-                    problemDetails.Title = "Dữ liệu gửi lên không hợp lệ.";
+                    var fields = modelStateErrors
+                        .Select(item => NormalizeModelStateField(item.Key, item.Error))
+                        .Where(field => !string.IsNullOrWhiteSpace(field))
+                        .Distinct(StringComparer.Ordinal)
+                        .ToArray();
 
-                    return new BadRequestObjectResult(problemDetails);
+                    var isBilingualAdminEndpoint = IsBilingualAdminEndpoint(context.HttpContext);
+                    var isPublicContactEndpoint = context.HttpContext.Request.Path.Equals(
+                        "/api/v1/public/contacts",
+                        StringComparison.OrdinalIgnoreCase);
+                    var hasBilingualJsonIssue = modelStateErrors.Any(item =>
+                        item.Error.Contains("could not be mapped", StringComparison.OrdinalIgnoreCase) ||
+                        item.Error.Contains("JSON", StringComparison.OrdinalIgnoreCase) ||
+                        IsBilingualModelStateField(NormalizeModelStateField(item.Key, item.Error)));
+
+                    var errorCode = isPublicContactEndpoint
+                        ? "CONTACT_CREATE_VALIDATION_FAILED"
+                        : isBilingualAdminEndpoint && hasBilingualJsonIssue
+                            ? "BILINGUAL_SCHEMA_INVALID"
+                            : "BINDING_INVALID";
+
+                    return new BadRequestObjectResult(ResponseBuilder.ErrorResponse(
+                        errors: new ApiError
+                        {
+                            Code = errorCode,
+                            Fields = fields
+                        },
+                        message: "Dữ liệu gửi lên không hợp lệ.",
+                        traceId: context.HttpContext.TraceIdentifier));
                 };
             });
         services.AddEndpointsApiExplorer();
         services.AddHttpContextAccessor();
         services.AddTransient<GlobalExceptionHandlerMiddleware>();
         services.AddScoped<PublicContactApiResultFilter>();
+        services.AddScoped<ApiResponseErrorResultFilter>();
         services.AddHostedService<JobPostExpirationBackgroundService>();
         services.AddScoped<VNZ.Service.AuthService.IService, VNZ.Service.AuthService.Service>();
         services.AddScoped<VNZ.Service.DashboardService.IService, VNZ.Service.DashboardService.Service>();
@@ -59,6 +93,8 @@ public static class ServiceCollectionExtensions
         services.AddScoped<VNZ.Service.DepartmentService.IService, VNZ.Service.DepartmentService.Service>();
         services.AddScoped<VNZ.Service.NewsService.IService, VNZ.Service.NewsService.Service>();
         services.AddScoped<VNZ.Service.ProductService.IService, VNZ.Service.ProductService.Service>();
+        services.AddScoped<VNZ.Service.Localization.IBilingualIntegrityChecker,
+            VNZ.Service.Localization.BilingualIntegrityChecker>();
         services.AddScoped<VNZ.Service.PartnerService.IService, VNZ.Service.PartnerService.Service>();
         services.AddScoped<VNZ.Service.JobApplicationService.IService, VNZ.Service.JobApplicationService.Service>();
         services.AddScoped<VNZ.Service.TeamMembers.IService, VNZ.Service.TeamMembers.Service>();
@@ -79,6 +115,91 @@ public static class ServiceCollectionExtensions
         services.AddContactInquiryRateLimit();
 
         return services;
+    }
+
+    private static bool IsBilingualAdminEndpoint(HttpContext context)
+    {
+        var path = context.Request.Path.Value;
+        return path is not null &&
+            (path.Equals("/api/v1/admin/news", StringComparison.OrdinalIgnoreCase) ||
+             path.StartsWith("/api/v1/admin/news/", StringComparison.OrdinalIgnoreCase) ||
+             path.Equals("/api/v1/admin/job-posts", StringComparison.OrdinalIgnoreCase) ||
+             path.StartsWith("/api/v1/admin/job-posts/", StringComparison.OrdinalIgnoreCase) ||
+             path.Equals("/api/v1/admin/products", StringComparison.OrdinalIgnoreCase) ||
+             path.StartsWith("/api/v1/admin/products/", StringComparison.OrdinalIgnoreCase));
+    }
+
+    private static string NormalizeModelStateField(string key, string? errorMessage)
+    {
+        if (!string.IsNullOrWhiteSpace(errorMessage))
+        {
+            const string jsonPropertyPrefix = "The JSON property '";
+            var prefixIndex = errorMessage.IndexOf(jsonPropertyPrefix, StringComparison.OrdinalIgnoreCase);
+
+            if (prefixIndex >= 0)
+            {
+                var start = prefixIndex + jsonPropertyPrefix.Length;
+                var end = errorMessage.IndexOf('\'', start);
+
+                if (end > start)
+                {
+                    var property = errorMessage[start..end];
+                    var normalizedKey = key.Trim();
+
+                    if (normalizedKey.StartsWith("$.", StringComparison.Ordinal))
+                    {
+                        normalizedKey = normalizedKey[2..];
+                    }
+
+                    var path = string.IsNullOrWhiteSpace(normalizedKey) || normalizedKey == "$"
+                        ? property
+                        : $"{normalizedKey}.{property}";
+
+                    return ConvertPathToCamelCase(path);
+                }
+            }
+        }
+
+        var normalized = key.Trim();
+        normalized = normalized.StartsWith("$.", StringComparison.Ordinal)
+            ? normalized[2..]
+            : normalized;
+
+        return ConvertPathToCamelCase(normalized);
+    }
+
+    private static bool IsBilingualModelStateField(string field)
+    {
+        return field.Equals("content", StringComparison.OrdinalIgnoreCase) ||
+            field.StartsWith("content.", StringComparison.OrdinalIgnoreCase) ||
+            field.Equals("translations", StringComparison.OrdinalIgnoreCase) ||
+            field.StartsWith("translations.", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static string ConvertPathToCamelCase(string field)
+    {
+        if (string.IsNullOrWhiteSpace(field))
+        {
+            return field;
+        }
+
+        var segments = field.Split('.', StringSplitOptions.None);
+
+        for (var index = 0; index < segments.Length; index++)
+        {
+            var segment = segments[index];
+            var bracketIndex = segment.IndexOf('[', StringComparison.Ordinal);
+            var propertyName = bracketIndex < 0
+                ? segment
+                : segment[..bracketIndex];
+            var suffix = bracketIndex < 0
+                ? string.Empty
+                : segment[bracketIndex..];
+
+            segments[index] = JsonNamingPolicy.CamelCase.ConvertName(propertyName) + suffix;
+        }
+
+        return string.Join('.', segments);
     }
 
     // private static IServiceCollection AddDatabase(

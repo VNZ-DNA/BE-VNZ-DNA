@@ -47,7 +47,10 @@ public class DisplayNameValidationTests
 
         if (length == 101)
         {
-            await Assert.ThrowsAsync<ArgumentException>(() => service.UpdateMemberAsync(created.Id, request));
+            var error = await Assert.ThrowsAsync<TeamMemberException>(() =>
+                service.UpdateMemberAsync(created.Id, request));
+            Assert.Equal("RESOURCE_VALIDATION_FAILED", error.Code);
+            Assert.Equal(new[] { "displayName" }, error.Fields);
             db.ChangeTracker.Clear();
             var unchanged = await db.Users.SingleAsync();
             Assert.Equal("ORIGINAL", unchanged.DisplayName);
@@ -68,25 +71,34 @@ public class DisplayNameValidationTests
         await using var db = CreateContext();
         var service = new TeamMemberService(db, new TestMediaService());
         var created = await service.CreateMemberAsync(CreateRequest("ORIGINAL"), Guid.NewGuid());
-        var publish = UpdateRequest("ORIGINAL");
-        publish.IsPublished = true;
+        var publish = new Request.UpdateTeamMemberRequest
+        {
+            IsPublished = true
+        };
         await service.UpdateMemberAsync(created.Id, publish);
 
         var editWhilePublished = UpdateRequest("NEW");
-        editWhilePublished.IsPublished = true;
-        await Assert.ThrowsAsync<ConflictException>(() => service.UpdateMemberAsync(created.Id, editWhilePublished));
+        var editError = await Assert.ThrowsAsync<TeamMemberException>(() =>
+            service.UpdateMemberAsync(created.Id, editWhilePublished));
+        Assert.Equal("RESOURCE_CONFLICT", editError.Code);
+        Assert.Equal(new[] { "isPublished" }, editError.Fields);
+
         var unpublished = await service.UpdateMemberAsync(created.Id, new Request.UpdateTeamMemberRequest
         {
-            IsPublished = false,
-            DisplayName = new string('A', 101)
+            IsPublished = false
         });
         Assert.Equal("ORIGINAL", unpublished.DisplayName);
         Assert.False(unpublished.IsPublished);
         Assert.Empty((await service.GetFeaturedMembersAsync()).Items);
 
         var update = UpdateRequest("  TAN  ");
-        update.IsPublished = true;
         await service.UpdateMemberAsync(created.Id, update);
+
+        await service.UpdateMemberAsync(created.Id, new Request.UpdateTeamMemberRequest
+        {
+            IsPublished = true
+        });
+
         db.ChangeTracker.Clear();
         Assert.Equal("TAN", (await service.GetMemberByIdAsync(created.Id)).DisplayName);
         Assert.Equal("TAN", Assert.Single((await service.GetFeaturedMembersAsync()).Items).DisplayName);
@@ -116,7 +128,6 @@ public class DisplayNameValidationTests
         Position = "Developer",
         JobLevel = nameof(JobLevel.Junior),
         JoinedDate = DateTimeOffset.UtcNow,
-        EmploymentStatus = nameof(EmploymentStatus.Working),
-        IsPublished = false
+        EmploymentStatus = nameof(EmploymentStatus.Working)
     };
 }

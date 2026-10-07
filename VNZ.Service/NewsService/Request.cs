@@ -17,6 +17,7 @@ public class  Request
         public IFormFile? Image { get; set; }
         public List<Guid>? CategoryIds { get; set; } = new();
         public string? Status { get; set; }
+        public NewsTranslationsRequest? Translations { get; set; }
     }
 
     public class UpdateNewsRequest
@@ -28,6 +29,8 @@ public class  Request
         public string? Action { get; set; }
         public List<Guid>? CategoryIds { get; set; } = new();
         public string? Status { get; set; }
+        public DateTimeOffset? ExpectedUpdatedAt { get; set; }
+        public NewsTranslationsRequest? Translations { get; set; }
     }
 
     public class GetNewsListRequest
@@ -46,5 +49,19 @@ public class  Request
         public int Page { get; set; } = 1;
 
         public int PageSize { get; set; } = 5;
+
+        public string? Lang { get; set; }
+    }
+
+    public class NewsTranslationsRequest
+    {
+        public NewsEnglishTranslationRequest? En { get; set; }
+    }
+
+    public class NewsEnglishTranslationRequest
+    {
+        public string? Title { get; set; }
+        public string? Summary { get; set; }
+        public string? Content { get; set; }
     }
 }

@@ -60,7 +60,7 @@ public class Response
     public class NewsListItemResponse
     {
         public Guid Id { get; set; }
-        public required string Title { get; set; }
+        public string? Title { get; set; }
         public string? ImageUrl { get; set; }
         public required string AuthorName { get; set; }
         public DateTimeOffset CreatedAt { get; set; }
@@ -74,54 +74,72 @@ public class Response
     public class NewsDetailResponse
     {
         public Guid Id { get; set; }
-        public required string Title { get; set; }
+        public string? Title { get; set; }
         public string? Summary { get; set; }
         public string? Content { get; set; }
         public string? ImageUrl { get; set; }
         public required string AuthorName { get; set; }
         public DateTimeOffset CreatedAt { get; set; }
         public DateOnly? UpdatedAt { get; set; }
+        public DateTimeOffset? UpdatedAtUtc { get; set; }
         public DateTimeOffset? PublishAt { get; set; }
         public required string Status { get; set; }
         public bool CanDelete { get; set; }
         public string? DeleteBlockedReason { get; set; }
         public required List<NewsCategoryResponse> Categories { get; set; }
         public required List<string> Actions { get; set; }
+        public NewsTranslationsResponse? Translations { get; set; }
     }
 
     public class CreateNewsResponse
     {
         public Guid Id { get; set; }
-        public required string Title { get; set; }
+        public string? Title { get; set; }
         public string? Summary { get; set; }
         public string? Content { get; set; }
         public string? ImageUrl { get; set; }
         public required string AuthorName { get; set; }
         public DateTimeOffset CreatedAt { get; set; }
         public DateOnly? UpdatedAt { get; set; }
+        public DateTimeOffset? UpdatedAtUtc { get; set; }
         public DateTimeOffset? PublishAt { get; set; }
         public required string Status { get; set; }
         public required List<NewsCategoryResponse> Categories { get; set; }
+        public NewsTranslationsResponse? Translations { get; set; }
     }
 
     public class UpdateNewsResponse
     {
         public Guid Id { get; set; }
-        public required string Title { get; set; }
+        public string? Title { get; set; }
         public string? Summary { get; set; }
         public string? Content { get; set; }
         public string? ImageUrl { get; set; }
         public required string AuthorName { get; set; }
         public DateTimeOffset CreatedAt { get; set; }
         public DateOnly? UpdatedAt { get; set; }
+        public DateTimeOffset? UpdatedAtUtc { get; set; }
         public DateTimeOffset? PublishAt { get; set; }
         public required string Status { get; set; }
         public required List<NewsCategoryResponse> Categories { get; set; }
+        public NewsTranslationsResponse? Translations { get; set; }
     }
 
     public class NewsCategoryResponse
     {
         public Guid Id { get; set; }
         public required string Name { get; set; }
+    }
+
+    public class NewsTranslationsResponse
+    {
+        public NewsEnglishTranslationResponse? En { get; set; }
+    }
+
+    public class NewsEnglishTranslationResponse
+    {
+        public string? Title { get; set; }
+        public string? Summary { get; set; }
+        public string? Content { get; set; }
     }
 }
