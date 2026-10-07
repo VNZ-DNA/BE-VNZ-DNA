@@ -362,6 +362,8 @@ public class Service : IService
             }
         }
 
+        var expiredDateSortDirection = ParseDateSortDirection(request.ExpiredDate);
+
         // 4. Bắt đầu query danh sách JobPost.
         var jobPostsQuery = _dbContext.JobPosts.AsNoTracking();
 
@@ -396,8 +398,24 @@ public class Service : IService
         // 5. Đếm tổng sau filter, sau đó lấy đúng trang cần xem.
         var total = await jobPostsQuery.CountAsync();
 
-        var jobPosts = await jobPostsQuery
-            .OrderByDescending(jobPost => jobPost.CreatedAt)
+        IOrderedQueryable<JobPost>? orderedQuery = null;
+
+        if (expiredDateSortDirection == DateSortDirection.Ascending)
+        {
+            orderedQuery = jobPostsQuery
+                .OrderBy(jobPost => !jobPost.ExpiredAt.HasValue)
+                .ThenBy(jobPost => jobPost.ExpiredAt);
+        }
+        else if (expiredDateSortDirection == DateSortDirection.Descending)
+        {
+            orderedQuery = jobPostsQuery
+                .OrderByDescending(jobPost => jobPost.ExpiredAt.HasValue)
+                .ThenByDescending(jobPost => jobPost.ExpiredAt);
+        }
+
+        orderedQuery ??= jobPostsQuery.OrderByDescending(jobPost => jobPost.CreatedAt);
+
+        var jobPosts = await orderedQuery
             .ThenByDescending(jobPost => jobPost.Id)
             .Skip((request.Page - 1) * request.PageSize)
             .Take(request.PageSize)
@@ -755,6 +773,7 @@ public class Service : IService
             return ToUpdateResponse(jobPost);
         }
 
+        
         if (request.Action == JobPostAction.SavedDraft &&
             jobPost.Status != JobPostStatus.Draft)
         {
@@ -1076,6 +1095,38 @@ public class Service : IService
         var nextDate = DateOnly.FromDateTime(expirationTimeInVietnam.DateTime);
 
         return nextDate.AddDays(-1);
+    }
+
+    private static DateSortDirection ParseDateSortDirection(string? value)
+    {
+        var normalizedValue = value?.Trim();
+
+        if (string.IsNullOrWhiteSpace(normalizedValue))
+        {
+            return DateSortDirection.None;
+        }
+
+        if (string.Equals(normalizedValue, "asc", StringComparison.OrdinalIgnoreCase))
+        {
+            return DateSortDirection.Ascending;
+        }
+
+        if (string.Equals(normalizedValue, "desc", StringComparison.OrdinalIgnoreCase))
+        {
+            return DateSortDirection.Descending;
+        }
+
+        throw new JobPostException(
+            "JOB_POST_INVALID_EXPIRED_DATE_FILTER",
+            "Hướng sắp xếp ngày hết hạn không hợp lệ. Dùng asc hoặc desc.",
+            "expiredDate");
+    }
+
+    private enum DateSortDirection
+    {
+        None,
+        Ascending,
+        Descending
     }
 
     private async Task SaveJobPostUpdateAsync()

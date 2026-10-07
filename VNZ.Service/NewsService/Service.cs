@@ -898,6 +898,9 @@ public sealed class Service : IService
             }
         }
 
+        var createdAtSortDirection = ParseDateSortDirection(request.CreatedAt, "createdAt");
+        var publishAtSortDirection = ParseDateSortDirection(request.PublishAt, "publishAt");
+
         var query = _dbContext.NewsArticles
             .AsNoTracking()
             .AsQueryable();
@@ -938,8 +941,41 @@ public sealed class Service : IService
             };
         }
 
-        var articleRows = await query
-            .OrderByDescending(article => article.CreatedAt)
+        IOrderedQueryable<NewsArticle>? orderedQuery = null;
+
+        if (createdAtSortDirection == DateSortDirection.Ascending)
+        {
+            orderedQuery = query.OrderBy(article => article.CreatedAt);
+        }
+        else if (createdAtSortDirection == DateSortDirection.Descending)
+        {
+            orderedQuery = query.OrderByDescending(article => article.CreatedAt);
+        }
+
+        if (publishAtSortDirection == DateSortDirection.Ascending)
+        {
+            orderedQuery = orderedQuery is null
+                ? query
+                    .OrderBy(article => !article.PublishAt.HasValue)
+                    .ThenBy(article => article.PublishAt)
+                : orderedQuery
+                    .ThenBy(article => !article.PublishAt.HasValue)
+                    .ThenBy(article => article.PublishAt);
+        }
+        else if (publishAtSortDirection == DateSortDirection.Descending)
+        {
+            orderedQuery = orderedQuery is null
+                ? query
+                    .OrderByDescending(article => article.PublishAt.HasValue)
+                    .ThenByDescending(article => article.PublishAt)
+                : orderedQuery
+                    .ThenByDescending(article => article.PublishAt.HasValue)
+                    .ThenByDescending(article => article.PublishAt);
+        }
+
+        orderedQuery ??= query.OrderByDescending(article => article.CreatedAt);
+
+        var articleRows = await orderedQuery
             .ThenBy(article => article.Id)
             .Skip((request.Page - 1) * request.PageSize)
             .Take(request.PageSize)
@@ -1385,14 +1421,46 @@ public sealed class Service : IService
         return DateOnly.FromDateTime(updatedAtInVietnam.DateTime);
     }
 
-    private sealed class PublicNewsRow
-    {
-        public Guid Id { get; init; }
-        public string? Title { get; init; }
-        public string? Summary { get; init; }
-        public string? Content { get; init; }
-        public NewsTranslations? Translations { get; init; }
-        public DateTimeOffset? PublishAt { get; init; }
-        public int ReadingTimeMinutes { get; init; }
-    }
-}
+private static DateSortDirection ParseDateSortDirection(string? value, string field)
+      {
+          var normalizedValue = value?.Trim();
+
+          if (string.IsNullOrWhiteSpace(normalizedValue))
+          {
+              return DateSortDirection.None;
+          }
+
+          if (string.Equals(normalizedValue, "asc", StringComparison.OrdinalIgnoreCase))
+          {
+              return DateSortDirection.Ascending;
+          }
+
+          if (string.Equals(normalizedValue, "desc", StringComparison.OrdinalIgnoreCase))
+          {
+              return DateSortDirection.Descending;
+          }
+
+          throw new NewsException(
+              "NEWS_QUERY_INVALID",
+              "Hướng sắp xếp ngày không hợp lệ. Dùng asc hoặc desc.",
+              field);
+      }
+
+      private enum DateSortDirection
+      {
+          None,
+          Ascending,
+          Descending
+      }
+
+      private sealed class PublicNewsRow
+      {
+          public Guid Id { get; init; }
+          public string? Title { get; init; }
+          public string? Summary { get; init; }
+          public string? Content { get; init; }
+          public NewsTranslations? Translations { get; init; }
+          public DateTimeOffset? PublishAt { get; init; }
+          public int ReadingTimeMinutes { get; init; }
+      }
+  }
