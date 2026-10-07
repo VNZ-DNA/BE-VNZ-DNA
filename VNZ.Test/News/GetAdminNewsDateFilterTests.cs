@@ -481,7 +481,8 @@ public class GetAdminNewsDateFilterTests
         return new NewsService(
             dbContext,
             new StubMediaService(),
-            new RichTextService.Service());
+            new RichTextService.Service(),
+            new VNZ.Service.Utils.SlugService.Service());
     }
 
     private static User CreateCreator()

@@ -56,6 +56,11 @@ public class GlobalExceptionHandlerMiddleware : IMiddleware
 
 
             MediaException mediaStatusException => GetMediaStatusCode(mediaStatusException.Code),
+            DbUpdateConcurrencyException when IsUpdateNewsRequest(context) => HttpStatusCode.Conflict,
+            DbUpdateConcurrencyException when IsUpdateJobPostRequest(context) => HttpStatusCode.Conflict,
+            DbUpdateException when IsCreateNewsRequest(context) => HttpStatusCode.InternalServerError,
+            DbUpdateException when IsUpdateNewsRequest(context) => HttpStatusCode.InternalServerError,
+            DbUpdateException when IsUpdateJobPostRequest(context) => HttpStatusCode.InternalServerError,
             DbException when IsCreateNewsRequest(context) => HttpStatusCode.InternalServerError,
             DbException when IsUpdateNewsRequest(context) => HttpStatusCode.InternalServerError,
             DbException when IsNewsDetailRequest(context) => HttpStatusCode.InternalServerError,
@@ -113,6 +118,16 @@ public class GlobalExceptionHandlerMiddleware : IMiddleware
 
 
             MediaException mediaPayloadException => (mediaPayloadException.Code, mediaPayloadException.Message),
+            DbUpdateConcurrencyException when IsUpdateNewsRequest(context) =>
+                ("CONTENT_CONFLICT", "Bài viết đã được cập nhật bởi một yêu cầu khác."),
+            DbUpdateConcurrencyException when IsUpdateJobPostRequest(context) =>
+                ("CONTENT_CONFLICT", "Tin tuyển dụng đã được cập nhật bởi một yêu cầu khác."),
+            DbUpdateException when IsCreateNewsRequest(context) =>
+                ("NEWS_ARTICLE_CREATE_FAILED", "Không thể tạo bài viết."),
+            DbUpdateException when IsUpdateNewsRequest(context) =>
+                ("NEWS_ARTICLE_UPDATE_FAILED", "Không thể cập nhật bài viết."),
+            DbUpdateException when IsUpdateJobPostRequest(context) =>
+                ("JOB_POST_UPDATE_FAILED", "Không thể cập nhật tin tuyển dụng."),
             DbException when IsCreateNewsRequest(context) =>
                 ("NEWS_ARTICLE_CREATE_FAILED", "Không thể tạo bài viết."),
             DbException when IsUpdateNewsRequest(context) =>
@@ -214,7 +229,9 @@ public class GlobalExceptionHandlerMiddleware : IMiddleware
 
                                         : exception is MediaException mediaException
                                             ? mediaException.Fields
-
+                                        : exception is DbUpdateConcurrencyException &&
+                                            (IsUpdateNewsRequest(context) || IsUpdateJobPostRequest(context))
+                                            ? new[] { "expectedUpdatedAt" }
                                         : Array.Empty<string>()
             },
             message: message,
@@ -245,6 +262,7 @@ public class GlobalExceptionHandlerMiddleware : IMiddleware
         {
             "JOB_POST_INVALID_ACTION" or
             "JOB_POST_INVALID_REQUEST" or
+            "JOB_POST_SLUG_INVALID" or
             "JOB_POST_INVALID_RICH_TEXT" or
             "JOB_POST_INVALID_STATUS" or
             "JOB_POST_VALIDATION_FAILED" or
@@ -265,6 +283,7 @@ public class GlobalExceptionHandlerMiddleware : IMiddleware
 
             "JOB_POST_NOT_FOUND" => HttpStatusCode.NotFound,
             "DEPARTMENT_NOT_FOUND" => HttpStatusCode.NotFound,
+            "JOB_POST_SLUG_GENERATION_FAILED" => HttpStatusCode.Conflict,
             "JOB_POST_CLOSED" or
             "JOB_POST_EXPIRED" or
 
@@ -290,6 +309,7 @@ public class GlobalExceptionHandlerMiddleware : IMiddleware
             "NEWS_PUBLIC_ARTICLE_ID_INVALID" or
             "NEWS_ARTICLE_ID_INVALID" or
             "NEWS_VALIDATION_ERROR" or
+            "NEWS_SLUG_INVALID" or
             "NEWS_IMAGE_ACTION_INVALID" or
             "NEWS_CONTENT_INVALID" or
             "NEWS_CONTENT_TOO_SHORT" or
@@ -300,6 +320,7 @@ public class GlobalExceptionHandlerMiddleware : IMiddleware
             "BILINGUAL_SCHEMA_INVALID" => HttpStatusCode.BadRequest,
             "NEWS_ARTICLE_NOT_FOUND" or
             "NEWS_PUBLIC_ARTICLE_NOT_FOUND" => HttpStatusCode.NotFound,
+            "NEWS_SLUG_GENERATION_FAILED" => HttpStatusCode.Conflict,
             "NEWS_ARTICLE_CLOSED" or
             "NEWS_STATUS_TRANSITION_INVALID" or
             "CONTENT_CONFLICT" => HttpStatusCode.Conflict,
@@ -625,5 +646,25 @@ public class GlobalExceptionHandlerMiddleware : IMiddleware
     {
         return HttpMethods.IsPost(context.Request.Method) &&
             context.Request.Path.Equals("/api/v1/admin/job-posts", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool IsUpdateJobPostRequest(HttpContext context)
+    {
+        const string routePrefix = "/api/v1/admin/job-posts/";
+
+        if (!HttpMethods.IsPut(context.Request.Method))
+        {
+            return false;
+        }
+
+        var path = context.Request.Path.Value;
+
+        if (path is null || !path.StartsWith(routePrefix, StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        var id = path[routePrefix.Length..];
+        return Guid.TryParse(id, out _);
     }
 }

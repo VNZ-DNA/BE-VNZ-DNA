@@ -10,6 +10,7 @@ public class Response
     public class CreateJobPostResponse
     {
         public Guid Id { get; set; }
+        public string Slug { get; set; } = string.Empty;
         public required string Status { get; set; }
         public DateOnly? ExpiredDate { get; set; }
         public Guid CreatedBy { get; set; }
@@ -29,6 +30,7 @@ public class Response
     public class PublicJobPostListItemResponse
     {
         public Guid Id { get; set; }
+        public string Slug { get; set; } = string.Empty;
         public required string Title { get; set; }
         public string? Department { get; set; }
         public string? EmploymentType { get; set; }
@@ -42,6 +44,7 @@ public class Response
     public class JobPostListItemResponse
     {
         public Guid Id { get; set; }
+        public string Slug { get; set; } = string.Empty;
         public string? Title { get; set; }
         public string? ShortDescription { get; set; }
         public DateOnly? ExpiredDate { get; set; }
@@ -55,6 +58,7 @@ public class Response
     public class PublicJobPostDetailResponse
     {
         public Guid Id { get; set; }
+        public string Slug { get; set; } = string.Empty;
         public required string Title { get; set; }
         public string? Department { get; set; }
         public string? EmploymentType { get; set; }
@@ -70,6 +74,7 @@ public class Response
     public class JobPostDetailResponse
     {
         public Guid Id { get; set; }
+        public string Slug { get; set; } = string.Empty;
         public string? Title { get; set; }
         public string? CreatedByName { get; set; }
         public DateTimeOffset? UpdatedAt { get; set; }
@@ -92,6 +97,7 @@ public class Response
     public class UpdateJobPostResponse
     {
         public Guid Id { get; set; }
+        public string Slug { get; set; } = string.Empty;
         public string? Title { get; set; }
         public string? CreatedByName { get; set; }
         public DateTimeOffset? UpdatedAt { get; set; }

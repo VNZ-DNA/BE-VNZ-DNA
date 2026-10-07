@@ -84,7 +84,9 @@ public class GetPublicJobPostListTests
             firstJobPost);
         await dbContext.SaveChangesAsync();
 
-        var service = new JobPostService(dbContext);
+        var service = new JobPostService(
+            dbContext,
+            new VNZ.Service.Utils.SlugService.Service());
 
         var response = await service.GetPublicJobPostListAsync();
 

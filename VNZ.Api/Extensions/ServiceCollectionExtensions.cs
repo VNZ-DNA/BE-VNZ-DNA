@@ -102,6 +102,7 @@ public static class ServiceCollectionExtensions
             configuration.GetSection(nameof(VNZ.Service.Utils.CloudinaryService.CloudinaryOptions)));
         services.AddScoped<VNZ.Service.Utils.MediaService.IService, VNZ.Service.Utils.CloudinaryService.Service>();
         services.AddScoped<VNZ.Service.Utils.RichTextService.IService, VNZ.Service.Utils.RichTextService.Service>();
+        services.AddScoped<VNZ.Service.Utils.SlugService.IService, VNZ.Service.Utils.SlugService.Service>();
         services.AddSingleton<MailService.IEmailTemplateRenderer, MailService.EmailTemplateRenderer>();
         services.AddHttpClient<MailService.IService, MailService.Service>(client =>
         {
