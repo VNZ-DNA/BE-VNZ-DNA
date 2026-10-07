@@ -197,7 +197,7 @@ public sealed class Service : IService
         var categories = await _dbContext.NewsCategories
             .AsNoTracking()
             .Where(category => categoryIds.Contains(category.Id))
-            .OrderBy(category => category.Code)
+            .OrderBy(category => category.Name)
             .ThenBy(category => category.Id)
             .ToListAsync();
 
@@ -286,7 +286,7 @@ public sealed class Service : IService
                 .Select(category => new Response.NewsCategoryResponse
                 {
                     Id = category.Id,
-                    Name = category.Code
+                    Name = category.Name
                 })
             .ToList(),
             Translations = ToTranslationsResponse(article.Translations)
@@ -403,14 +403,14 @@ public sealed class Service : IService
                 UpdatedAt = ConvertUpdatedAtToVietnamDate(article.UpdatedAt),
                 UpdatedAtUtc = article.UpdatedAt,
                 PublishAt = article.PublishAt,
-                Status = article.Status.ToString(),
+                Status = GetDisplayName(article.Status),
                 Categories = article.NewsArticleCategories
-                    .OrderBy(link => link.NewsCategory.Code)
+                    .OrderBy(link => link.NewsCategory.Name)
                     .ThenBy(link => link.NewsCategory.Id)
                     .Select(link => new Response.NewsCategoryResponse
                     {
                         Id = link.NewsCategory.Id,
-                        Name = link.NewsCategory.Code
+                        Name = link.NewsCategory.Name
                     })
                     .ToList(),
                 Translations = ToTranslationsResponse(article.Translations)
@@ -524,7 +524,7 @@ public sealed class Service : IService
         var categories = await _dbContext.NewsCategories
             .AsNoTracking()
             .Where(category => categoryIds.Contains(category.Id))
-            .OrderBy(category => category.Code)
+            .OrderBy(category => category.Name)
             .ThenBy(category => category.Id)
             .ToListAsync();
 
@@ -628,7 +628,7 @@ public sealed class Service : IService
                 .Select(category => new Response.NewsCategoryResponse
                 {
                     Id = category.Id,
-                    Name = category.Code
+                    Name = category.Name
                 })
                 .ToList(),
             Translations = ToTranslationsResponse(article.Translations)
@@ -1003,7 +1003,7 @@ public sealed class Service : IService
             {
                 ArticleId = link.NewsArticleId,
                 CategoryId = link.NewsCategoryId,
-                CategoryName = link.NewsCategory.Code
+                CategoryName = link.NewsCategory.Name
             })
             .ToListAsync();
 
@@ -1343,12 +1343,12 @@ public sealed class Service : IService
                 ? "PUBLIC_VISIBLE"
                 : null,
             Categories = article.NewsArticleCategories
-                .OrderBy(link => link.NewsCategory.Code)
+                .OrderBy(link => link.NewsCategory.Name)
                 .ThenBy(link => link.NewsCategory.Id)
                 .Select(link => new Response.NewsCategoryResponse
                 {
                     Id = link.NewsCategory.Id,
-                    Name = link.NewsCategory.Code
+                    Name = link.NewsCategory.Name
                 })
                 .ToList(),
             Actions = actions,
@@ -1360,12 +1360,12 @@ public sealed class Service : IService
     {
         return await _dbContext.NewsCategories
             .AsNoTracking()
-            .OrderBy(category => category.Code)
+            .OrderBy(category => category.Name)
             .ThenBy(category => category.Id)
             .Select(category => new Response.NewsCategoryResponse
             {
                 Id = category.Id,
-                Name = category.Code
+                Name = category.Name
             })
             .ToListAsync();
     }
@@ -1373,8 +1373,12 @@ public sealed class Service : IService
     private static string GetDisplayName<TEnum>(TEnum value)
         where TEnum : struct, Enum
     {
-        // Enum/system values are stable API keys. FE owns the VI/EN labels.
-        return value.ToString();
+        var member = typeof(TEnum).GetMember(value.ToString()).Single();
+
+        return member.GetCustomAttributes(typeof(DisplayAttribute), inherit: false)
+            .OfType<DisplayAttribute>()
+            .SingleOrDefault()?
+            .GetName() ?? value.ToString();
     }
 
     private static Response.NewsTranslationsResponse? ToTranslationsResponse(

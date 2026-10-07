@@ -71,7 +71,65 @@ public sealed class BilingualContentTests
         Assert.Null(saved.Title);
         Assert.Equal("English draft title", saved.Translations!.En!.Title);
         Assert.Equal(NewsStatus.Draft, saved.Status);
+        Assert.Equal("Bản nháp", response.Status);
         Assert.False(saved.Published);
+    }
+
+    [Fact]
+    public async Task AdminNews_ReturnsCategoryNamesAcrossResponses()
+    {
+        var options = CreateOptions();
+        await using var dbContext = new BilingualTestDbContext(options);
+        var admin = CreateAdmin();
+        var technology = new NewsCategory
+        {
+            Id = Guid.NewGuid(),
+            Code = "Z_TECHNOLOGY",
+            Name = "Công nghệ",
+            CreateAt = DateTimeOffset.UtcNow
+        };
+        var product = new NewsCategory
+        {
+            Id = Guid.NewGuid(),
+            Code = "A_PRODUCT",
+            Name = "Sản phẩm",
+            CreateAt = DateTimeOffset.UtcNow
+        };
+        dbContext.Users.Add(admin);
+        dbContext.NewsCategories.AddRange(product, technology);
+        await dbContext.SaveChangesAsync();
+
+        var service = new NewsService(
+            dbContext,
+            new VNZ.Test.TestMediaService(),
+            new VNZ.Service.Utils.RichTextService.Service());
+        var categoryIds = new List<Guid> { product.Id, technology.Id };
+        var expectedNames = new[] { "Công nghệ", "Sản phẩm" };
+
+        var created = await service.CreateNewsAsync(new NewsRequest.CreateNewsRequest
+        {
+            Title = "Bài viết thử nghiệm",
+            Status = nameof(NewsStatus.Draft),
+            CategoryIds = categoryIds
+        }, admin.Id);
+        var updated = await service.UpdateNewsAsync(created.Id, new NewsRequest.UpdateNewsRequest
+        {
+            Title = "Bài viết thử nghiệm đã chỉnh sửa",
+            Status = nameof(NewsStatus.Draft),
+            CategoryIds = categoryIds
+        });
+        var list = await service.GetNewsListAsync(new NewsRequest.GetNewsListRequest
+        {
+            CategoryId = [technology.Id.ToString()]
+        });
+        var detail = await service.GetNewsDetailAsync(created.Id);
+        var categories = await service.GetNewsCategoriesAsync();
+
+        Assert.Equal(expectedNames, created.Categories.Select(category => category.Name));
+        Assert.Equal(expectedNames, updated.Categories.Select(category => category.Name));
+        Assert.Equal(expectedNames, Assert.Single(list.Items).Categories.Select(category => category.Name));
+        Assert.Equal(expectedNames, detail.Categories.Select(category => category.Name));
+        Assert.Equal(expectedNames, categories.Select(category => category.Name));
     }
 
     [Fact]
@@ -100,6 +158,7 @@ public sealed class BilingualContentTests
         var saved = await dbContext.JobPosts.AsNoTracking().SingleAsync(post => post.Id == response.Id);
         Assert.Null(saved.Title);
         Assert.Equal(JobPostStatus.Draft, saved.Status);
+        Assert.Equal("Bản nháp", response.Status);
         Assert.Equal("English draft", saved.Translations!.En!.Title);
     }
 
@@ -441,7 +500,8 @@ public sealed class BilingualContentTests
 
         var saved = await dbContext.NewsArticles.AsNoTracking().SingleAsync();
 
-        Assert.Equal(nameof(NewsStatus.Closed), response.Status);
+        Assert.Equal("Đã đóng", response.Status);
+        Assert.Equal("Sản phẩm", Assert.Single(response.Categories).Name);
         Assert.False(saved.Published);
         Assert.Equal(article.Title, saved.Title);
         Assert.Equal(article.Content, saved.Content);
@@ -493,8 +553,40 @@ public sealed class BilingualContentTests
 
         var saved = await dbContext.JobPosts.AsNoTracking().SingleAsync();
 
-        Assert.Equal(JobPostStatus.Open.ToString(), response.Status);
+        Assert.Equal("Đang tuyển", response.Status);
         Assert.Empty(saved.Skills);
+    }
+
+    [Fact]
+    public async Task CloseJobPost_ReturnsStatusAndEmploymentTypeDisplayNames()
+    {
+        var options = CreateOptions();
+        await using var dbContext = new BilingualTestDbContext(options);
+        var jobPost = new JobPost
+        {
+            Id = Guid.NewGuid(),
+            Title = "Backend role",
+            Status = JobPostStatus.Open,
+            EmploymentType = EmploymentType.FullTime,
+            JobLevel = JobLevel.Junior,
+            ExpiredAt = DateTimeOffset.UtcNow.AddDays(30),
+            Skills = new List<string>(),
+            CreatedAt = DateTimeOffset.UtcNow
+        };
+        dbContext.JobPosts.Add(jobPost);
+        await dbContext.SaveChangesAsync();
+
+        var response = await new JobPostService(dbContext).UpdateJobPostAsync(
+            jobPost.Id,
+            new VNZ.Service.JobPostService.Request.UpdateJobPostRequest
+            {
+                Action = JobPostAction.Close
+            });
+
+        Assert.Equal("Đã đóng", response.Status);
+        Assert.Equal("Toàn thời gian", response.EmploymentType);
+        Assert.Equal("Junior", response.JobLevel);
+        Assert.Equal(JobPostStatus.Closed, (await dbContext.JobPosts.AsNoTracking().SingleAsync()).Status);
     }
 
     [Fact]
