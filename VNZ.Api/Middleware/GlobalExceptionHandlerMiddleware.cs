@@ -259,7 +259,9 @@ public class GlobalExceptionHandlerMiddleware : IMiddleware
 
             "JOB_POST_INVALID_STATUS_FILTER" or
             "JOB_POST_INVALID_DEPARTMENT_FILTER" or
-            "JOB_POST_INVALID_JOB_LEVEL_FILTER" => HttpStatusCode.BadRequest,
+
+            "JOB_POST_INVALID_JOB_LEVEL_FILTER" or
+            "JOB_POST_INVALID_EXPIRED_DATE_FILTER" => HttpStatusCode.BadRequest,
 
             "JOB_POST_NOT_FOUND" => HttpStatusCode.NotFound,
             "DEPARTMENT_NOT_FOUND" => HttpStatusCode.NotFound,
