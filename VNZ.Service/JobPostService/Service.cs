@@ -1,5 +1,4 @@
 using System.ComponentModel.DataAnnotations;
-using System.Globalization;
 using Microsoft.EntityFrameworkCore;
 using VNZ.Repository;
 using VNZ.Repository.Entity;
@@ -329,7 +328,7 @@ public class Service : IService
             }
         }
 
-        var expiredDateFilter = ParseDateFilter(request.ExpiredDate);
+        var expiredDateSortDirection = ParseDateSortDirection(request.ExpiredDate);
 
         // 4. Bắt đầu query danh sách JobPost.
         var jobPostsQuery = _dbContext.JobPosts.AsNoTracking();
@@ -362,24 +361,18 @@ public class Service : IService
                 jobLevelFilters.Contains(jobPost.JobLevel.Value));
         }
 
-        if (expiredDateFilter.ExactDate.HasValue)
-        {
-            var expiredAt = ConvertExpiredDateToUtc(expiredDateFilter.ExactDate.Value)!.Value;
-            jobPostsQuery = jobPostsQuery.Where(jobPost => jobPost.ExpiredAt == expiredAt);
-        }
-
         // 5. Đếm tổng sau filter, sau đó lấy đúng trang cần xem.
         var total = await jobPostsQuery.CountAsync();
 
         IOrderedQueryable<JobPost>? orderedQuery = null;
 
-        if (expiredDateFilter.SortDirection == DateFilterSortDirection.Ascending)
+        if (expiredDateSortDirection == DateSortDirection.Ascending)
         {
             orderedQuery = jobPostsQuery
                 .OrderBy(jobPost => !jobPost.ExpiredAt.HasValue)
                 .ThenBy(jobPost => jobPost.ExpiredAt);
         }
-        else if (expiredDateFilter.SortDirection == DateFilterSortDirection.Descending)
+        else if (expiredDateSortDirection == DateSortDirection.Descending)
         {
             orderedQuery = jobPostsQuery
                 .OrderByDescending(jobPost => jobPost.ExpiredAt.HasValue)
@@ -681,6 +674,7 @@ public class Service : IService
             return ToUpdateResponse(jobPost);
         }
 
+        
         if (request.Action == JobPostAction.SavedDraft &&
             jobPost.Status != JobPostStatus.Draft)
         {
@@ -883,61 +877,36 @@ public class Service : IService
         return nextDate.AddDays(-1);
     }
 
-    private static DateFilter ParseDateFilter(string? value)
+    private static DateSortDirection ParseDateSortDirection(string? value)
     {
         var normalizedValue = value?.Trim();
 
         if (string.IsNullOrWhiteSpace(normalizedValue))
         {
-            return new DateFilter(null, DateFilterSortDirection.None);
+            return DateSortDirection.None;
         }
 
         if (string.Equals(normalizedValue, "asc", StringComparison.OrdinalIgnoreCase))
         {
-            return new DateFilter(null, DateFilterSortDirection.Ascending);
+            return DateSortDirection.Ascending;
         }
 
         if (string.Equals(normalizedValue, "desc", StringComparison.OrdinalIgnoreCase))
         {
-            return new DateFilter(null, DateFilterSortDirection.Descending);
-        }
-
-        var isDateParsed = DateOnly.TryParseExact(
-            normalizedValue,
-            "yyyy-MM-dd",
-            CultureInfo.InvariantCulture,
-            DateTimeStyles.None,
-            out var exactDate);
-
-        if (isDateParsed && exactDate != DateOnly.MaxValue)
-        {
-            return new DateFilter(exactDate, DateFilterSortDirection.None);
+            return DateSortDirection.Descending;
         }
 
         throw new JobPostException(
             "JOB_POST_INVALID_EXPIRED_DATE_FILTER",
-            "Bộ lọc ngày hết hạn không hợp lệ. Dùng YYYY-MM-DD, asc hoặc desc.",
+            "Hướng sắp xếp ngày hết hạn không hợp lệ. Dùng asc hoặc desc.",
             "expiredDate");
     }
 
-    private enum DateFilterSortDirection
+    private enum DateSortDirection
     {
         None,
         Ascending,
         Descending
-    }
-
-    private sealed class DateFilter
-    {
-        public DateFilter(DateOnly? exactDate, DateFilterSortDirection sortDirection)
-        {
-            ExactDate = exactDate;
-            SortDirection = sortDirection;
-        }
-
-        public DateOnly? ExactDate { get; }
-
-        public DateFilterSortDirection SortDirection { get; }
     }
 
     private async Task SaveJobPostUpdateAsync()

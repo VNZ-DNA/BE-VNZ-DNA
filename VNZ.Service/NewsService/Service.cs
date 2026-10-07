@@ -1,5 +1,4 @@
 using System.ComponentModel.DataAnnotations;
-using System.Globalization;
 using System.Text.RegularExpressions;
 using Microsoft.EntityFrameworkCore;
 using VNZ.Repository;
@@ -674,6 +673,9 @@ public sealed class Service : IService
             }
         }
 
+        var createdAtSortDirection = ParseDateSortDirection(request.CreatedAt, "createdAt");
+        var publishAtSortDirection = ParseDateSortDirection(request.PublishAt, "publishAt");
+
         var query = _dbContext.NewsArticles
             .AsNoTracking()
             .AsQueryable();
@@ -697,26 +699,6 @@ public sealed class Service : IService
                 .Any(link => categoryIds.Contains(link.NewsCategoryId)));
         }
 
-        var createdAtFilter = ParseDateFilter(request.CreatedAt, "createdAt");
-        var publishAtFilter = ParseDateFilter(request.PublishAt, "publishAt");
-
-        if (createdAtFilter.ExactDate.HasValue)
-        {
-            var createdAtRange = GetVietnamDateRange(createdAtFilter.ExactDate.Value);
-            query = query.Where(article =>
-                article.CreatedAt >= createdAtRange.StartUtc &&
-                article.CreatedAt < createdAtRange.EndUtc);
-        }
-
-        if (publishAtFilter.ExactDate.HasValue)
-        {
-            var publishAtRange = GetVietnamDateRange(publishAtFilter.ExactDate.Value);
-            query = query.Where(article =>
-                article.PublishAt.HasValue &&
-                article.PublishAt.Value >= publishAtRange.StartUtc &&
-                article.PublishAt.Value < publishAtRange.EndUtc);
-        }
-
         var totalItems = await query.CountAsync();
         var totalPages = totalItems == 0
             ? 0
@@ -736,16 +718,16 @@ public sealed class Service : IService
 
         IOrderedQueryable<NewsArticle>? orderedQuery = null;
 
-        if (createdAtFilter.SortDirection == DateFilterSortDirection.Ascending)
+        if (createdAtSortDirection == DateSortDirection.Ascending)
         {
             orderedQuery = query.OrderBy(article => article.CreatedAt);
         }
-        else if (createdAtFilter.SortDirection == DateFilterSortDirection.Descending)
+        else if (createdAtSortDirection == DateSortDirection.Descending)
         {
             orderedQuery = query.OrderByDescending(article => article.CreatedAt);
         }
 
-        if (publishAtFilter.SortDirection == DateFilterSortDirection.Ascending)
+        if (publishAtSortDirection == DateSortDirection.Ascending)
         {
             orderedQuery = orderedQuery is null
                 ? query
@@ -755,7 +737,7 @@ public sealed class Service : IService
                     .ThenBy(article => !article.PublishAt.HasValue)
                     .ThenBy(article => article.PublishAt);
         }
-        else if (publishAtFilter.SortDirection == DateFilterSortDirection.Descending)
+        else if (publishAtSortDirection == DateSortDirection.Descending)
         {
             orderedQuery = orderedQuery is null
                 ? query
@@ -1126,73 +1108,35 @@ public sealed class Service : IService
         return DateOnly.FromDateTime(updatedAtInVietnam.DateTime);
     }
 
-    private static DateFilter ParseDateFilter(string? value, string field)
+    private static DateSortDirection ParseDateSortDirection(string? value, string field)
     {
         var normalizedValue = value?.Trim();
 
         if (string.IsNullOrWhiteSpace(normalizedValue))
         {
-            return new DateFilter(null, DateFilterSortDirection.None);
+            return DateSortDirection.None;
         }
 
         if (string.Equals(normalizedValue, "asc", StringComparison.OrdinalIgnoreCase))
         {
-            return new DateFilter(null, DateFilterSortDirection.Ascending);
+            return DateSortDirection.Ascending;
         }
 
         if (string.Equals(normalizedValue, "desc", StringComparison.OrdinalIgnoreCase))
         {
-            return new DateFilter(null, DateFilterSortDirection.Descending);
-        }
-
-        var isDateParsed = DateOnly.TryParseExact(
-            normalizedValue,
-            "yyyy-MM-dd",
-            CultureInfo.InvariantCulture,
-            DateTimeStyles.None,
-            out var exactDate);
-
-        if (isDateParsed && exactDate != DateOnly.MaxValue)
-        {
-            return new DateFilter(exactDate, DateFilterSortDirection.None);
+            return DateSortDirection.Descending;
         }
 
         throw new NewsException(
             "NEWS_QUERY_INVALID",
-            "Bộ lọc ngày không hợp lệ. Dùng YYYY-MM-DD, asc hoặc desc.",
+            "Hướng sắp xếp ngày không hợp lệ. Dùng asc hoặc desc.",
             field);
     }
 
-    private static (DateTimeOffset StartUtc, DateTimeOffset EndUtc) GetVietnamDateRange(
-        DateOnly date)
-    {
-        var startOfDate = new DateTimeOffset(
-            date.ToDateTime(TimeOnly.MinValue),
-            VietnamUtcOffset);
-        var startOfNextDate = new DateTimeOffset(
-            date.AddDays(1).ToDateTime(TimeOnly.MinValue),
-            VietnamUtcOffset);
-
-        return (startOfDate.ToUniversalTime(), startOfNextDate.ToUniversalTime());
-    }
-
-    private enum DateFilterSortDirection
+    private enum DateSortDirection
     {
         None,
         Ascending,
         Descending
-    }
-
-    private sealed class DateFilter
-    {
-        public DateFilter(DateOnly? exactDate, DateFilterSortDirection sortDirection)
-        {
-            ExactDate = exactDate;
-            SortDirection = sortDirection;
-        }
-
-        public DateOnly? ExactDate { get; }
-
-        public DateFilterSortDirection SortDirection { get; }
     }
 }
