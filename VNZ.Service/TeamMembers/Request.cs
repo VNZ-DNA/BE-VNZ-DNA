@@ -13,7 +13,7 @@ public static class Request
         public string? JobLevel { get; set; }
         public DateTimeOffset? JoinedDate { get; set; }
         public IFormFile? Avatar { get; set; }
-        public string? AnimationUrl { get; set; }
+        public IFormFile? Animation { get; set; }
         public IFormFile? Audio { get; set; }
         public string? Hometown { get; set; }
         public IFormFile? Background { get; set; }
@@ -32,7 +32,8 @@ public static class Request
         public DateTimeOffset? JoinedDate { get; set; }
         public IFormFile? Avatar { get; set; }
         public string? AvatarAction { get; set; }
-        public string? AnimationUrl { get; set; }
+        public IFormFile? Animation { get; set; }
+        public string? AnimationAction { get; set; }
         public IFormFile? Audio { get; set; }
         public string? AudioAction { get; set; }
         public string? Hometown { get; set; }

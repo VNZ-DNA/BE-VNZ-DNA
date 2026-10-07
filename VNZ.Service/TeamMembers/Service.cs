@@ -577,6 +577,7 @@ public sealed class Service : IService
         }
 
         var avatarUrl = await UploadTeamMemberImageAsync(request.Avatar, "TeamMemberAvatar");
+        var animationUrl = await UploadTeamMemberImageAsync(request.Animation, "TeamMemberAnimation");
         var backgroundUrl = await UploadTeamMemberImageAsync(request.Background, "TeamMemberBackground");
         var audioUrl = await UploadTeamMemberAudioAsync(request.Audio, "TeamMemberAudio");
 
@@ -592,7 +593,7 @@ public sealed class Service : IService
             Position = position,
             JobLevel = parsedJobLevel,
             AvatarUrl = avatarUrl,
-            AnimationUrl = NormalizeOptional(request.AnimationUrl),
+            AnimationUrl = animationUrl,
             AudioUrl = audioUrl,
             Hometown = NormalizeOptional(request.Hometown),
             BackgroundUrl = backgroundUrl,
@@ -767,11 +768,13 @@ public sealed class Service : IService
         }
 
         var avatarAction = NormalizeTeamMemberMediaAction(request.AvatarAction);
+        var animationAction = NormalizeTeamMemberMediaAction(request.AnimationAction);
         var backgroundAction = NormalizeTeamMemberMediaAction(request.BackgroundAction);
         var audioAction = NormalizeTeamMemberMediaAction(request.AudioAction);
-        ValidateTeamMemberMediaActions(avatarAction, backgroundAction, audioAction, request);
+        ValidateTeamMemberMediaActions(avatarAction, animationAction, backgroundAction, audioAction, request);
 
         var removeAvatar = string.Equals(avatarAction, "remove", StringComparison.Ordinal);
+        var removeAnimation = string.Equals(animationAction, "remove", StringComparison.Ordinal);
         var removeBackground = string.Equals(backgroundAction, "remove", StringComparison.Ordinal);
         var removeAudio = string.Equals(audioAction, "remove", StringComparison.Ordinal);
 
@@ -781,6 +784,12 @@ public sealed class Service : IService
                 request.Avatar,
                 "TeamMemberAvatar",
                 member.AvatarUrl);
+        var animationUrl = removeAnimation
+            ? null
+            : await UploadTeamMemberImageAsync(
+                request.Animation,
+                "TeamMemberAnimation",
+                member.AnimationUrl);
         var backgroundUrl = removeBackground
             ? null
             : await UploadTeamMemberImageAsync(
@@ -801,7 +810,7 @@ public sealed class Service : IService
         member.JobLevel = parsedJobLevel;
         member.JoinedDate = request.JoinedDate;
         member.AvatarUrl = avatarUrl;
-        member.AnimationUrl = NormalizeOptional(request.AnimationUrl);
+        member.AnimationUrl = animationUrl;
         member.AudioUrl = audioUrl;
         member.Hometown = NormalizeOptional(request.Hometown);
         member.BackgroundUrl = backgroundUrl;
@@ -839,7 +848,8 @@ public sealed class Service : IService
             request.JoinedDate.HasValue ||
             request.Avatar is not null ||
             request.AvatarAction is not null ||
-            request.AnimationUrl is not null ||
+            request.Animation is not null ||
+            request.AnimationAction is not null ||
             request.Audio is not null ||
             request.AudioAction is not null ||
             request.Hometown is not null ||
@@ -859,11 +869,18 @@ public sealed class Service : IService
 
     private static void ValidateTeamMemberMediaActions(
         string? avatarAction,
+        string? animationAction,
         string? backgroundAction,
         string? audioAction,
         Request.UpdateTeamMemberRequest request)
     {
         ValidateTeamMemberMediaAction(avatarAction, request.Avatar, "avatarAction", "avatar", "Avatar");
+        ValidateTeamMemberMediaAction(
+            animationAction,
+            request.Animation,
+            "animationAction",
+            "animation",
+            "Animation");
         ValidateTeamMemberMediaAction(
             backgroundAction,
             request.Background,
