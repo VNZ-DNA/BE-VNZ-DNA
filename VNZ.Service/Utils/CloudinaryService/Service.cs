@@ -477,6 +477,11 @@ public class Service : MediaService.IService, MediaService.IAssetCleanupService
             return "vnz/team-members";
         }
 
+        if (string.Equals(normalizedPurpose, "TeamMemberAnimation", StringComparison.Ordinal))
+        {
+            return "vnz/team-members/animations";
+        }
+
         if (string.Equals(normalizedPurpose, "TeamMemberBackground", StringComparison.Ordinal))
         {
             return "vnz/team-members/backgrounds";
