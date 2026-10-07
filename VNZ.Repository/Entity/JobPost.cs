@@ -13,6 +13,7 @@ public class JobPost : BaseEntity
     public DateTimeOffset CreatedAt { get; set; }
     public DateTimeOffset? UpdatedAt { get; set; }
     public string? Title { get; set; }
+    public string Slug { get; set; } = string.Empty;
     public EmploymentType? EmploymentType { get; set; }
     public List<string> Skills { get; set; } = new();
     public JobLevel? JobLevel { get; set; }

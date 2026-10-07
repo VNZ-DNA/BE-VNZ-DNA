@@ -22,11 +22,11 @@ public sealed class PublicJobPostsController : ControllerBase
     }
 
 
-    [HttpGet("{id:guid}")]
-    public async Task<IActionResult> GetPublicJobPostDetail(Guid id)
+    [HttpGet("{slug}")]
+    public async Task<IActionResult> GetPublicJobPostDetail(string slug)
     {
         var lang = LocaleResolver.Resolve(Request.Query["lang"].ToArray());
-        var data = await _jobPostService.GetPublicJobPostDetailAsync(id, lang);
+        var data = await _jobPostService.GetPublicJobPostDetailAsync(slug, lang);
 
         return Ok(ResponseBuilder.SuccessResponse(data, "Lấy chi tiết vị trí tuyển dụng thành công.",
             HttpContext.TraceIdentifier));

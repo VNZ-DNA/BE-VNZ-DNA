@@ -87,10 +87,14 @@ public class AppDbContext : DbContext
             entity.HasQueryFilter(x => !x.IsDelete);
             entity.Property(x => x.Title).HasMaxLength(300);
 
+            entity.Property(x => x.Slug).HasMaxLength(200).IsRequired();
             entity.Property(x => x.ReadingTimeMinutes).HasDefaultValue(1);
             entity.Property(x => x.Status).HasConversion<string>().IsRequired();
             entity.HasIndex(x => x.Status);
             entity.HasIndex(x => x.CreatedAt);
+            entity.HasIndex(x => x.Slug)
+                .HasDatabaseName("IX_News_Article_Slug")
+                .IsUnique();
             entity.HasIndex(x => new { x.PublishAt, x.Id })
                 .HasDatabaseName("IX_News_Article_Public_PublishAt_Id")
                 .HasFilter("\"Status\" = 'Published' AND \"Published\" = TRUE AND \"PublishAt\" IS NOT NULL");
@@ -151,11 +155,15 @@ public class AppDbContext : DbContext
             entity.Property(x => x.IsDelete).HasDefaultValue(false);
             entity.HasQueryFilter(x => !x.IsDelete);
             entity.Property(x => x.Title).HasMaxLength(300);
+            entity.Property(x => x.Slug).HasMaxLength(200).IsRequired();
             entity.Property(x => x.Status).HasConversion<string>().IsRequired();
             entity.Property(x => x.EmploymentType).HasConversion<string>();
             entity.Property(x => x.JobLevel).HasConversion<string>();
             entity.Property(x => x.Skills).HasColumnType("jsonb").IsRequired();
             entity.HasIndex(x => new { x.Status, x.ExpiredAt });
+            entity.HasIndex(x => x.Slug)
+                .HasDatabaseName("IX_Job_Post_Slug")
+                .IsUnique();
             entity.HasOne(x => x.Department).WithMany(x => x.JobPosts).HasForeignKey(x => x.DepartmentId).OnDelete(DeleteBehavior.Restrict);
             entity.HasOne(x => x.Creator).WithMany(x => x.JobPosts).HasForeignKey(x => x.CreatedBy).OnDelete(DeleteBehavior.Restrict);
         });

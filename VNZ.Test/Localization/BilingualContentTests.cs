@@ -48,7 +48,8 @@ public sealed class BilingualContentTests
         var service = new NewsService(
             dbContext,
             new VNZ.Test.TestMediaService(),
-            new VNZ.Service.Utils.RichTextService.Service());
+            new VNZ.Service.Utils.RichTextService.Service(),
+            new VNZ.Service.Utils.SlugService.Service());
 
         var response = await service.CreateNewsAsync(
             new NewsRequest.CreateNewsRequest
@@ -102,7 +103,8 @@ public sealed class BilingualContentTests
         var service = new NewsService(
             dbContext,
             new VNZ.Test.TestMediaService(),
-            new VNZ.Service.Utils.RichTextService.Service());
+            new VNZ.Service.Utils.RichTextService.Service(),
+            new VNZ.Service.Utils.SlugService.Service());
         var categoryIds = new List<Guid> { product.Id, technology.Id };
         var expectedNames = new[] { "Công nghệ", "Sản phẩm" };
 
@@ -141,7 +143,9 @@ public sealed class BilingualContentTests
         dbContext.Users.Add(admin);
         await dbContext.SaveChangesAsync();
 
-        var response = await new JobPostService(dbContext).CreateJobPostAsync(
+        var response = await new JobPostService(
+            dbContext,
+            new VNZ.Service.Utils.SlugService.Service()).CreateJobPostAsync(
             new VNZ.Service.JobPostService.Request.CreateJobPostRequest
             {
                 Action = JobPostAction.SavedDraft,
@@ -174,7 +178,8 @@ public sealed class BilingualContentTests
         var service = new NewsService(
             dbContext,
             new VNZ.Test.TestMediaService(),
-            new VNZ.Service.Utils.RichTextService.Service());
+            new VNZ.Service.Utils.RichTextService.Service(),
+            new VNZ.Service.Utils.SlugService.Service());
 
         var exception = await Assert.ThrowsAsync<NewsException>(() => service.CreateNewsAsync(
             new NewsRequest.CreateNewsRequest
@@ -238,7 +243,8 @@ public sealed class BilingualContentTests
         var service = new NewsService(
             dbContext,
             new VNZ.Test.TestMediaService(),
-            new VNZ.Service.Utils.RichTextService.Service());
+            new VNZ.Service.Utils.RichTextService.Service(),
+            new VNZ.Service.Utils.SlugService.Service());
 
         var response = await service.GetPublicNewsDetailAsync(article.Id.ToString(), "en");
 
@@ -291,7 +297,9 @@ public sealed class BilingualContentTests
         dbContext.JobPosts.Add(jobPost);
         await dbContext.SaveChangesAsync();
 
-        var response = await new JobPostService(dbContext)
+        var response = await new JobPostService(
+            dbContext,
+            new VNZ.Service.Utils.SlugService.Service())
             .GetPublicJobPostListAsync("en");
 
         var item = response.Single();
@@ -490,7 +498,8 @@ public sealed class BilingualContentTests
         var response = await new NewsService(
             dbContext,
             new VNZ.Test.TestMediaService(),
-            new VNZ.Service.Utils.RichTextService.Service())
+            new VNZ.Service.Utils.RichTextService.Service(),
+            new VNZ.Service.Utils.SlugService.Service())
             .UpdateNewsAsync(
                 article.Id,
                 new NewsRequest.UpdateNewsRequest
@@ -524,7 +533,9 @@ public sealed class BilingualContentTests
         dbContext.Departments.Add(department);
         await dbContext.SaveChangesAsync();
 
-        var response = await new JobPostService(dbContext).CreateJobPostAsync(
+        var response = await new JobPostService(
+            dbContext,
+            new VNZ.Service.Utils.SlugService.Service()).CreateJobPostAsync(
             new VNZ.Service.JobPostService.Request.CreateJobPostRequest
             {
                 Action = JobPostAction.Publish,
@@ -576,7 +587,9 @@ public sealed class BilingualContentTests
         dbContext.JobPosts.Add(jobPost);
         await dbContext.SaveChangesAsync();
 
-        var response = await new JobPostService(dbContext).UpdateJobPostAsync(
+        var response = await new JobPostService(
+            dbContext,
+            new VNZ.Service.Utils.SlugService.Service()).UpdateJobPostAsync(
             jobPost.Id,
             new VNZ.Service.JobPostService.Request.UpdateJobPostRequest
             {

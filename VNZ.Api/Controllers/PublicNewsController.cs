@@ -31,11 +31,11 @@ public sealed class PublicNewsController : ControllerBase
             HttpContext.TraceIdentifier));
     }
 
-    [HttpGet("{id}")]
-    public async Task<IActionResult> GetPublicNewsDetail(string id)
+    [HttpGet("{slug}")]
+    public async Task<IActionResult> GetPublicNewsDetail(string slug)
     {
         var lang = LocaleResolver.Resolve(Request.Query["lang"].ToArray());
-        var data = await _newsService.GetPublicNewsDetailAsync(id, lang);
+        var data = await _newsService.GetPublicNewsDetailAsync(slug, lang);
 
         return Ok(ResponseBuilder.SuccessResponse(
             data,

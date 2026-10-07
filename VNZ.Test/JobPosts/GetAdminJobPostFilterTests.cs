@@ -33,7 +33,9 @@ public class GetAdminJobPostFilterTests
         dbContext.JobPosts.Add(jobPost);
         await dbContext.SaveChangesAsync();
 
-        var service = new JobPostService(dbContext);
+        var service = new JobPostService(
+            dbContext,
+            new VNZ.Service.Utils.SlugService.Service());
         var list = await service.GetJobPostListAsync(new Request.GetJobPostListRequest
         {
             Status = [status.ToString()],
@@ -87,7 +89,9 @@ public class GetAdminJobPostFilterTests
         dbContext.JobPosts.AddRange(expectedOpen, expectedClosed, wrongDepartment, wrongLevel, deleted);
         await dbContext.SaveChangesAsync();
 
-        var service = new JobPostService(dbContext);
+        var service = new JobPostService(
+            dbContext,
+            new VNZ.Service.Utils.SlugService.Service());
 
         var response = await service.GetJobPostListAsync(new Request.GetJobPostListRequest
         {
@@ -121,7 +125,9 @@ public class GetAdminJobPostFilterTests
             .Options;
 
         await using var dbContext = new JobPostFilterTestDbContext(options);
-        var service = new JobPostService(dbContext);
+        var service = new JobPostService(
+            dbContext,
+            new VNZ.Service.Utils.SlugService.Service());
         var request = new Request.GetJobPostListRequest();
 
         if (field == "status")
@@ -147,7 +153,9 @@ public class GetAdminJobPostFilterTests
             .Options;
 
         await using var dbContext = new JobPostFilterTestDbContext(options);
-        var service = new JobPostService(dbContext);
+        var service = new JobPostService(
+            dbContext,
+            new VNZ.Service.Utils.SlugService.Service());
 
         var exception = await Assert.ThrowsAsync<JobPostException>(() => service.GetJobPostListAsync(
             new Request.GetJobPostListRequest { DepartmentId = ["not-a-guid"] }));
@@ -186,7 +194,9 @@ public class GetAdminJobPostFilterTests
         dbContext.JobPosts.AddRange(older, newer);
         await dbContext.SaveChangesAsync();
 
-        var service = new JobPostService(dbContext);
+        var service = new JobPostService(
+            dbContext,
+            new VNZ.Service.Utils.SlugService.Service());
 
         var response = await service.GetJobPostListAsync(new Request.GetJobPostListRequest
         {
@@ -236,7 +246,9 @@ public class GetAdminJobPostFilterTests
         dbContext.JobPosts.AddRange(latest, withoutExpiry, earliest);
         await dbContext.SaveChangesAsync();
 
-        var service = new JobPostService(dbContext);
+        var service = new JobPostService(
+            dbContext,
+            new VNZ.Service.Utils.SlugService.Service());
         var ascending = await service.GetJobPostListAsync(
             new Request.GetJobPostListRequest { ExpiredDate = ascendingValue });
         var descending = await service.GetJobPostListAsync(
@@ -264,7 +276,9 @@ public class GetAdminJobPostFilterTests
             .Options;
 
         await using var dbContext = new JobPostFilterTestDbContext(options);
-        var service = new JobPostService(dbContext);
+        var service = new JobPostService(
+            dbContext,
+            new VNZ.Service.Utils.SlugService.Service());
 
         var exception = await Assert.ThrowsAsync<JobPostException>(() => service.GetJobPostListAsync(
             new Request.GetJobPostListRequest { ExpiredDate = value }));
@@ -307,7 +321,9 @@ public class GetAdminJobPostFilterTests
         dbContext.JobPosts.AddRange(lowerId, higherId);
         await dbContext.SaveChangesAsync();
 
-        var service = new JobPostService(dbContext);
+        var service = new JobPostService(
+            dbContext,
+            new VNZ.Service.Utils.SlugService.Service());
         var request = new Request.GetJobPostListRequest
         {
             ExpiredDate = direction,
@@ -349,7 +365,9 @@ public class GetAdminJobPostFilterTests
         dbContext.JobPosts.AddRange(middle, later, earlier);
         await dbContext.SaveChangesAsync();
 
-        var service = new JobPostService(dbContext);
+        var service = new JobPostService(
+            dbContext,
+            new VNZ.Service.Utils.SlugService.Service());
         var response = await service.GetJobPostListAsync(new Request.GetJobPostListRequest
         {
             ExpiredDate = direction
@@ -374,7 +392,9 @@ public class GetAdminJobPostFilterTests
         dbContext.JobPosts.AddRange(withoutExpiry, withExpiry);
         await dbContext.SaveChangesAsync();
 
-        var service = new JobPostService(dbContext);
+        var service = new JobPostService(
+            dbContext,
+            new VNZ.Service.Utils.SlugService.Service());
         var response = await service.GetJobPostListAsync(new Request.GetJobPostListRequest());
         var envelope = VNZ.Service.Models.ResponseBuilder.SuccessResponse(response, "Success");
         var jsonOptions = new Microsoft.AspNetCore.Mvc.JsonOptions().JsonSerializerOptions;
