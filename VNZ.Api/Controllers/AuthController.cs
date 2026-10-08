@@ -1,5 +1,7 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
+using VNZ.Api.RateLimiting;
 using VNZ.Service.AuthService;
 using VNZ.Service.Models;
 
@@ -18,6 +20,7 @@ public class AuthController : ControllerBase
 
     [AllowAnonymous]
     [HttpPost("login")]
+    [EnableRateLimiting(RateLimitPolicies.Login)]
     public async Task<IActionResult> Login([FromBody] Request.LoginRequest request)
     {
         var data = await _authService.LoginAsync(request);
@@ -70,6 +73,7 @@ public class AuthController : ControllerBase
 
     [AllowAnonymous]
     [HttpPost("forgot-password")]
+    [EnableRateLimiting(RateLimitPolicies.ForgotPassword)]
     public async Task<IActionResult> ForgotPassword([FromBody] Request.ForgotPasswordRequest request)
     {
         var message = await _authService.ForgotPassword(request);
@@ -83,6 +87,7 @@ public class AuthController : ControllerBase
 
     [AllowAnonymous]
     [HttpPost("change-password")]
+    [EnableRateLimiting(RateLimitPolicies.ChangePassword)]
     public async Task<IActionResult> ChangePassword([FromBody] Request.ChangePasswordRequest request)
     {
         var message = await _authService.ChangePassword(request);

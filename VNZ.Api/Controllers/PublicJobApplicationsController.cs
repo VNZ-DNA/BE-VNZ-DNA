@@ -1,4 +1,6 @@
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
+using VNZ.Api.RateLimiting;
 using VNZ.Service.JobApplicationService;
 using VNZ.Service.Models;
 
@@ -16,6 +18,7 @@ public sealed class PublicJobApplicationsController : ControllerBase
     }
 
     [HttpPost]
+    [EnableRateLimiting(RateLimitPolicies.JobApplicationCreate)]
     public async Task<IActionResult> Create([FromBody] Request.CreateJobApplicationRequest request)
     {
         var data = await _jobApplicationService.CreateAsync(request);

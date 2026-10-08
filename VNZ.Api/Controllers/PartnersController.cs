@@ -1,6 +1,7 @@
 using System.Security.Claims;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using VNZ.Api.Filters;
 using VNZ.Service.Models;
 using PartnerService = VNZ.Service.PartnerService;
 
@@ -30,6 +31,7 @@ public sealed class PartnersController : ControllerBase
     }
 
     [HttpPost]
+    [AdminRateLimit(AdminRateLimitKind.Upload)]
     [Consumes("multipart/form-data")]
     public async Task<IActionResult> CreatePartner(
         [FromForm] PartnerService.Request.CreatePartnerRequest request)
@@ -84,6 +86,7 @@ public sealed class PartnersController : ControllerBase
     }
 
     [HttpPut("{id:guid}")]
+    [AdminRateLimit(AdminRateLimitKind.Upload)]
     [Consumes("multipart/form-data")]
     public async Task<IActionResult> UpdatePartner(
         Guid id,
