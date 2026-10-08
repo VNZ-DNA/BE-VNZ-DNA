@@ -1,6 +1,7 @@
 using System.Security.Claims;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using VNZ.Api.Filters;
 using VNZ.Service.Models;
 using ProductService = VNZ.Service.ProductService;
 
@@ -30,6 +31,7 @@ public sealed class ProductsController : ControllerBase
     }
 
     [HttpPost]
+    [AdminRateLimit(AdminRateLimitKind.Upload)]
     [Consumes("multipart/form-data")]
     public async Task<IActionResult> CreateProduct(
         [FromForm] ProductService.Request.CreateProductRequest request)
@@ -73,6 +75,7 @@ public sealed class ProductsController : ControllerBase
     }
 
     [HttpPut("{id:guid}")]
+    [AdminRateLimit(AdminRateLimitKind.Upload)]
     [Consumes("multipart/form-data")]
     public async Task<IActionResult> UpdateProduct(Guid id, [FromForm] ProductService.Request.UpdateProductRequest request)
     {

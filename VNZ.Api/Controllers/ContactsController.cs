@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using VNZ.Api.Filters;
 using VNZ.Service.Models;
 using ContactService = VNZ.Service.ContactService;
 
@@ -63,6 +64,7 @@ public class ContactsController : ControllerBase
     }
 
     [HttpPost("{id:guid}/reply")]
+    [AdminRateLimit(AdminRateLimitKind.Email)]
     public async Task<IActionResult> SendReply(
         Guid id,
         [FromBody] ContactService.Request.SendContactReplyRequest? request)

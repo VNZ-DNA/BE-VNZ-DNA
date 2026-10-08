@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
 using VNZ.Api.Filters;
+using VNZ.Api.RateLimiting;
 using VNZ.Service.Models;
 using ContactService = VNZ.Service.ContactService;
 
@@ -22,7 +23,7 @@ public class PublicContactsController : ControllerBase
 
     [HttpPost]
     [Consumes("application/json")]
-    [EnableRateLimiting("ContactInquiryCreate")]
+    [EnableRateLimiting(RateLimitPolicies.ContactInquiryCreate)]
     public async Task<IActionResult> CreateContactInquiry(
         [FromBody] ContactService.Request.CreateContactInquiryRequest request)
     {
