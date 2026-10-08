@@ -113,7 +113,7 @@ public static class ServiceCollectionExtensions
         services.AddJwtAuthentication(configuration);
         services.AddSwaggerDocumentation();
         services.AddCorsPolicy();
-        services.AddContactInquiryRateLimit();
+        services.AddApiRateLimiting(configuration);
 
         return services;
     }

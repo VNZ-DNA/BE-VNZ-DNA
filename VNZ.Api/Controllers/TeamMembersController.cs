@@ -1,6 +1,7 @@
 using System.Security.Claims;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using VNZ.Api.Filters;
 using VNZ.Service.Models;
 using TeamMemberService = VNZ.Service.TeamMembers;
 
@@ -75,6 +76,7 @@ public sealed class TeamMembersController : ControllerBase
     }
 
     [HttpPost]
+    [AdminRateLimit(AdminRateLimitKind.Upload)]
     [Consumes("multipart/form-data")]
     public async Task<IActionResult> CreateMember([FromForm] TeamMemberService.Request.CreateTeamMemberRequest request)
     {
@@ -91,6 +93,7 @@ public sealed class TeamMembersController : ControllerBase
     }
 
     [HttpPut("{id:guid}")]
+    [AdminRateLimit(AdminRateLimitKind.Upload)]
     [Consumes("multipart/form-data")]
     public async Task<IActionResult> UpdateMember(Guid id, [FromForm] TeamMemberService.Request.UpdateTeamMemberRequest request)
     {

@@ -1,6 +1,7 @@
 using System.Security.Claims;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using VNZ.Api.Filters;
 using VNZ.Service.Exceptions;
 using VNZ.Service.Models;
 using NewsService = VNZ.Service.NewsService;
@@ -31,6 +32,7 @@ public sealed class NewsController : ControllerBase
     }
 
     [HttpPost("content-images")]
+    [AdminRateLimit(AdminRateLimitKind.Upload)]
     [Consumes("multipart/form-data")]
     public async Task<IActionResult> UploadContentImage(
         [FromForm] NewsService.Request.UploadContentImageRequest request)
@@ -46,6 +48,7 @@ public sealed class NewsController : ControllerBase
     }
 
     [HttpPost]
+    [AdminRateLimit(AdminRateLimitKind.Upload)]
     [Consumes("multipart/form-data")]
     public async Task<IActionResult> CreateNews([FromForm] NewsService.Request.CreateNewsRequest request)
     {
@@ -67,6 +70,7 @@ public sealed class NewsController : ControllerBase
     }
 
     [HttpPut("{id}")]
+    [AdminRateLimit(AdminRateLimitKind.Upload)]
     [Consumes("multipart/form-data")]
     public async Task<IActionResult> UpdateNews(
         string id,

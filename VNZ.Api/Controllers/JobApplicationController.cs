@@ -1,6 +1,7 @@
 using System.Security.Claims;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using VNZ.Api.Filters;
 using VNZ.Service.JobApplicationService;
 using VNZ.Service.Models;
 
@@ -63,6 +64,7 @@ public sealed class JobApplicationController : ControllerBase
     }
 
     [HttpPost("{id:guid}/review")]
+    [AdminRateLimit(AdminRateLimitKind.RejectionEmail)]
     public async Task<IActionResult> Review(
         Guid id,
         [FromBody] Request.ReviewJobApplicationRequest request)
@@ -100,6 +102,7 @@ public sealed class JobApplicationController : ControllerBase
     }
 
     [HttpPost("interview-invitations")]
+    [AdminRateLimit(AdminRateLimitKind.Email)]
     public async Task<IActionResult> SendInterviewInvitations(
         [FromBody] Request.SendInterviewInvitationsRequest request)
     {
